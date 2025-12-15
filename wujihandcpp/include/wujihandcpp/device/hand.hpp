@@ -1,7 +1,9 @@
 #pragma once
 
 #include <cstdint>
+#include <cstring>
 
+#include <array>
 #include <atomic>
 #include <memory>
 #include <span>
@@ -89,13 +91,26 @@ public:
                         finger(i).joint(j).get<data::joint::FirmwareVersion>()})
                     joint_version_consistent = false;
 
-        bool log_full_system_version = (hand_version >= data::FirmwareVersionData{3, 1, 0, 'D'});
-        if (log_full_system_version) {
-            auto full_system_version =
+        // Read full system version once (used for both SN check and logging)
+        // SN requires hand version >= 3.1.0-D and full system version >= 1.1.0
+        std::string product_sn;
+        data::FirmwareVersionData full_system_version{};
+        bool has_full_system_version = (hand_version >= data::FirmwareVersionData{3, 1, 0, 'D'});
+        if (has_full_system_version)
+            full_system_version =
                 data::FirmwareVersionData{read<data::hand::FullSystemFirmwareVersion>()};
+
+        if (has_full_system_version
+            && full_system_version >= data::FirmwareVersionData{1, 1, 0})
+            product_sn = read_product_sn();
+
+        bool log_full_system_version = has_full_system_version;
+        if (log_full_system_version) {
             if (full_system_version.major > 0) {
                 std::string firmware_msg =
                     "Using firmware version: " + full_system_version.to_string();
+                if (!product_sn.empty())
+                    firmware_msg += ", SN: " + product_sn;
                 logging::log(logging::Level::INFO, firmware_msg.c_str(), firmware_msg.size());
             } else
                 log_full_system_version = false;
@@ -107,9 +122,13 @@ public:
 
             if (joint_version_consistent) {
                 firmware_msg += joint_version.to_string();
+                if (!product_sn.empty())
+                    firmware_msg += ", SN: " + product_sn;
                 logging::log(logging::Level::INFO, firmware_msg.c_str(), firmware_msg.size());
             } else {
                 firmware_msg += "[Matrix]";
+                if (!product_sn.empty())
+                    firmware_msg += ", SN: " + product_sn;
                 logging::log(logging::Level::INFO, firmware_msg.c_str(), firmware_msg.size());
 
                 std::string joint_firmware_msg;
@@ -231,6 +250,45 @@ public:
     }
 
     void disable_thread_safe_check() { handler_.disable_thread_safe_check(); }
+
+    // Read Product SN from firmware (0x5202)
+    // SN is stored as 6 x 4-byte UINT32 chunks at SubIndex 1-6
+    // Returns empty string if SN is not available or invalid
+    std::string read_product_sn() {
+        Latch latch;
+        read_async<data::hand::ProductSNPart1>(latch);
+        read_async<data::hand::ProductSNPart2>(latch);
+        read_async<data::hand::ProductSNPart3>(latch);
+        read_async<data::hand::ProductSNPart4>(latch);
+        read_async<data::hand::ProductSNPart5>(latch);
+        read_async<data::hand::ProductSNPart6>(latch);
+        latch.wait();
+
+        // Assemble 24-byte buffer from 6 x UINT32 (Little-Endian)
+        std::array<char, 24> sn_buffer{};
+        uint32_t parts[6] = {
+            get<data::hand::ProductSNPart1>(), get<data::hand::ProductSNPart2>(),
+            get<data::hand::ProductSNPart3>(), get<data::hand::ProductSNPart4>(),
+            get<data::hand::ProductSNPart5>(), get<data::hand::ProductSNPart6>()};
+        std::memcpy(sn_buffer.data(), parts, 24);
+
+        // Find string length and check validity
+        size_t len = 0;
+        bool all_zero = true;
+        for (size_t i = 0; i < 24; ++i) {
+            char c = sn_buffer[i];
+            if (c == '\0')
+                break;
+            if (c != '0')
+                all_zero = false;
+            ++len;
+        }
+
+        // Valid SN: non-empty and not all zeros
+        if (len > 0 && !all_zero)
+            return std::string(sn_buffer.data(), len);
+        return "";
+    }
 
     // Raw SDO operations for debugging
     // finger_id: 0-4 for fingers, -1 for Hand level
@@ -449,8 +507,10 @@ private:
 
     using Datas = DataTuple<
         data::hand::Handedness, data::hand::HostTimeoutCounter, data::hand::FirmwareVersion,
-        data::hand::FirmwareDate, data::hand::FullSystemFirmwareVersion, data::hand::SystemTime,
-        data::hand::Temperature, data::hand::InputVoltage, data::hand::RPdoDirectlyDistribute,
+        data::hand::FirmwareDate, data::hand::FullSystemFirmwareVersion, data::hand::ProductSNPart1,
+        data::hand::ProductSNPart2, data::hand::ProductSNPart3, data::hand::ProductSNPart4, data::hand::ProductSNPart5,
+        data::hand::ProductSNPart6, data::hand::SystemTime, data::hand::Temperature,
+        data::hand::InputVoltage, data::hand::RPdoDirectlyDistribute,
         data::hand::TPdoProactivelyReport, data::hand::PdoEnabled, data::hand::RPdoId,
         data::hand::TPdoId, data::hand::PdoInterval, data::hand::RPdoTriggerOffset,
         data::hand::TPdoTriggerOffset>;

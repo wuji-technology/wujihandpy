@@ -28,6 +28,15 @@ struct FirmwareDate : ReadOnlyData<device::Hand, 0x5201, 2, uint32_t> {};
 
 struct FullSystemFirmwareVersion : ReadOnlyData<device::Hand, 0x5201, 3, uint32_t> {};
 
+// Product SN (0x5202)
+// SN is stored as 6 x 4-byte chunks (SubIndex 1-6) for Expedited SDO transfer
+struct ProductSNPart1 : ReadOnlyData<device::Hand, 0x5202, 1, uint32_t> {};
+struct ProductSNPart2 : ReadOnlyData<device::Hand, 0x5202, 2, uint32_t> {};
+struct ProductSNPart3 : ReadOnlyData<device::Hand, 0x5202, 3, uint32_t> {};
+struct ProductSNPart4 : ReadOnlyData<device::Hand, 0x5202, 4, uint32_t> {};
+struct ProductSNPart5 : ReadOnlyData<device::Hand, 0x5202, 5, uint32_t> {};
+struct ProductSNPart6 : ReadOnlyData<device::Hand, 0x5202, 6, uint32_t> {};
+
 struct SystemTime : ReadOnlyData<device::Hand, 0x520A, 1, uint32_t> {};
 struct Temperature : ReadOnlyData<device::Hand, 0x520A, 9, float> {};
 struct InputVoltage : ReadOnlyData<device::Hand, 0x520A, 10, float> {};

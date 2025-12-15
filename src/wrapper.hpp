@@ -287,6 +287,13 @@ public:
             seconds_to_duration(timeout));
     }
 
+    // Get Product SN (0x5202)
+    std::string get_product_sn()
+        requires std::is_same_v<T, wujihandcpp::device::Hand> {
+        py::gil_scoped_release release;
+        return T::read_product_sn();
+    }
+
     template <typename Data>
     static void register_py_interface(py::class_<Wrapper>& py_class, const std::string& name) {
         if constexpr (Data::readable) {

@@ -82,6 +82,11 @@ PYBIND11_MODULE(_core, m) {
         "raw_sdo_write", &Hand::raw_sdo_write, py::arg("finger_id"), py::arg("joint_id"),
         py::arg("index"), py::arg("sub_index"), py::arg("data"), py::arg("timeout") = 0.5);
 
+    // Product SN
+    hand.def(
+        "get_product_sn", &Hand::get_product_sn,
+        "Get device product serial number");
+
     using Finger = Wrapper<wujihandcpp::device::Finger>;
     auto finger = py::class_<Finger>(m, "Finger");
     hand.def("finger", &Hand::finger, py::arg("index"), py::keep_alive<0, 1>());
