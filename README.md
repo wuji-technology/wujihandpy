@@ -1,8 +1,10 @@
-# WujihandPy: Python bindings for WujiHandCpp
+# WujihandPy：Unified Wuji Hand SDK: C++ Core with Python Bindings
 
-WujihandPy 是 [WujiHandCpp](https://github.com/Wuji-Technology-Co-Ltd/wujihandcpp) 的 Python 绑定。
+WujihandPy 是 [WujihandCpp](wujihandcpp/README.md) 的 Python 绑定，提供面向舞肌灵巧手设备的易用 Python API（底层由 C++ SDK 驱动）。
 
-提供更简洁、更高效、更易用的接口与灵巧手设备进行交互。
+## 文档
+
+[快速开始](https://docs.wuji.tech/docs/zh/wuji-hand/latest/sdk-user-guide/introduction/)
 
 ## 安装
 
@@ -23,13 +25,13 @@ sudo udevadm trigger
 
 ### 常见错误
 
-若遇到报错 `Could not find a version that satisfies the requirement`，请尝试升级 pip：
+若安装时报错 `Could not find a version that satisfies the requirement`，请先升级 pip：
 
 ```bash
 python3 -m pip install --upgrade pip
 ```
 
-然后使用新的pip重新安装：
+再使用升级后的 pip 重试：
 
 ```bash
 python3 -m pip install wujihandpy
@@ -60,11 +62,7 @@ python3 -m pip install wujihandpy
 
 WujihandPy 目前暂不支持 Windows，我们会尽快推进相关支持。
 
-## 示例代码
-
-所有示例代码均位于 [example](example) 目录下。
-
-## 部分参考 API
+## 快速开始
 
 ### 导入模块
 
@@ -86,27 +84,27 @@ def read_<dataname>(self) -> datatype
 def read_<dataname>(self) -> np.ndarray[datatype] # For bulk-read
 ```
 
-所有可使用的数据均定义在 `wujihandpy/_core.pyi` 中。
+所有可使用的数据见 [API Reference](https://docs.wuji.tech/docs/zh/wuji-hand/latest/sdk-user-guide/api-reference/)。
 
-例如，读取灵巧手的上电运行时间(us)：
+例如，读取灵巧手的上电运行时间（us）：
 
 ```python
 time = hand.read_system_time()
 ```
 
-除整手唯一的数据外，每个关节也有自己的数据，数据名称均以 `joint` 作为开头。
+除整手级数据外，每个关节也有自己的数据；关节级数据名均以 `joint` 作为前缀。
 
-例如，读取第1个手指（食指），第0个关节的当前位置数据：
+例如，读取第 1 个手指（食指）第 0 个关节的当前位置数据：
 
 ```python
 position = hand.finger(1).joint(0).read_joint_actual_position()
 ```
 
-关节角度为 `np.float64` 类型，单位为弧度，零点和正方向与 [URDF文件](https://github.com/Wuji-Technology-Co-Ltd/wujihand-urdf) 中定义的相同。
+关节角度为 `np.float64` 类型，单位为弧度；零点与正方向与 [URDF 文件](https://github.com/Wuji-Technology-Co-Ltd/wujihand-urdf) 的定义一致。
 
-用一条指令读取多个数据也是可行的，这被称为**批量读 (Bulk-Read)**。
+用一条指令读取多个数据称为**批量读（Bulk-Read）**。
 
-例如，以下指令读取整手所有（20个）关节的当前位置数据：
+例如，以下指令读取整手所有（20 个）关节的当前位置数据：
 
 ```python
 positions = hand.read_joint_actual_position()
@@ -149,13 +147,13 @@ lower = < Hand / Finger / Joint >.read_joint_lower_limit()
 
 若写入的角度超出合法范围，会被自动限幅至最高/最低值。
 
-**批量写**数据也是可行的，例如，批量为第一个手指写入目标位置数据：
+**批量写（Bulk-Write）** 同样可用。例如，为第 1 个手指（食指）的所有关节写入相同的目标位置：
 
 ```python
 hand.finger(1).write_joint_target_position(0.8)
 ```
 
-如果每个关节的目标值不同，可以传入一个包含所有目标值的 `np.array`：
+如果每个关节的目标值不同，可以传入一个包含各关节目标值的 `np.ndarray`：
 
 ```python
 hand.finger(1).write_joint_target_position(
@@ -169,18 +167,26 @@ hand.finger(1).write_joint_target_position(
 
 `write` 函数会阻塞，直到写入完成。保证当函数返回时，写入一定成功。
 
+### 实时控制
+
+默认的读/写方式均带有缓冲池，积攒一段时间数据后才进行传输，最高读/写频率无法超过 100Hz。
+
+对于需要流畅控制关节位置的场景，请使用 [实时控制](https://docs.wuji.tech/docs/zh/wuji-hand/latest/sdk-user-guide/tutorial/#4-%E5%AE%9E%E6%97%B6%E6%8E%A7%E5%88%B6)。
+
+
+
 ### 异步读/写
 
 读写函数均有对应的异步版本，函数名以 `_async` 作为后缀。
 
-``` python
+```python
 async def read_<dataname>_async(self) -> datatype
 async def read_<dataname>_async(self) -> np.ndarray[datatype] # For bulk-read
 async def write_<dataname>_async(self, datatype)
 async def write_<dataname>_async(self, np.ndarray[datatype])  # For bulk-write
 ```
 
-异步接口需 `await`；等待期间不阻塞线程/事件循环，返回时保证读/写已经成功。
+异步接口需 `await`；等待期间不阻塞线程/事件循环，返回时保证读/写已成功。
 
 ### Unchecked 读/写
 
@@ -188,14 +194,13 @@ async def write_<dataname>_async(self, np.ndarray[datatype])  # For bulk-write
 
 ```python
 def read_<dataname>_unchecked(self) -> None
-def read_<dataname>_unchecked(self) -> None               # For bulk-read
 def write_<dataname>_unchecked(self, datatype)
 def write_<dataname>_unchecked(self, np.ndarray[datatype])  # For bulk-write
 ```
 
 Unchecked 函数总是立即返回，不会阻塞，通常用于对实时性要求较高的场景。
 
-### Get
+### 获取缓存值（Get）
 
 如果希望获取以往读/写的结果，可以使用 `get` 系列函数：
 
@@ -204,27 +209,19 @@ def get_<dataname>(self) -> datatype
 def get_<dataname>(self) -> np.ndarray[datatype] # For bulk-read
 ```
 
-`get` 系列函数同样不会阻塞，它总是立即返回最近一次读取到的数据，无论该数据来自 `read`、`async-read` 还是 `read-unchecked`。 
+`get` 系列函数同样不会阻塞，它总是立即返回最近一次读取到的数据，无论该数据来自 `read`、`async-read` 还是 `read-unchecked`。
 
-如果尚未请求过该数据，或请求尚未成功，`get` 函数的返回值是未定义的（通常为0）。
+如果尚未请求过该数据，或请求尚未成功，`get` 的返回值是未定义的（通常为 0）。
 
-### 实时控制
+## 示例代码
 
-默认的读/写方式均带有缓冲池，积攒一段时间数据后才进行传输，最高读/写频率无法超过 100Hz。
-
-对于需要流畅控制关节位置的场景，需使用 realtime_controller。
-
-具体的控制示例可见 [example](example) 目录：
-
-单向写：[realtime.py](example/4.realtime.py)
-
-双向读/写：[realtime_duplex.py](example/5.realtime_duplex.py)
+所有示例代码均位于 [example](example) 目录下。
 
 ## 性能与优化
 
 WujihandPy 在充分保证易用性的同时，尽可能优化了性能与效率。
 
-我们强烈建议优先使用批量读/写以最大限度地发挥性能。
+我们建议优先使用批量读/写以最大限度发挥性能。
 
 对于需要流畅控制关节位置的场景，请务必使用 realtime_controller。
 
