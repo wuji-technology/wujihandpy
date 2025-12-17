@@ -445,7 +445,8 @@ private:
     static constexpr unsigned char out_endpoint_ = 0x01;
     static constexpr unsigned char in_endpoint_ = 0x81;
 
-    static constexpr int max_transfer_length_ = 512;
+    // 增大传输缓冲区以支持 TPDO_SCOPE_C12 (需要约 978 字节)
+    static constexpr int max_transfer_length_ = 2048;
 
     static constexpr size_t transmit_transfer_count_ = 64;
     static constexpr size_t receive_transfer_count_ = 4;

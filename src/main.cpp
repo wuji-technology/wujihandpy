@@ -74,6 +74,19 @@ PYBIND11_MODULE(_core, m) {
     hand.def("start_latency_test", &Hand::start_latency_test);
     hand.def("stop_latency_test", &Hand::stop_latency_test);
 
+    // Scope Mode (TPDO_SCOPE_C12) - 调试数据采集
+    hand.def("start_scope_mode", &Hand::start_scope_mode);
+    hand.def("stop_scope_mode", &Hand::stop_scope_mode);
+    hand.def(
+        "configure_vofa_forwarder", &Hand::configure_vofa_forwarder,
+        py::arg("ip"), py::arg("port"), py::arg("joint_mask") = 0xFFFFF);
+    hand.def("set_vofa_enabled", &Hand::set_vofa_enabled, py::arg("enabled"));
+    hand.def("set_vofa_joint_mask", &Hand::set_vofa_joint_mask, py::arg("mask"));
+    hand.def(
+        "get_scope_data", &Hand::get_scope_data,
+        py::arg("finger_id"), py::arg("joint_id"));
+    hand.def("get_all_scope_data", &Hand::get_all_scope_data);
+
     // Raw SDO operations for debugging
     hand.def(
         "raw_sdo_read", &Hand::raw_sdo_read, py::arg("finger_id"), py::arg("joint_id"),

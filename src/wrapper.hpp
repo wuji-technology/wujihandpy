@@ -260,6 +260,53 @@ public:
     void start_latency_test() { T::start_latency_test(); }
     void stop_latency_test() { T::stop_latency_test(); }
 
+    // Scope Mode (TPDO_SCOPE_C12) - only available for Hand
+    void start_scope_mode() requires std::is_same_v<T, wujihandcpp::device::Hand> {
+        py::gil_scoped_release release;
+        T::start_scope_mode();
+    }
+
+    void stop_scope_mode() requires std::is_same_v<T, wujihandcpp::device::Hand> {
+        py::gil_scoped_release release;
+        T::stop_scope_mode();
+    }
+
+    bool configure_vofa_forwarder(const std::string& ip, uint16_t port, uint32_t joint_mask)
+        requires std::is_same_v<T, wujihandcpp::device::Hand> {
+        return T::configure_vofa_forwarder(ip, port, joint_mask);
+    }
+
+    void set_vofa_enabled(bool enabled)
+        requires std::is_same_v<T, wujihandcpp::device::Hand> {
+        T::set_vofa_enabled(enabled);
+    }
+
+    void set_vofa_joint_mask(uint32_t mask)
+        requires std::is_same_v<T, wujihandcpp::device::Hand> {
+        T::set_vofa_joint_mask(mask);
+    }
+
+    py::array_t<float> get_scope_data(int finger_id, int joint_id)
+        requires std::is_same_v<T, wujihandcpp::device::Hand> {
+        auto result = T::get_scope_data(finger_id, joint_id);
+        auto buffer = new float[12];
+        std::copy(result.begin(), result.end(), buffer);
+        py::capsule free(buffer, [](void* ptr) { delete[] static_cast<float*>(ptr); });
+        return py::array_t<float>({12}, buffer, free);
+    }
+
+    py::array_t<float> get_all_scope_data()
+        requires std::is_same_v<T, wujihandcpp::device::Hand> {
+        auto result = T::get_all_scope_data();
+        auto buffer = new float[5 * 4 * 12];
+        for (int f = 0; f < 5; f++)
+            for (int j = 0; j < 4; j++)
+                for (int k = 0; k < 12; k++)
+                    buffer[f * 4 * 12 + j * 12 + k] = result[f][j][k];
+        py::capsule free(buffer, [](void* ptr) { delete[] static_cast<float*>(ptr); });
+        return py::array_t<float>({5, 4, 12}, buffer, free);
+    }
+
     // Raw SDO operations - only available for Hand
     py::bytes
         raw_sdo_read(int finger_id, int joint_id, uint16_t index, uint8_t sub_index, double timeout)

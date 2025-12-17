@@ -2,6 +2,7 @@
 
 #include <cstdint>
 
+#include <array>
 #include <atomic>
 #include <memory>
 #include <span>
@@ -230,6 +231,121 @@ public:
         handler_.stop_latency_test();
     }
 
+    // Scope Mode (TPDO_SCOPE_C12) - 调试数据采集模式
+    // 启动 scope 模式，设置 TPdoId SDO 为 0xE2 并创建 vofa_forwarder
+    // 注意：必须先 disable PDO，设置 TPdoId，再 enable PDO，否则 tpdo_request_config() 不会重新配置
+    void start_scope_mode() {
+        constexpr char msg1[] = "start_scope_mode: BEGIN CONFIG";
+        logging::log(logging::Level::INFO, msg1, sizeof(msg1) - 1);
+
+        // 1. 先 disable PDO（确保 tpdo_request_config 会被重新调用）
+        constexpr char msg2[] = "start_scope_mode: Step 1 - Disable PDO";
+        logging::log(logging::Level::INFO, msg2, sizeof(msg2) - 1);
+        {
+            Latch latch;
+            write_async<data::hand::PdoEnabled>(latch, 0);
+            latch.wait();
+        }
+        constexpr char msg2b[] = "start_scope_mode: PdoEnabled=0 done";
+        logging::log(logging::Level::INFO, msg2b, sizeof(msg2b) - 1);
+
+        // 等待脊髓板停止 PDO sync timer（200ms）
+        constexpr char msg3[] = "start_scope_mode: Wait PDO stop (200ms)";
+        logging::log(logging::Level::INFO, msg3, sizeof(msg3) - 1);
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+        // 2. 多次写入 TPdoId = 0xE2 确保配置成功
+        constexpr char msg4[] = "start_scope_mode: Step 2 - Write TPdoId=0xE2 (5x)";
+        logging::log(logging::Level::INFO, msg4, sizeof(msg4) - 1);
+        for (int i = 0; i < 5; i++) {
+            {
+                Latch latch;
+                write_async<data::hand::TPdoId>(latch, 0xE2);
+                latch.wait();
+            }
+            char buf[64];
+            int len = snprintf(buf, sizeof(buf), "start_scope_mode: TPdoId=0xE2 write #%d done", i + 1);
+            logging::log(logging::Level::INFO, buf, len);
+            // 每次写入后等待 50ms
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+
+        // 等待脊髓板 rt_task 更新 PDO_Global_Control.global_tpdo_id（200ms）
+        constexpr char msg6[] = "start_scope_mode: Wait rt_task update (200ms)";
+        logging::log(logging::Level::INFO, msg6, sizeof(msg6) - 1);
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+        // 3. 重新 enable PDO（此时 tpdo_request_config 会使用新的 TPdoId）
+        constexpr char msg7[] = "start_scope_mode: Step 3 - Enable PDO";
+        logging::log(logging::Level::INFO, msg7, sizeof(msg7) - 1);
+        {
+            Latch latch;
+            write_async<data::hand::PdoEnabled>(latch, 1);
+            latch.wait();
+        }
+        constexpr char msg7b[] = "start_scope_mode: PdoEnabled=1 done";
+        logging::log(logging::Level::INFO, msg7b, sizeof(msg7b) - 1);
+
+        // 等待 tpdo_request_config 完成配置（300ms）
+        constexpr char msg8[] = "start_scope_mode: Wait tpdo_request_config (300ms)";
+        logging::log(logging::Level::INFO, msg8, sizeof(msg8) - 1);
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+
+        constexpr char msg9[] = "start_scope_mode: Call handler_.start_scope_mode()";
+        logging::log(logging::Level::INFO, msg9, sizeof(msg9) - 1);
+        handler_.start_scope_mode();
+        constexpr char msg10[] = "start_scope_mode: CONFIG DONE";
+        logging::log(logging::Level::INFO, msg10, sizeof(msg10) - 1);
+    }
+
+    void stop_scope_mode() {
+        handler_.stop_scope_mode();
+
+        // 1. 先 disable PDO
+        {
+            Latch latch;
+            write_async<data::hand::PdoEnabled>(latch, 0);
+            latch.wait();
+        }
+
+        // 2. 恢复 SDO TPdoId 为默认 CSP，多次写入确保成功
+        for (int i = 0; i < 3; i++) {
+            Latch latch;
+            write_async<data::hand::TPdoId>(latch, 0x01);
+            latch.wait();
+        }
+
+        // 3. 重新 enable PDO
+        {
+            Latch latch;
+            write_async<data::hand::PdoEnabled>(latch, 1);
+            latch.wait();
+        }
+    }
+
+    // 配置 VOFA UDP 转发
+    // ip: 目标 IP 地址 (如 "192.168.1.100")
+    // port: 目标端口号 (如 1234)
+    // joint_mask: 关节掩码，bit0=finger0_joint0, ..., bit19=finger4_joint3
+    bool configure_vofa_forwarder(
+        const std::string& ip, uint16_t port, uint32_t joint_mask = 0xFFFFF) {
+        return handler_.configure_vofa_forwarder(ip, port, joint_mask);
+    }
+
+    void set_vofa_enabled(bool enabled) { handler_.set_vofa_enabled(enabled); }
+
+    void set_vofa_joint_mask(uint32_t mask) { handler_.set_vofa_joint_mask(mask); }
+
+    // 获取指定关节的 scope 数据 (12 个 float)
+    std::array<float, 12> get_scope_data(int finger_id, int joint_id) {
+        return handler_.get_scope_data(finger_id, joint_id);
+    }
+
+    // 获取所有关节的 scope 数据 [5][4][12]
+    std::array<std::array<std::array<float, 12>, 4>, 5> get_all_scope_data() {
+        return handler_.get_all_scope_data();
+    }
+
     void disable_thread_safe_check() { handler_.disable_thread_safe_check(); }
 
     // Raw SDO operations for debugging
@@ -364,7 +480,7 @@ private:
             write_async<data::joint::ControlMode>(latch, 5);
             write_async<data::hand::RPdoId>(latch, 0x01);
             if (enable_upstream)
-                write_async<data::hand::TPdoId>(latch, 0x01);
+                write_async<data::hand::TPdoId>(latch, 0xE2);  // 使用 TPDO_SCOPE_C12
             else
                 write_async<data::hand::TPdoId>(latch, 0x00);
             write_async<data::hand::PdoInterval>(latch, 2000);

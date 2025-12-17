@@ -132,6 +132,19 @@ PACKED_STRUCT(LatencyTestResult {
     uint32_t t_usb_rx_tx;
 });
 
+// TPDO_SCOPE_C12 (0xE2) 调试数据结构
+// 每个关节返回 12 个 float 调试值
+PACKED_STRUCT(ScopeC12JointData {
+    float values[12];
+});
+
+// 与固件 Spinal_TPDO_Scope_C12_T 对应
+PACKED_STRUCT(ScopeC12Result {
+    uint16_t padding;                     // 固件填充字段
+    ScopeC12JointData joint_datas[5][4];  // 5 fingers × 4 joints
+    uint32_t suffix;                      // VOFA suffix (0x7f800000)
+});
+
 }; // namespace pdo
 
 PACKED_STRUCT(CrcCheck { uint16_t value; });
