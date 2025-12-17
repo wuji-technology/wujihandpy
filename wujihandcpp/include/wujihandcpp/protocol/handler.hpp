@@ -96,8 +96,6 @@ public:
         Buffer8 data, int storage_id, std::chrono::steady_clock::duration::rep timeout,
         void (*callback)(Buffer8 context, bool success), Buffer8 callback_context);
 
-    WUJIHANDCPP_API void enable_host_heartbeat();
-
     WUJIHANDCPP_API auto realtime_get_joint_actual_position()
         -> const std::atomic<double> (&)[5][4];
 

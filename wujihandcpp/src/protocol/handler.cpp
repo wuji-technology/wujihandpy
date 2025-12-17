@@ -128,10 +128,6 @@ public:
             std::memory_order::release);
     }
 
-    void enable_host_heartbeat() {
-        host_heartbeat_enabled_.store(true, std::memory_order::relaxed);
-    }
-
     auto realtime_get_joint_actual_position() -> const std::atomic<double> (&)[5][4] {
         return pdo_read_result_;
     }
@@ -615,27 +611,12 @@ private:
             std::chrono::duration_cast<std::chrono::steady_clock::duration>(
                 std::chrono::duration<double>(1.0 / update_rate));
 
-        unsigned int update_index = 0;
         while (!stop_token.stop_requested()) {
             auto now = std::chrono::steady_clock::now();
 
             for (size_t i = 0; i < storage_unit_count_; i++) {
                 auto& storage = storage_[i];
                 auto operation = storage.operation.load(std::memory_order::acquire);
-
-                // Reset the host counter every 320ms
-                if (host_heartbeat_enabled_.load(std::memory_order::relaxed)
-                    && storage.info.policy & Handler::StorageInfo::HOST_HEARTBEAT
-                    && update_index % 64 == 0
-                    && storage.operation.load(std::memory_order::relaxed).mode
-                           == Operation::Mode::NONE) {
-                    store_data(storage, Buffer8{uint32_t(0)});
-                    storage.timeout = std::chrono::milliseconds(500);
-                    storage.callback = nullptr;
-                    operation = Operation{
-                        .mode = Operation::Mode::WRITE, .state = Operation::State::WAITING};
-                    storage.operation.store(operation, std::memory_order::relaxed);
-                }
 
                 if (operation.mode == Operation::Mode::NONE)
                     continue;
@@ -749,7 +730,6 @@ private:
             sdo_builder_.finalize();
 
             std::this_thread::sleep_for(update_period);
-            update_index++;
         }
     }
 
@@ -913,7 +893,6 @@ private:
     std::unique_ptr<LatencyTester> latency_tester_;
     std::mutex latency_tester_mutex_;
 
-    std::atomic<bool> host_heartbeat_enabled_ = false;
     std::jthread sdo_thread_;
 
     std::unique_ptr<device::IRealtimeController> realtime_controller_;
@@ -951,8 +930,6 @@ WUJIHANDCPP_API void Handler::write_async_unchecked(
     Buffer8 data, int storage_id, std::chrono::steady_clock::duration::rep timeout) {
     impl_->write_async_unchecked(data, storage_id, timeout);
 }
-
-WUJIHANDCPP_API void Handler::enable_host_heartbeat() { impl_->enable_host_heartbeat(); }
 
 WUJIHANDCPP_API void Handler::write_async(
     Buffer8 data, int storage_id, std::chrono::steady_clock::duration::rep timeout,

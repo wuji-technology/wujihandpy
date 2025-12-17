@@ -40,9 +40,6 @@ public:
         try {
             check_firmware_version();
 
-            if (feature_tpdo_proactively_report_)
-                handler_.enable_host_heartbeat();
-
             write<data::joint::Enabled>(false);
 
             Latch latch;
@@ -506,11 +503,11 @@ private:
     }
 
     using Datas = DataTuple<
-        data::hand::Handedness, data::hand::HostTimeoutCounter, data::hand::FirmwareVersion,
-        data::hand::FirmwareDate, data::hand::FullSystemFirmwareVersion, data::hand::ProductSNPart1,
-        data::hand::ProductSNPart2, data::hand::ProductSNPart3, data::hand::ProductSNPart4, data::hand::ProductSNPart5,
-        data::hand::ProductSNPart6, data::hand::SystemTime, data::hand::Temperature,
-        data::hand::InputVoltage, data::hand::RPdoDirectlyDistribute,
+        data::hand::Handedness, data::hand::FirmwareVersion, data::hand::FirmwareDate,
+        data::hand::FullSystemFirmwareVersion, data::hand::ProductSNPart1,
+        data::hand::ProductSNPart2, data::hand::ProductSNPart3, data::hand::ProductSNPart4,
+        data::hand::ProductSNPart5, data::hand::ProductSNPart6, data::hand::SystemTime,
+        data::hand::Temperature, data::hand::InputVoltage, data::hand::RPdoDirectlyDistribute,
         data::hand::TPdoProactivelyReport, data::hand::PdoEnabled, data::hand::RPdoId,
         data::hand::TPdoId, data::hand::PdoInterval, data::hand::RPdoTriggerOffset,
         data::hand::TPdoTriggerOffset>;
