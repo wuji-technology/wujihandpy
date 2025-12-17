@@ -29,6 +29,10 @@
 #include "protocol/frame_builder.hpp"
 #include "protocol/latency_tester.hpp"
 #include "protocol/protocol.hpp"
+#ifdef WUJI_SCOPE_DEBUG
+#include "protocol/scope/scope_pdo.hpp"
+#include "protocol/scope/vofa_forwarder.hpp"
+#endif
 #include "transport/transport.hpp"
 #include "utility/tick_executor.hpp"
 
@@ -205,6 +209,75 @@ public:
     Buffer8 get(int storage_id) { return load_data(storage_[storage_id]); }
 
     void disable_thread_safe_check() { operation_thread_id_ = std::thread::id{}; }
+
+#ifdef WUJI_SCOPE_DEBUG
+    void start_scope_mode() {
+        operation_thread_check();
+
+        if (realtime_controller_)
+            throw std::logic_error("A realtime controller is already attached.");
+        if (latency_tester_)
+            throw std::logic_error("Latency testing is underway.");
+        if (vofa_forwarder_)
+            throw std::logic_error("Scope mode is already started.");
+
+        auto forwarder = std::make_unique<VofaForwarder>();
+        {
+            std::lock_guard guard{vofa_forwarder_mutex_};
+            vofa_forwarder_ = std::move(forwarder);
+        }
+        logger_.info("Scope mode started.");
+    }
+
+    void stop_scope_mode() {
+        operation_thread_check();
+
+        if (!vofa_forwarder_)
+            throw std::logic_error("Scope mode is not started.");
+
+        {
+            std::lock_guard guard{vofa_forwarder_mutex_};
+            vofa_forwarder_.reset();
+        }
+
+        logger_.info("Scope mode stopped.");
+    }
+
+    bool configure_vofa_forwarder(const std::string& ip, uint16_t port, uint32_t joint_mask) {
+        std::lock_guard guard{vofa_forwarder_mutex_};
+        if (!vofa_forwarder_)
+            throw std::logic_error("Scope mode is not started.");
+        return vofa_forwarder_->configure(ip, port, joint_mask);
+    }
+
+    void set_vofa_enabled(bool enabled) {
+        std::lock_guard guard{vofa_forwarder_mutex_};
+        if (!vofa_forwarder_)
+            throw std::logic_error("Scope mode is not started.");
+        vofa_forwarder_->set_enabled(enabled);
+    }
+
+    void set_vofa_joint_mask(uint32_t mask) {
+        std::lock_guard guard{vofa_forwarder_mutex_};
+        if (!vofa_forwarder_)
+            throw std::logic_error("Scope mode is not started.");
+        vofa_forwarder_->set_joint_mask(mask);
+    }
+
+    std::array<float, 12> get_scope_data(int finger_id, int joint_id) {
+        std::lock_guard guard{vofa_forwarder_mutex_};
+        if (!vofa_forwarder_)
+            throw std::logic_error("Scope mode is not started.");
+        return vofa_forwarder_->get_joint_scope_data(finger_id, joint_id);
+    }
+
+    std::array<std::array<std::array<float, 12>, 4>, 5> get_all_scope_data() {
+        std::lock_guard guard{vofa_forwarder_mutex_};
+        if (!vofa_forwarder_)
+            throw std::logic_error("Scope mode is not started.");
+        return vofa_forwarder_->get_all_scope_data();
+    }
+#endif
 
     std::vector<std::byte> raw_sdo_read(
         uint16_t index, uint8_t sub_index, std::chrono::steady_clock::duration timeout) {
@@ -855,6 +928,19 @@ private:
                 if (latency_tester_)
                     latency_tester_->read_result(data);
             }
+#ifdef WUJI_SCOPE_DEBUG
+        } else if (header.read_id == 0xE2) {
+            // TPDO_SCOPE_C12: 12 floats per joint
+            const auto& data =
+                read_frame_struct<protocol::pdo::ScopeC12Result>(pointer, sentinel);
+            std::unique_lock guard{vofa_forwarder_mutex_, std::try_to_lock};
+            if (guard.owns_lock() && vofa_forwarder_) {
+                vofa_forwarder_->store_scope_data(data);
+            }
+            pdo_read_result_version_.store(
+                pdo_read_result_version_.load(std::memory_order::relaxed) + 1,
+                std::memory_order::release);
+#endif
         } else
             throw std::runtime_error(
                 std::format("PDO frame invalid: read_id == 0x{:02X}", header.read_id));
@@ -943,7 +1029,11 @@ private:
         bool upstream_enabled, const double (&target_positions)[5][4], uint32_t timestamp) {
         std::byte* buffer = pdo_builder_.allocate(sizeof(protocol::pdo::Write));
         auto payload = new (buffer) protocol::pdo::Write{};
-        payload->read_id = upstream_enabled ? 0x01 : 0x00;
+#ifdef WUJI_SCOPE_DEBUG
+        payload->read_id = upstream_enabled ? 0xE2 : 0x00;  // Request TPDO_SCOPE_C12
+#else
+        payload->read_id = upstream_enabled ? 0x01 : 0x00;  // Request TPDO_CSP
+#endif
 
         for (int i = 0; i < 5; i++)
             for (int j = 0; j < 4; j++) {
@@ -998,6 +1088,11 @@ private:
     std::jthread pdo_thread_;
 
     std::array<RawSdoUnit, RAW_SDO_SLOT_COUNT> raw_sdo_units_;
+
+#ifdef WUJI_SCOPE_DEBUG
+    std::unique_ptr<VofaForwarder> vofa_forwarder_;
+    std::mutex vofa_forwarder_mutex_;
+#endif
 };
 
 WUJIHANDCPP_API Handler::Handler(
@@ -1074,5 +1169,30 @@ WUJIHANDCPP_API void Handler::raw_sdo_write(
     std::chrono::steady_clock::duration timeout) {
     impl_->raw_sdo_write(index, sub_index, data, timeout);
 }
+
+#ifdef WUJI_SCOPE_DEBUG
+WUJIHANDCPP_API void Handler::start_scope_mode() { impl_->start_scope_mode(); }
+
+WUJIHANDCPP_API void Handler::stop_scope_mode() { impl_->stop_scope_mode(); }
+
+WUJIHANDCPP_API bool Handler::configure_vofa_forwarder(
+    const std::string& ip, uint16_t port, uint32_t joint_mask) {
+    return impl_->configure_vofa_forwarder(ip, port, joint_mask);
+}
+
+WUJIHANDCPP_API void Handler::set_vofa_enabled(bool enabled) { impl_->set_vofa_enabled(enabled); }
+
+WUJIHANDCPP_API void Handler::set_vofa_joint_mask(uint32_t mask) {
+    impl_->set_vofa_joint_mask(mask);
+}
+
+WUJIHANDCPP_API std::array<float, 12> Handler::get_scope_data(int finger_id, int joint_id) {
+    return impl_->get_scope_data(finger_id, joint_id);
+}
+
+WUJIHANDCPP_API std::array<std::array<std::array<float, 12>, 4>, 5> Handler::get_all_scope_data() {
+    return impl_->get_all_scope_data();
+}
+#endif
 
 } // namespace wujihandcpp::protocol

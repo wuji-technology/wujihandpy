@@ -4,9 +4,11 @@
 #include <cstdint>
 #include <cstring>
 
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <span>
+#include <string>
 #include <type_traits>
 #include <vector>
 
@@ -119,6 +121,21 @@ public:
     WUJIHANDCPP_API void raw_sdo_write(
         uint16_t index, uint8_t sub_index, std::span<const std::byte> data,
         std::chrono::steady_clock::duration timeout);
+
+#ifdef WUJI_SCOPE_DEBUG
+    // Scope mode (TPDO_SCOPE_C12)
+    WUJIHANDCPP_API void start_scope_mode();
+    WUJIHANDCPP_API void stop_scope_mode();
+
+    // VOFA UDP forwarding
+    WUJIHANDCPP_API bool configure_vofa_forwarder(
+        const std::string& ip, uint16_t port, uint32_t joint_mask = 0xFFFFF);
+    WUJIHANDCPP_API void set_vofa_enabled(bool enabled);
+    WUJIHANDCPP_API void set_vofa_joint_mask(uint32_t mask);
+
+    WUJIHANDCPP_API std::array<float, 12> get_scope_data(int finger_id, int joint_id);
+    WUJIHANDCPP_API std::array<std::array<std::array<float, 12>, 4>, 5> get_all_scope_data();
+#endif
 
 private:
     class Impl;

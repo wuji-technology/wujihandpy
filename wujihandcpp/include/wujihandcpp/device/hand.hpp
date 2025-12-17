@@ -253,6 +253,83 @@ public:
         handler_.stop_latency_test();
     }
 
+#ifdef WUJI_SCOPE_DEBUG
+    // Scope Mode (TPDO_SCOPE_C12)
+    // Must: disable PDO -> set TPdoId -> enable PDO
+    void start_scope_mode() {
+        // 1. Disable PDO
+        {
+            Latch latch;
+            write_async<data::hand::PdoEnabled>(latch, 0);
+            latch.wait();
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+        // 2. Set TPdoId = 0xE2 (multiple writes for reliability)
+        for (int i = 0; i < 5; i++) {
+            {
+                Latch latch;
+                write_async<data::hand::TPdoId>(latch, 0xE2);
+                latch.wait();
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+        // 3. Enable PDO (triggers tpdo_request_config)
+        {
+            Latch latch;
+            write_async<data::hand::PdoEnabled>(latch, 1);
+            latch.wait();
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+
+        handler_.start_scope_mode();
+    }
+
+    void stop_scope_mode() {
+        handler_.stop_scope_mode();
+
+        // 1. Disable PDO
+        {
+            Latch latch;
+            write_async<data::hand::PdoEnabled>(latch, 0);
+            latch.wait();
+        }
+
+        // 2. Restore TPdoId = 0x01
+        for (int i = 0; i < 3; i++) {
+            Latch latch;
+            write_async<data::hand::TPdoId>(latch, 0x01);
+            latch.wait();
+        }
+
+        // 3. Enable PDO
+        {
+            Latch latch;
+            write_async<data::hand::PdoEnabled>(latch, 1);
+            latch.wait();
+        }
+    }
+
+    bool configure_vofa_forwarder(
+        const std::string& ip, uint16_t port, uint32_t joint_mask = 0xFFFFF) {
+        return handler_.configure_vofa_forwarder(ip, port, joint_mask);
+    }
+
+    void set_vofa_enabled(bool enabled) { handler_.set_vofa_enabled(enabled); }
+
+    void set_vofa_joint_mask(uint32_t mask) { handler_.set_vofa_joint_mask(mask); }
+
+    std::array<float, 12> get_scope_data(int finger_id, int joint_id) {
+        return handler_.get_scope_data(finger_id, joint_id);
+    }
+
+    std::array<std::array<std::array<float, 12>, 4>, 5> get_all_scope_data() {
+        return handler_.get_all_scope_data();
+    }
+#endif
+
     void disable_thread_safe_check() { handler_.disable_thread_safe_check(); }
 
     // Read Product SN from firmware (0x5202)
@@ -425,7 +502,11 @@ private:
             write_async<data::joint::ControlMode>(latch, 5);
             write_async<data::hand::RPdoId>(latch, 0x01);
             if (enable_upstream)
-                write_async<data::hand::TPdoId>(latch, 0x01);
+#ifdef WUJI_SCOPE_DEBUG
+                write_async<data::hand::TPdoId>(latch, 0xE2);  // Request TPDO_SCOPE_C12
+#else
+                write_async<data::hand::TPdoId>(latch, 0x01);  // Request TPDO_CSP
+#endif
             else
                 write_async<data::hand::TPdoId>(latch, 0x00);
             write_async<data::hand::PdoInterval>(latch, 2000);
