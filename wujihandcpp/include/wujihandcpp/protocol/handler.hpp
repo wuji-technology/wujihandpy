@@ -42,8 +42,7 @@ public:
             POSITION = 1ul << 2,
             POSITION_REVERSED = 1ul << 3,
             VELOCITY = 1ul << 4,
-            VELOCITY_REVERSED = 1ul << 5,
-            HOST_HEARTBEAT = 1ul << 6
+            VELOCITY_REVERSED = 1ul << 5
         };
         uint32_t policy : 30;
     };
@@ -95,8 +94,6 @@ public:
     WUJIHANDCPP_API void write_async(
         Buffer8 data, int storage_id, std::chrono::steady_clock::duration::rep timeout,
         void (*callback)(Buffer8 context, bool success), Buffer8 callback_context);
-
-    WUJIHANDCPP_API void enable_host_heartbeat();
 
     WUJIHANDCPP_API auto realtime_get_joint_actual_position()
         -> const std::atomic<double> (&)[5][4];

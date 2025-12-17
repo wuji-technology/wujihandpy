@@ -17,12 +17,6 @@ namespace hand {
 
 struct Handedness : ReadOnlyData<device::Hand, 0x5090, 0, uint8_t> {};
 
-struct HostTimeoutCounter : WriteOnlyData<device::Hand, 0x50A0, 1, uint32_t> {
-    static constexpr StorageInfo info(uint32_t) {
-        return StorageInfo{sizeof(uint32_t), index, sub_index, StorageInfo::HOST_HEARTBEAT};
-    }
-};
-
 struct FirmwareVersion : ReadOnlyData<device::Hand, 0x5201, 1, uint32_t> {};
 struct FirmwareDate : ReadOnlyData<device::Hand, 0x5201, 2, uint32_t> {};
 

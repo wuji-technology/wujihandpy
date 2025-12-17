@@ -128,12 +128,8 @@ public:
             std::memory_order::release);
     }
 
-    void enable_host_heartbeat() {
-        host_heartbeat_enabled_.store(true, std::memory_order::relaxed);
-    }
-
     auto realtime_get_joint_actual_position() -> const std::atomic<double> (&)[5][4] {
-        return pdo_read_result_;
+        return pdo_read_position_;
     }
 
     void realtime_set_joint_target_position(const double (&positions)[5][4]) {
@@ -393,6 +389,36 @@ private:
 
     static constexpr size_t RAW_SDO_SLOT_COUNT = 4;
 
+    struct ErrorDefinition {
+        uint8_t bit;
+        const char* description;
+        const char* remedy;
+        logging::Level level;
+    };
+
+    static constexpr const char kDefaultRemedy[] =
+        "Possible hardware damage, please contact customer service.";
+    static constexpr ErrorDefinition kErrorDefinitions[]{
+        { 0,                     "ADC failure",                         kDefaultRemedy, logging::Level::CRITICAL},
+        { 1,      "Driver communication fault",                         kDefaultRemedy,      logging::Level::ERR},
+        { 2,           "Driver fault reported",                         kDefaultRemedy,      logging::Level::ERR},
+        { 3,    "Encoder1 communication fault",                         kDefaultRemedy, logging::Level::CRITICAL},
+        { 4,         "Encoder1 noise detected",                         kDefaultRemedy,      logging::Level::ERR},
+        { 5,                 "Bus overvoltage",                         kDefaultRemedy,      logging::Level::ERR},
+        { 6,                "Bus undervoltage",                         kDefaultRemedy,      logging::Level::ERR},
+        { 7,      "Transmission slip detected",                         kDefaultRemedy, logging::Level::CRITICAL},
+        { 8,               "Phase overcurrent",                         kDefaultRemedy,      logging::Level::ERR},
+        {13,                 "Overtemperature", "Try improve cooling and reduce load.",      logging::Level::ERR},
+        {14,              "Board info invalid",                         kDefaultRemedy, logging::Level::CRITICAL},
+        {16,    "Encoder2 communication error",                         kDefaultRemedy,     logging::Level::WARN},
+        {17,         "Encoder2 noise detected",                         kDefaultRemedy,     logging::Level::WARN},
+        {18,               "Flash erase error",                         kDefaultRemedy,     logging::Level::WARN},
+        {19,              "Flash verify error",                         kDefaultRemedy,     logging::Level::WARN},
+        {20,               "Flash write error",                         kDefaultRemedy,     logging::Level::WARN},
+        {21, "User config verification failed",                         kDefaultRemedy,     logging::Level::WARN},
+        {22, "Flash write count limit reached",                         kDefaultRemedy,     logging::Level::WARN},
+    };
+
     void operation_thread_check() const {
         if (operation_thread_id_ == std::thread::id{})
             return;
@@ -615,27 +641,12 @@ private:
             std::chrono::duration_cast<std::chrono::steady_clock::duration>(
                 std::chrono::duration<double>(1.0 / update_rate));
 
-        unsigned int update_index = 0;
         while (!stop_token.stop_requested()) {
             auto now = std::chrono::steady_clock::now();
 
             for (size_t i = 0; i < storage_unit_count_; i++) {
                 auto& storage = storage_[i];
                 auto operation = storage.operation.load(std::memory_order::acquire);
-
-                // Reset the host counter every 320ms
-                if (host_heartbeat_enabled_.load(std::memory_order::relaxed)
-                    && storage.info.policy & Handler::StorageInfo::HOST_HEARTBEAT
-                    && update_index % 64 == 0
-                    && storage.operation.load(std::memory_order::relaxed).mode
-                           == Operation::Mode::NONE) {
-                    store_data(storage, Buffer8{uint32_t(0)});
-                    storage.timeout = std::chrono::milliseconds(500);
-                    storage.callback = nullptr;
-                    operation = Operation{
-                        .mode = Operation::Mode::WRITE, .state = Operation::State::WAITING};
-                    storage.operation.store(operation, std::memory_order::relaxed);
-                }
 
                 if (operation.mode == Operation::Mode::NONE)
                     continue;
@@ -749,23 +760,89 @@ private:
             sdo_builder_.finalize();
 
             std::this_thread::sleep_for(update_period);
-            update_index++;
         }
+    }
+
+    void update_pdo_positions(const int32_t (&positions)[5][4]) {
+        for (int i = 0; i < 5; i++)
+            for (int j = 0; j < 4; j++) {
+                double value = extract_raw_position(positions[i][j]);
+                if (j == 0 && i != 0)
+                    value = -value;
+                pdo_read_position_[i][j].store(value, std::memory_order::relaxed);
+            }
+    }
+
+    void update_pdo_positions(const protocol::pdo::JointPosCurErr (&joint)[5][4]) {
+        for (int i = 0; i < 5; i++)
+            for (int j = 0; j < 4; j++) {
+                double value = extract_raw_position(joint[i][j].position);
+                if (j == 0 && i != 0)
+                    value = -value;
+                pdo_read_position_[i][j].store(value, std::memory_order::relaxed);
+            }
+    }
+
+    void update_pdo_error_codes(const protocol::pdo::JointPosCurErr (&joint)[5][4]) {
+        for (int i = 0; i < 5; i++)
+            for (int j = 0; j < 4; j++) {
+                auto new_code = joint[i][j].error_code;
+                auto previous =
+                    pdo_read_error_code_[i][j].exchange(new_code, std::memory_order::relaxed);
+                handle_error_code_update(i, j, previous, new_code);
+            }
+    }
+
+    void handle_error_code_update(int finger, int joint, uint32_t previous, uint32_t current) {
+        if (current == previous)
+            return;
+
+        uint32_t newly_set = current & ~previous;
+        if (newly_set == 0)
+            return;
+
+        for (const auto& def : kErrorDefinitions) {
+            const uint32_t mask = uint32_t(1) << def.bit;
+            if ((newly_set & mask) == 0)
+                continue;
+
+            log_error_event(finger, joint, def);
+            newly_set &= ~mask;
+        }
+
+        if (newly_set)
+            logger_.error(
+                "Joint Motor F{}J{} Reports unknown exception(s): 0x{:X}", finger + 1, joint + 1,
+                newly_set);
+    }
+
+    void log_error_event(int finger, int joint, const ErrorDefinition& def) {
+        if (!logger_.should_log(def.level))
+            return;
+
+        logger_.log(
+            def.level, "Joint Motor F{}J{} Reports an exception: {}.", finger + 1, joint + 1,
+            def.description);
+        logger_.log(def.level, "Hint: {}", def.remedy);
     }
 
     void read_pdo_frame(const std::byte*& pointer, const std::byte* sentinel) {
         const auto& header = read_frame_struct<protocol::pdo::Header>(pointer, sentinel);
 
         if (header.read_id == 0x01) {
+            logger_.debug("TPDO 0x01 Received");
             const auto& data = read_frame_struct<protocol::pdo::CommandResult>(pointer, sentinel);
+            update_pdo_positions(data.positions);
 
-            for (int i = 0; i < 5; i++)
-                for (int j = 0; j < 4; j++) {
-                    double value = extract_raw_position(data.positions[i][j]);
-                    if (j == 0 && i != 0)
-                        value = -value;
-                    pdo_read_result_[i][j].store(value, std::memory_order::relaxed);
-                }
+            pdo_read_result_version_.store(
+                pdo_read_result_version_.load(std::memory_order::relaxed) + 1,
+                std::memory_order::release);
+        } else if (header.read_id == 0x02) {
+            logger_.debug("TPDO 0x02 Received");
+            const auto& data =
+                read_frame_struct<protocol::pdo::CommandResultPosCurErr>(pointer, sentinel);
+            update_pdo_positions(data.joint);
+            update_pdo_error_codes(data.joint);
 
             pdo_read_result_version_.store(
                 pdo_read_result_version_.load(std::memory_order::relaxed) + 1,
@@ -799,7 +876,7 @@ private:
                 for (int i = 0; i < 5; i++)
                     for (int j = 0; j < 4; j++)
                         positions.value[i][j] =
-                            pdo_read_result_[i][j].load(std::memory_order::relaxed);
+                            pdo_read_position_[i][j].load(std::memory_order::relaxed);
 
                 auto target_positions = realtime_controller_->step(&positions);
 
@@ -901,9 +978,11 @@ private:
     };
     std::map<uint32_t, StorageUnit*> index_storage_map_;
 
-    std::atomic<double> pdo_read_result_[5][4];
+    std::atomic<double> pdo_read_position_[5][4]{};
+    std::atomic<uint32_t> pdo_read_error_code_[5][4]{};
     std::atomic<uint64_t> pdo_read_result_version_ = 0;
     static_assert(std::atomic<double>::is_always_lock_free);
+    static_assert(std::atomic<uint32_t>::is_always_lock_free);
     static_assert(std::atomic<uint64_t>::is_always_lock_free);
 
     std::unique_ptr<transport::ITransport> transport_;
@@ -913,7 +992,6 @@ private:
     std::unique_ptr<LatencyTester> latency_tester_;
     std::mutex latency_tester_mutex_;
 
-    std::atomic<bool> host_heartbeat_enabled_ = false;
     std::jthread sdo_thread_;
 
     std::unique_ptr<device::IRealtimeController> realtime_controller_;
@@ -951,8 +1029,6 @@ WUJIHANDCPP_API void Handler::write_async_unchecked(
     Buffer8 data, int storage_id, std::chrono::steady_clock::duration::rep timeout) {
     impl_->write_async_unchecked(data, storage_id, timeout);
 }
-
-WUJIHANDCPP_API void Handler::enable_host_heartbeat() { impl_->enable_host_heartbeat(); }
 
 WUJIHANDCPP_API void Handler::write_async(
     Buffer8 data, int storage_id, std::chrono::steady_clock::duration::rep timeout,
