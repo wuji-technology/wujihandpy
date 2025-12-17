@@ -111,6 +111,13 @@ PACKED_STRUCT(Write {
 
 PACKED_STRUCT(CommandResult { int32_t positions[5][4]; });
 
+PACKED_STRUCT(JointPosCurErr {
+    int32_t position;
+    float iq_a;
+    uint32_t error_code;
+});
+PACKED_STRUCT(CommandResultPosCurErr { JointPosCurErr joint[5][4]; });
+
 PACKED_STRUCT(LatencyTest {
     uint8_t write_id = 0xD0;
     uint8_t read_id = 0xD0;

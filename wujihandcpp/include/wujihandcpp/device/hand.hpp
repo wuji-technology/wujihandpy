@@ -47,7 +47,8 @@ public:
 
             if (feature_firmware_filter_) {
                 write_async<data::hand::RPdoId>(latch, 0x01);
-                write_async<data::hand::TPdoId>(latch, 0x01);
+                uint16_t tpdo_id = feature_exception_detect_ ? 0x02 : 0x01;
+                write_async<data::hand::TPdoId>(latch, tpdo_id);
                 write_async<data::hand::PdoInterval>(
                     latch, feature_rpdo_directly_distribute_ ? 1000 : 2000);
                 write_async<data::hand::PdoEnabled>(latch, 1);
@@ -97,8 +98,7 @@ public:
             full_system_version =
                 data::FirmwareVersionData{read<data::hand::FullSystemFirmwareVersion>()};
 
-        if (has_full_system_version
-            && full_system_version >= data::FirmwareVersionData{1, 1, 0})
+        if (has_full_system_version && full_system_version >= data::FirmwareVersionData{1, 1, 0})
             product_sn = read_product_sn();
 
         bool log_full_system_version = has_full_system_version;
@@ -159,10 +159,17 @@ public:
             constexpr char debug_msg[] = "RPdo directly distribute enabled";
             logging::log(logging::Level::DEBUG, debug_msg, sizeof(debug_msg) - 1);
         }
-        if (false) { // TPdo proactively report is still not ready to perform test
-            feature_tpdo_proactively_report_ = true;
-            constexpr char debug_msg[] = "TPdo proactively report enabled";
-            logging::log(logging::Level::DEBUG, debug_msg, sizeof(debug_msg) - 1);
+        if (has_full_system_version && full_system_version >= data::FirmwareVersionData{1, 1, 0}) {
+            {
+                feature_tpdo_proactively_report_ = true;
+                constexpr char debug_msg[] = "TPdo proactively report enabled";
+                logging::log(logging::Level::DEBUG, debug_msg, sizeof(debug_msg) - 1);
+            }
+            {
+                feature_exception_detect_ = true;
+                constexpr char debug_msg[] = "Exception detect enabled";
+                logging::log(logging::Level::DEBUG, debug_msg, sizeof(debug_msg) - 1);
+            }
         }
     }
 
@@ -263,10 +270,9 @@ public:
 
         // Assemble 24-byte buffer from 6 x UINT32 (Little-Endian)
         std::array<char, 24> sn_buffer{};
-        uint32_t parts[6] = {
-            get<data::hand::ProductSNPart1>(), get<data::hand::ProductSNPart2>(),
-            get<data::hand::ProductSNPart3>(), get<data::hand::ProductSNPart4>(),
-            get<data::hand::ProductSNPart5>(), get<data::hand::ProductSNPart6>()};
+        uint32_t parts[6] = {get<data::hand::ProductSNPart1>(), get<data::hand::ProductSNPart2>(),
+                             get<data::hand::ProductSNPart3>(), get<data::hand::ProductSNPart4>(),
+                             get<data::hand::ProductSNPart5>(), get<data::hand::ProductSNPart6>()};
         std::memcpy(sn_buffer.data(), parts, 24);
 
         // Find string length and check validity
@@ -516,6 +522,7 @@ private:
 
     bool feature_firmware_filter_ = false;
     bool feature_rpdo_directly_distribute_ = false;
+    bool feature_exception_detect_ = false;
     bool feature_tpdo_proactively_report_ = false;
 
     static constexpr uint16_t index_offset_ = 0x0000;

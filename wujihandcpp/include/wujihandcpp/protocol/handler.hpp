@@ -42,8 +42,7 @@ public:
             POSITION = 1ul << 2,
             POSITION_REVERSED = 1ul << 3,
             VELOCITY = 1ul << 4,
-            VELOCITY_REVERSED = 1ul << 5,
-            HOST_HEARTBEAT = 1ul << 6
+            VELOCITY_REVERSED = 1ul << 5
         };
         uint32_t policy : 30;
     };
