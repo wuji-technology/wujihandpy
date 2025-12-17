@@ -30,8 +30,17 @@ endif()
 project(wujihandpy)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# TPDO_SCOPE_C12 debug feature (disabled by default)
+option(WUJI_SCOPE_DEBUG "Enable TPDO_SCOPE_C12 debug feature" OFF)
+
 set(BUILD_STATIC_WUJIHANDCPP ON CACHE BOOL "" FORCE)
 add_subdirectory(wujihandcpp EXCLUDE_FROM_ALL)
+
+# Apply WUJI_SCOPE_DEBUG to both wujihandcpp and _core targets
+if(WUJI_SCOPE_DEBUG)
+    target_compile_definitions(wujihandcpp PRIVATE WUJI_SCOPE_DEBUG)
+    message(STATUS "WUJI_SCOPE_DEBUG enabled")
+endif()
 
 
 # Set C++ standard to C++20
@@ -80,6 +89,11 @@ target_link_libraries(_core PRIVATE pybind11::module)
 
 target_link_directories(_core PRIVATE ${CMAKE_BINARY_DIR}/wujihandcpp)
 target_link_libraries(_core PRIVATE wujihandcpp)
+
+# Apply WUJI_SCOPE_DEBUG to _core target
+if(WUJI_SCOPE_DEBUG)
+    target_compile_definitions(_core PRIVATE WUJI_SCOPE_DEBUG)
+endif()
 
 # The install directory is the output (wheel) directory
 install(TARGETS _core DESTINATION wujihandpy)

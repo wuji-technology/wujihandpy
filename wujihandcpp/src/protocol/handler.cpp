@@ -29,7 +29,10 @@
 #include "protocol/frame_builder.hpp"
 #include "protocol/latency_tester.hpp"
 #include "protocol/protocol.hpp"
-#include "protocol/vofa_forwarder.hpp"
+#ifdef WUJI_SCOPE_DEBUG
+#include "protocol/scope/scope_pdo.hpp"
+#include "protocol/scope/vofa_forwarder.hpp"
+#endif
 #include "transport/transport.hpp"
 #include "utility/tick_executor.hpp"
 
@@ -146,8 +149,7 @@ public:
         pdo_write_async_unchecked(true, positions, 0);
     }
 
-    void attach_realtime_controller(
-        device::IRealtimeController* controller, bool enable_upstream, uint8_t tpdo_id = 0xE2) {
+    void attach_realtime_controller(device::IRealtimeController* controller, bool enable_upstream) {
         operation_thread_check();
 
         std::unique_ptr<device::IRealtimeController> guard(controller);
@@ -156,9 +158,6 @@ public:
             throw std::logic_error("A realtime controller is already attached.");
         if (latency_tester_)
             throw std::logic_error("Latency testing is underway.");
-
-        // 设置当前 TPDO 类型
-        current_tpdo_id_.store(enable_upstream ? tpdo_id : 0x00, std::memory_order::relaxed);
 
         realtime_controller_ = std::move(guard);
         pdo_thread_ = std::jthread{[this, enable_upstream](const std::stop_token& stop_token) {
@@ -215,7 +214,7 @@ public:
 
     void disable_thread_safe_check() { operation_thread_id_ = std::thread::id{}; }
 
-    // VOFA 转发相关方法
+#ifdef WUJI_SCOPE_DEBUG
     void start_scope_mode() {
         operation_thread_check();
 
@@ -225,9 +224,6 @@ public:
             throw std::logic_error("Latency testing is underway.");
         if (vofa_forwarder_)
             throw std::logic_error("Scope mode is already started.");
-
-        // 设置 PDO 帧中使用的 TPDO ID 为 SCOPE_C12
-        current_tpdo_id_.store(0xE2, std::memory_order::relaxed);
 
         auto forwarder = std::make_unique<VofaForwarder>();
         {
@@ -247,9 +243,6 @@ public:
             std::lock_guard guard{vofa_forwarder_mutex_};
             vofa_forwarder_.reset();
         }
-
-        // 恢复 PDO 帧中使用的 TPDO ID 为默认 CSP
-        current_tpdo_id_.store(0x01, std::memory_order::relaxed);
 
         logger_.info("Scope mode stopped.");
     }
@@ -288,6 +281,7 @@ public:
             throw std::logic_error("Scope mode is not started.");
         return vofa_forwarder_->get_all_scope_data();
     }
+#endif
 
     std::vector<std::byte> raw_sdo_read(
         uint16_t index, uint8_t sub_index, std::chrono::steady_clock::duration timeout) {
@@ -525,15 +519,6 @@ private:
     }
 
     void receive_transfer_completed_callback(const std::byte* buffer, size_t size) {
-        // 调试：打印接收到的帧类型
-        static int rx_debug_count = 0;
-        if (rx_debug_count++ % 200 == 0) {
-            if (size >= 8) {
-                uint8_t type = static_cast<uint8_t>(buffer[6]);
-                logger_.info("RX callback: size={}, type=0x{:02X}, count={}", size, type, rx_debug_count);
-            }
-        }
-
         if (logger_.should_log(logging::Level::TRACE))
             logger_.trace("RX [{} bytes] {:Xp}", size, spdlog::to_hex(buffer, buffer + size));
 
@@ -844,12 +829,6 @@ private:
     void read_pdo_frame(const std::byte*& pointer, const std::byte* sentinel) {
         const auto& header = read_frame_struct<protocol::pdo::Header>(pointer, sentinel);
 
-        // 调试：打印收到的 PDO 类型
-        static int debug_count = 0;
-        if (debug_count++ % 100 == 0) {  // 每 100 帧打印一次
-            logger_.info("PDO frame received: read_id=0x{:02X}, count={}", header.read_id, debug_count);
-        }
-
         if (header.read_id == 0x01) {
             const auto& data = read_frame_struct<protocol::pdo::CommandResult>(pointer, sentinel);
 
@@ -872,31 +851,19 @@ private:
                 if (latency_tester_)
                     latency_tester_->read_result(data);
             }
+#ifdef WUJI_SCOPE_DEBUG
         } else if (header.read_id == 0xE2) {
-            // TPDO_SCOPE_C12: 12 个 float 调试值每关节
-            static int scope_debug_count = 0;
-            if (scope_debug_count++ % 100 == 0) {
-                logger_.info("TPDO_SCOPE_C12 (0xE2) frame received, count={}", scope_debug_count);
-            }
+            // TPDO_SCOPE_C12: 12 floats per joint
             const auto& data =
                 read_frame_struct<protocol::pdo::ScopeC12Result>(pointer, sentinel);
             std::unique_lock guard{vofa_forwarder_mutex_, std::try_to_lock};
-            if (guard.owns_lock()) {
-                if (vofa_forwarder_) {
-                    vofa_forwarder_->store_scope_data(data);
-                    if (scope_debug_count <= 5) {
-                        // 打印前几帧的数据样本 (第一个关节的前3个float)
-                        logger_.info("  Sample F1J1: [{:.2f}, {:.2f}, {:.2f}]",
-                            data.joint_datas[0][0].values[0],
-                            data.joint_datas[0][0].values[1],
-                            data.joint_datas[0][0].values[2]);
-                    }
-                }
+            if (guard.owns_lock() && vofa_forwarder_) {
+                vofa_forwarder_->store_scope_data(data);
             }
-            // 更新版本号，让 pdo_thread_main 的循环能正常运行
             pdo_read_result_version_.store(
                 pdo_read_result_version_.load(std::memory_order::relaxed) + 1,
                 std::memory_order::release);
+#endif
         } else
             throw std::runtime_error(
                 std::format("PDO frame invalid: read_id == 0x{:02X}", header.read_id));
@@ -985,15 +952,11 @@ private:
         bool upstream_enabled, const double (&target_positions)[5][4], uint32_t timestamp) {
         std::byte* buffer = pdo_builder_.allocate(sizeof(protocol::pdo::Write));
         auto payload = new (buffer) protocol::pdo::Write{};
-        // 使用当前设置的 TPDO 类型
-        payload->read_id = current_tpdo_id_.load(std::memory_order::relaxed);
-
-        // 调试：打印 PDO 发送情况
-        static int pdo_tx_count = 0;
-        if (pdo_tx_count++ % 100 == 0) {
-            logger_.info("PDO TX: write_id=0x{:02X}, read_id=0x{:02X}, count={}",
-                payload->write_id, payload->read_id, pdo_tx_count);
-        }
+#ifdef WUJI_SCOPE_DEBUG
+        payload->read_id = upstream_enabled ? 0xE2 : 0x00;  // Request TPDO_SCOPE_C12
+#else
+        payload->read_id = upstream_enabled ? 0x01 : 0x00;  // Request TPDO_CSP
+#endif
 
         for (int i = 0; i < 5; i++)
             for (int j = 0; j < 4; j++) {
@@ -1045,13 +1008,13 @@ private:
 
     std::unique_ptr<device::IRealtimeController> realtime_controller_;
     std::jthread pdo_thread_;
-    std::atomic<uint8_t> current_tpdo_id_ = 0x01;  // 当前 TPDO 类型，默认 CSP
 
     std::array<RawSdoUnit, RAW_SDO_SLOT_COUNT> raw_sdo_units_;
 
-    // VOFA 转发器（用于 TPDO_SCOPE_C12 调试数据）
+#ifdef WUJI_SCOPE_DEBUG
     std::unique_ptr<VofaForwarder> vofa_forwarder_;
     std::mutex vofa_forwarder_mutex_;
+#endif
 };
 
 WUJIHANDCPP_API Handler::Handler(
@@ -1131,6 +1094,7 @@ WUJIHANDCPP_API void Handler::raw_sdo_write(
     impl_->raw_sdo_write(index, sub_index, data, timeout);
 }
 
+#ifdef WUJI_SCOPE_DEBUG
 WUJIHANDCPP_API void Handler::start_scope_mode() { impl_->start_scope_mode(); }
 
 WUJIHANDCPP_API void Handler::stop_scope_mode() { impl_->stop_scope_mode(); }
@@ -1153,5 +1117,6 @@ WUJIHANDCPP_API std::array<float, 12> Handler::get_scope_data(int finger_id, int
 WUJIHANDCPP_API std::array<std::array<std::array<float, 12>, 4>, 5> Handler::get_all_scope_data() {
     return impl_->get_all_scope_data();
 }
+#endif
 
 } // namespace wujihandcpp::protocol

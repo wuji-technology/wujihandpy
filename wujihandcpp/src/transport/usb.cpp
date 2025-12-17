@@ -445,8 +445,11 @@ private:
     static constexpr unsigned char out_endpoint_ = 0x01;
     static constexpr unsigned char in_endpoint_ = 0x81;
 
-    // 增大传输缓冲区以支持 TPDO_SCOPE_C12 (需要约 978 字节)
-    static constexpr int max_transfer_length_ = 2048;
+#ifdef WUJI_SCOPE_DEBUG
+    static constexpr int max_transfer_length_ = 2048;  // For TPDO_SCOPE_C12 (~978 bytes)
+#else
+    static constexpr int max_transfer_length_ = 512;
+#endif
 
     static constexpr size_t transmit_transfer_count_ = 64;
     static constexpr size_t receive_transfer_count_ = 4;

@@ -260,7 +260,7 @@ public:
     void start_latency_test() { T::start_latency_test(); }
     void stop_latency_test() { T::stop_latency_test(); }
 
-    // Scope Mode (TPDO_SCOPE_C12) - only available for Hand
+#ifdef WUJI_SCOPE_DEBUG
     void start_scope_mode() requires std::is_same_v<T, wujihandcpp::device::Hand> {
         py::gil_scoped_release release;
         T::start_scope_mode();
@@ -306,6 +306,7 @@ public:
         py::capsule free(buffer, [](void* ptr) { delete[] static_cast<float*>(ptr); });
         return py::array_t<float>({5, 4, 12}, buffer, free);
     }
+#endif
 
     // Raw SDO operations - only available for Hand
     py::bytes

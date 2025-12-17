@@ -25,25 +25,24 @@ constexpr socket_t INVALID_SOCKET_VALUE = -1;
 #endif
 
 #include "logging/logging.hpp"
-#include "protocol/protocol.hpp"
+#include "protocol/scope/scope_pdo.hpp"
 
 namespace wujihandcpp::protocol {
 
-// VOFA+ JustFloat 格式转发器
-// 将 TPDO_SCOPE_C12 数据通过 UDP 转发给 VOFA+ 软件
+// VOFA+ JustFloat forwarder for TPDO_SCOPE_C12 debug data
 class VofaForwarder {
 public:
     static constexpr int FINGER_COUNT = 5;
     static constexpr int JOINT_PER_FINGER = 4;
     static constexpr int TOTAL_JOINTS = FINGER_COUNT * JOINT_PER_FINGER;
     static constexpr int FLOATS_PER_JOINT = 12;
-    static constexpr uint32_t VOFA_TAIL = 0x7F800000;  // VOFA JustFloat 协议尾标识
+    static constexpr uint32_t VOFA_TAIL = 0x7F800000;  // VOFA JustFloat tail marker
 
     explicit VofaForwarder()
         : logger_(logging::get_logger())
         , socket_(INVALID_SOCKET_VALUE)
         , target_port_(0)
-        , joint_mask_(0xFFFFF)  // 默认所有 20 个关节都启用
+        , joint_mask_(0xFFFFF)  // All 20 joints enabled by default
         , enabled_(false) {
 #ifdef _WIN32
         WSADATA wsa_data;
@@ -58,10 +57,7 @@ public:
 #endif
     }
 
-    // 配置 VOFA 转发目标
-    // ip: 目标 IP 地址 (如 "192.168.1.100")
-    // port: 目标端口号
-    // joint_mask: 关节掩码，bit0=finger0_joint0, bit1=finger0_joint1, ...
+    // Configure VOFA forwarding target
     bool configure(const std::string& ip, uint16_t port, uint32_t joint_mask = 0xFFFFF) {
         close_socket();
 
@@ -69,38 +65,34 @@ public:
         target_port_ = port;
         joint_mask_.store(joint_mask, std::memory_order::relaxed);
 
-        // 创建 UDP socket
         socket_ = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
         if (socket_ == INVALID_SOCKET_VALUE) {
-            logger_.error("VofaForwarder: 创建 UDP socket 失败");
+            logger_.error("VofaForwarder: failed to create UDP socket");
             return false;
         }
 
-        // 配置目标地址
         std::memset(&target_addr_, 0, sizeof(target_addr_));
         target_addr_.sin_family = AF_INET;
         target_addr_.sin_port = htons(port);
         if (inet_pton(AF_INET, ip.c_str(), &target_addr_.sin_addr) <= 0) {
-            logger_.error("VofaForwarder: 无效的 IP 地址: {}", ip);
+            logger_.error("VofaForwarder: invalid IP address: {}", ip);
             close_socket();
             return false;
         }
 
-        logger_.info("VofaForwarder: 配置完成 - 目标 {}:{}, 关节掩码 0x{:05X}", ip, port, joint_mask);
+        logger_.info("VofaForwarder: configured - target {}:{}, joint_mask 0x{:05X}", ip, port, joint_mask);
         return true;
     }
 
-    // 启用/禁用转发
     void set_enabled(bool enabled) {
         enabled_.store(enabled, std::memory_order::relaxed);
-        logger_.info("VofaForwarder: {}", enabled ? "已启用" : "已禁用");
+        logger_.info("VofaForwarder: {}", enabled ? "enabled" : "disabled");
     }
 
     bool is_enabled() const {
         return enabled_.load(std::memory_order::relaxed);
     }
 
-    // 设置关节掩码
     void set_joint_mask(uint32_t mask) {
         joint_mask_.store(mask, std::memory_order::relaxed);
     }
@@ -109,9 +101,8 @@ public:
         return joint_mask_.load(std::memory_order::relaxed);
     }
 
-    // 存储收到的 scope 数据（供 Python API 读取）
+    // Store received scope data
     void store_scope_data(const pdo::ScopeC12Result& data) {
-        // 原子更新数据
         for (int f = 0; f < FINGER_COUNT; f++) {
             for (int j = 0; j < JOINT_PER_FINGER; j++) {
                 for (int k = 0; k < FLOATS_PER_JOINT; k++) {
@@ -122,13 +113,11 @@ public:
         }
         data_version_.fetch_add(1, std::memory_order::release);
 
-        // 如果启用了转发，发送到 VOFA
         if (enabled_.load(std::memory_order::relaxed) && socket_ != INVALID_SOCKET_VALUE) {
             forward_to_vofa(data);
         }
     }
 
-    // 获取指定关节的 scope 数据（Python API 用）
     std::array<float, FLOATS_PER_JOINT> get_joint_scope_data(int finger_id, int joint_id) const {
         std::array<float, FLOATS_PER_JOINT> result;
         if (finger_id < 0 || finger_id >= FINGER_COUNT || joint_id < 0 || joint_id >= JOINT_PER_FINGER) {
@@ -141,7 +130,6 @@ public:
         return result;
     }
 
-    // 获取所有关节的 scope 数据
     std::array<std::array<std::array<float, FLOATS_PER_JOINT>, JOINT_PER_FINGER>, FINGER_COUNT>
     get_all_scope_data() const {
         std::array<std::array<std::array<float, FLOATS_PER_JOINT>, JOINT_PER_FINGER>, FINGER_COUNT> result;
@@ -174,17 +162,14 @@ private:
     void forward_to_vofa(const pdo::ScopeC12Result& data) {
         uint32_t mask = joint_mask_.load(std::memory_order::relaxed);
 
-        // 计算启用的关节数量
         int enabled_joints = std::popcount(mask);
         if (enabled_joints == 0) return;
 
-        // 准备 VOFA JustFloat 格式数据包
-        // 格式: float[N] + 0x0000807f
+        // VOFA JustFloat format: float[N] + tail
         size_t float_count = static_cast<size_t>(enabled_joints) * FLOATS_PER_JOINT;
         size_t packet_size = float_count * sizeof(float) + sizeof(uint32_t);
 
-        // 使用栈上的缓冲区（最大 20*12*4 + 4 = 964 字节）
-        std::array<uint8_t, 1024> buffer;
+        std::array<uint8_t, 1024> buffer;  // Max 964 bytes
         float* float_ptr = reinterpret_cast<float*>(buffer.data());
 
         int joint_index = 0;
@@ -200,11 +185,9 @@ private:
             }
         }
 
-        // 添加 VOFA 尾部标识
         uint32_t* tail_ptr = reinterpret_cast<uint32_t*>(float_ptr + float_count);
         *tail_ptr = VOFA_TAIL;
 
-        // 发送 UDP 数据包
         int sent = sendto(
             socket_,
             reinterpret_cast<const char*>(buffer.data()),
@@ -214,9 +197,9 @@ private:
             static_cast<int>(sizeof(target_addr_)));
 
         if (sent < 0) {
-            logger_.warn("VofaForwarder: UDP 发送失败");
+            logger_.warn("VofaForwarder: UDP send failed");
         }
-        (void)sent;  // 避免未使用变量警告
+        (void)sent;
     }
 
     logging::Logger& logger_;
@@ -229,7 +212,6 @@ private:
     std::atomic<uint32_t> joint_mask_;
     std::atomic<bool> enabled_;
 
-    // 原子存储的 scope 数据
     std::atomic<float> scope_data_[FINGER_COUNT][JOINT_PER_FINGER][FLOATS_PER_JOINT];
     std::atomic<uint64_t> data_version_{0};
 };

@@ -74,7 +74,8 @@ PYBIND11_MODULE(_core, m) {
     hand.def("start_latency_test", &Hand::start_latency_test);
     hand.def("stop_latency_test", &Hand::stop_latency_test);
 
-    // Scope Mode (TPDO_SCOPE_C12) - 调试数据采集
+#ifdef WUJI_SCOPE_DEBUG
+    // Scope Mode (TPDO_SCOPE_C12)
     hand.def("start_scope_mode", &Hand::start_scope_mode);
     hand.def("stop_scope_mode", &Hand::stop_scope_mode);
     hand.def(
@@ -86,6 +87,7 @@ PYBIND11_MODULE(_core, m) {
         "get_scope_data", &Hand::get_scope_data,
         py::arg("finger_id"), py::arg("joint_id"));
     hand.def("get_all_scope_data", &Hand::get_all_scope_data);
+#endif
 
     // Raw SDO operations for debugging
     hand.def(

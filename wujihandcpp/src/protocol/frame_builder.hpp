@@ -87,8 +87,12 @@ private:
             uint16_t max_receive_window : 10;
             uint16_t frame_length       : 6;
         } description{
-            // 增大接收窗口以支持 TPDO_SCOPE_C12 (需要约 968 字节, 968/4=242, 使用 256)
-            .max_receive_window = 0x100, .frame_length = (uint8_t)(compressed_frame_length - 1)};
+#ifdef WUJI_SCOPE_DEBUG
+            .max_receive_window = 0x100,  // For TPDO_SCOPE_C12 (~968 bytes)
+#else
+            .max_receive_window = 0xA0,
+#endif
+            .frame_length = (uint8_t)(compressed_frame_length - 1)};
         header.description = std::bit_cast<int16_t>(description);
 
         logger_.trace(
