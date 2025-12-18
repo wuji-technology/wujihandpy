@@ -1,0 +1,32 @@
+name: C++11 Compatibility Check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'wujihandcpp/include/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'wujihandcpp/include/**'
+
+jobs:
+  cpp11-compat:
+    name: Verify public headers are C++11 compatible
+    runs-on: ubuntu-20.04
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Build C++11 compatibility test
+        run: |
+          cd wujihandcpp/tests/cpp11_compat
+          mkdir -p build && cd build
+          cmake ..
+          cmake --build .
+
+      - name: Verify test binary exists
+        run: |
+          test -f wujihandcpp/tests/cpp11_compat/build/cpp11_compat_test
+          echo "✅ Public headers are C++11 compatible"

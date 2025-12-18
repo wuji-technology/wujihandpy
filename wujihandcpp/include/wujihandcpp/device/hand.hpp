@@ -6,7 +6,6 @@
 #include <array>
 #include <atomic>
 #include <memory>
-#include <span>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -194,11 +193,11 @@ public:
     }
 
     template <bool enable_upstream>
-    auto realtime_controller(const filter::LowPass& filter) -> std::unique_ptr<IController> {
+    std::unique_ptr<IController> realtime_controller(const filter::LowPass& filter) {
         if (feature_firmware_filter_) {
             write<data::joint::PositionFilterCutoffFreq>(static_cast<float>(filter.cutoff_freq()));
 
-            return std::make_unique<CompatibleControllerOperator>(*this);
+            return std::unique_ptr<IController>(new CompatibleControllerOperator(*this));
         } else {
             bool last_enabled[5][4];
             save_and_enable_joints(last_enabled);
@@ -210,12 +209,11 @@ public:
                 for (int j = 0; j < 4; j++)
                     positions[i][j] = finger(i).joint(j).get<data::joint::ActualPosition>();
 
-            auto controller =
-                std::make_unique<FilteredController<filter::LowPass, enable_upstream>>(
-                    positions, filter);
-            auto controller_operator =
-                std::make_unique<FilteredControllerOperator<filter::LowPass, enable_upstream>>(
-                    *this, *controller);
+            typedef FilteredController<filter::LowPass, enable_upstream> ControllerType;
+            typedef FilteredControllerOperator<filter::LowPass, enable_upstream> OperatorType;
+
+            std::unique_ptr<ControllerType> controller(new ControllerType(positions, filter));
+            std::unique_ptr<IController> controller_operator(new OperatorType(*this, *controller));
             attach_realtime_controller(std::move(controller), enable_upstream);
 
             return controller_operator;
@@ -296,7 +294,7 @@ public:
     // Raw SDO operations for debugging
     // finger_id: 0-4 for fingers, -1 for Hand level
     // joint_id: 0-3 for joints (ignored when finger_id=-1)
-    std::vector<std::byte> raw_sdo_read(
+    std::vector<uint8_t> raw_sdo_read(
         int finger_id, int joint_id, uint16_t index, uint8_t sub_index,
         std::chrono::steady_clock::duration timeout = default_timeout) {
         uint16_t full_index = index + calculate_index_offset(finger_id, joint_id);
@@ -304,11 +302,10 @@ public:
     }
 
     void raw_sdo_write(
-        int finger_id, int joint_id, uint16_t index, uint8_t sub_index,
-        std::span<const std::byte> data,
-        std::chrono::steady_clock::duration timeout = default_timeout) {
+        int finger_id, int joint_id, uint16_t index, uint8_t sub_index, const void* data,
+        size_t size, std::chrono::steady_clock::duration timeout = default_timeout) {
         uint16_t full_index = index + calculate_index_offset(finger_id, joint_id);
-        handler_.raw_sdo_write(full_index, sub_index, data, timeout);
+        handler_.raw_sdo_write(full_index, sub_index, data, size, timeout);
     }
 
 private:

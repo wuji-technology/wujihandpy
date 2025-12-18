@@ -32,12 +32,12 @@ public:
     };
 
     explicit LowPass(double cutoff_freq) noexcept
-        : cutoff_freq_(cutoff_freq) {};
+        : cutoff_freq_(cutoff_freq){};
 
     double cutoff_freq() const noexcept { return cutoff_freq_; }
 
-    static constexpr double calculate_alpha(double cutoff_freq, double sampling_freq) {
-        constexpr double pi = 3.141592653589793;
+    static double calculate_alpha(double cutoff_freq, double sampling_freq) {
+        const double pi = 3.141592653589793;
         double dt = 1.0 / sampling_freq;
         double rc = 1.0 / (2 * pi * cutoff_freq);
         return dt / (dt + rc);

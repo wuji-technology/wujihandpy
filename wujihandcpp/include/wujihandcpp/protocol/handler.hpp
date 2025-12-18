@@ -6,7 +6,6 @@
 
 #include <atomic>
 #include <chrono>
-#include <span>
 #include <type_traits>
 #include <vector>
 
@@ -95,8 +94,8 @@ public:
         Buffer8 data, int storage_id, std::chrono::steady_clock::duration::rep timeout,
         void (*callback)(Buffer8 context, bool success), Buffer8 callback_context);
 
-    WUJIHANDCPP_API auto realtime_get_joint_actual_position()
-        -> const std::atomic<double> (&)[5][4];
+    WUJIHANDCPP_API auto
+        realtime_get_joint_actual_position() -> const std::atomic<double> (&)[5][4];
 
     WUJIHANDCPP_API void realtime_set_joint_target_position(const double (&positions)[5][4]);
 
@@ -113,11 +112,11 @@ public:
     WUJIHANDCPP_API void disable_thread_safe_check();
 
     // Raw SDO operations for debugging
-    WUJIHANDCPP_API std::vector<std::byte> raw_sdo_read(
+    WUJIHANDCPP_API std::vector<uint8_t> raw_sdo_read(
         uint16_t index, uint8_t sub_index, std::chrono::steady_clock::duration timeout);
 
     WUJIHANDCPP_API void raw_sdo_write(
-        uint16_t index, uint8_t sub_index, std::span<const std::byte> data,
+        uint16_t index, uint8_t sub_index, const void* data, size_t size,
         std::chrono::steady_clock::duration timeout);
 
 private:

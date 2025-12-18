@@ -7,8 +7,8 @@
 #include <chrono>
 #include <format>
 #include <optional>
-#include <span>
 #include <stdexcept>
+#include <string>
 #include <type_traits>
 #include <vector>
 
@@ -31,7 +31,7 @@ public:
         std::optional<std::string> serial_number, int32_t usb_pid, uint16_t usb_vid,
         std::optional<py::array_t<bool>> mask)
         : T(serial_number ? serial_number->c_str() : nullptr, usb_pid, usb_vid,
-            parse_array_mask(mask)) {};
+            parse_array_mask(mask)){};
 
     uint32_t parse_array_mask(std::optional<py::array_t<bool>> mask) {
         if (!mask)
@@ -264,7 +264,7 @@ public:
     py::bytes
         raw_sdo_read(int finger_id, int joint_id, uint16_t index, uint8_t sub_index, double timeout)
             requires std::is_same_v<T, wujihandcpp::device::Hand> {
-        std::vector<std::byte> result;
+        std::vector<uint8_t> result;
         {
             py::gil_scoped_release release;
             result = T::raw_sdo_read(
@@ -281,15 +281,12 @@ public:
 
         py::gil_scoped_release release;
         T::raw_sdo_write(
-            finger_id, joint_id, index, sub_index,
-            std::span<const std::byte>(
-                reinterpret_cast<const std::byte*>(buffer.data()), buffer.size()),
+            finger_id, joint_id, index, sub_index, buffer.data(), buffer.size(),
             seconds_to_duration(timeout));
     }
 
     // Get Product SN (0x5202)
-    std::string get_product_sn()
-        requires std::is_same_v<T, wujihandcpp::device::Hand> {
+    std::string get_product_sn() requires std::is_same_v<T, wujihandcpp::device::Hand> {
         py::gil_scoped_release release;
         return T::read_product_sn();
     }
