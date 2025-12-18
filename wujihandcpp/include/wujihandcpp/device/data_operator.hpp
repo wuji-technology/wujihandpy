@@ -40,12 +40,13 @@ class DataOperator {
     }
 
 public:
-    static constexpr std::chrono::steady_clock::duration default_timeout =
-        std::chrono::milliseconds(500);
+    static std::chrono::steady_clock::duration default_timeout() {
+        return std::chrono::milliseconds(500);
+    }
 
     template <typename Data>
     SDK_CPP20_REQUIRES(Data::readable)
-    auto read(std::chrono::steady_clock::duration timeout = default_timeout) ->
+    auto read(std::chrono::steady_clock::duration timeout = default_timeout()) ->
         typename std::enable_if<
             std::is_same<typename Data::Base, T>::value, typename Data::ValueType>::type {
         static_assert(Data::readable, "");
@@ -58,7 +59,7 @@ public:
 
     template <typename Data>
     SDK_CPP20_REQUIRES(Data::readable)
-    auto read(std::chrono::steady_clock::duration timeout = default_timeout) ->
+    auto read(std::chrono::steady_clock::duration timeout = default_timeout()) ->
         typename std::enable_if<!std::is_same<typename Data::Base, T>::value, void>::type {
         static_assert(Data::readable, "");
 
@@ -69,7 +70,7 @@ public:
 
     template <typename Data>
     SDK_CPP20_REQUIRES(Data::readable)
-    void read_async(Latch& latch, std::chrono::steady_clock::duration timeout = default_timeout) {
+    void read_async(Latch& latch, std::chrono::steady_clock::duration timeout = default_timeout()) {
         static_assert(Data::readable, "");
 
         Handler& handler = static_cast<T*>(this)->handler_;
@@ -89,7 +90,7 @@ public:
         Data::readable && sizeof(F) <= 8 && alignof(F) <= 8
         && std::is_trivially_copyable_v<F> && std::is_trivially_destructible_v<F>
         && requires(bool success, const F& f) { f(success); })
-    void read_async(const F& f, std::chrono::steady_clock::duration timeout = default_timeout) {
+    void read_async(const F& f, std::chrono::steady_clock::duration timeout = default_timeout()) {
         static_assert(Data::readable, "");
 
         static_assert(sizeof(F) <= 8, "");
@@ -108,7 +109,7 @@ public:
 
     template <typename Data>
     SDK_CPP20_REQUIRES(Data::readable)
-    void read_async_unchecked(std::chrono::steady_clock::duration timeout = default_timeout) {
+    void read_async_unchecked(std::chrono::steady_clock::duration timeout = default_timeout()) {
         static_assert(Data::readable, "");
 
         Handler& handler = static_cast<T*>(this)->handler_;
@@ -132,7 +133,7 @@ public:
     SDK_CPP20_REQUIRES(Data::writable)
     void write(
         typename Data::ValueType value,
-        std::chrono::steady_clock::duration timeout = default_timeout) {
+        std::chrono::steady_clock::duration timeout = default_timeout()) {
         static_assert(Data::writable, "");
 
         Latch latch;
@@ -144,7 +145,7 @@ public:
     SDK_CPP20_REQUIRES(Data::writable)
     void write_async(
         Latch& latch, typename Data::ValueType value,
-        std::chrono::steady_clock::duration timeout = default_timeout) {
+        std::chrono::steady_clock::duration timeout = default_timeout()) {
         static_assert(Data::writable, "");
 
         Handler& handler = static_cast<T*>(this)->handler_;
@@ -166,7 +167,7 @@ public:
         && requires(bool success, const F& f) { f(success); })
     void write_async(
         const F& f, typename Data::ValueType value,
-        std::chrono::steady_clock::duration timeout = default_timeout) {
+        std::chrono::steady_clock::duration timeout = default_timeout()) {
         static_assert(Data::writable, "");
 
         static_assert(sizeof(F) <= 8, "");
@@ -187,7 +188,7 @@ public:
     SDK_CPP20_REQUIRES(Data::writable)
     void write_async_unchecked(
         typename Data::ValueType value,
-        std::chrono::steady_clock::duration timeout = default_timeout) {
+        std::chrono::steady_clock::duration timeout = default_timeout()) {
         static_assert(Data::writable, "");
 
         Handler& handler = static_cast<T*>(this)->handler_;

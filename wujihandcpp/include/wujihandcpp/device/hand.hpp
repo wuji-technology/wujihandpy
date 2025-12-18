@@ -296,14 +296,14 @@ public:
     // joint_id: 0-3 for joints (ignored when finger_id=-1)
     std::vector<uint8_t> raw_sdo_read(
         int finger_id, int joint_id, uint16_t index, uint8_t sub_index,
-        std::chrono::steady_clock::duration timeout = default_timeout) {
+        std::chrono::steady_clock::duration timeout = default_timeout()) {
         uint16_t full_index = index + calculate_index_offset(finger_id, joint_id);
         return handler_.raw_sdo_read(full_index, sub_index, timeout);
     }
 
     void raw_sdo_write(
         int finger_id, int joint_id, uint16_t index, uint8_t sub_index, const void* data,
-        size_t size, std::chrono::steady_clock::duration timeout = default_timeout) {
+        size_t size, std::chrono::steady_clock::duration timeout = default_timeout()) {
         uint16_t full_index = index + calculate_index_offset(finger_id, joint_id);
         handler_.raw_sdo_write(full_index, sub_index, data, size, timeout);
     }
