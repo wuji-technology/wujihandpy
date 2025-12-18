@@ -7,6 +7,7 @@
 #include <cstdio>
 
 #include <wujihandcpp/device/controller.hpp>
+#include <wujihandcpp/device/hand.hpp>
 #include <wujihandcpp/filter/low_pass.hpp>
 
 int main() {
@@ -42,6 +43,15 @@ int main() {
     (void)sizeof(device::IController);
     (void)sizeof(device::IRealtimeController);
     (void)sizeof(device::IRealtimeController::JointPositions);
+
+    // Test 5: default_timeout() function (C++11 ODR compatibility)
+    // In C++11/14, static constexpr members need out-of-class definition when ODR-used.
+    // Using a function instead of a variable avoids this issue.
+    auto timeout = device::DataOperator<device::Hand>::default_timeout();
+    if (timeout != std::chrono::milliseconds(500)) {
+        std::printf("FAIL: default_timeout() returned unexpected value\n");
+        return 1;
+    }
 
     std::printf("OK: All C++11 compatibility tests passed\n");
     return 0;
