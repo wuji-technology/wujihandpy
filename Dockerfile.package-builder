@@ -15,7 +15,7 @@ RUN --mount=type=bind,target=/source,source=.,readonly \
     mkdir /output && cp ./*.deb ./*.rpm /output/ && \
     deb_files=(./*.deb) && \
     deb_file="${deb_files[0]}" && \
-    zip -r "/output/$(basename "${deb_file%.deb}").zip" /tmp/install/* && \
+    (cd /tmp/install && zip -r "/output/$(basename "${deb_file%.deb}").zip" .) && \
     rm -rf /tmp/*
 
 FROM scratch
