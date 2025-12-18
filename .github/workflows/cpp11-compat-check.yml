@@ -26,7 +26,5 @@ jobs:
           cmake ..
           cmake --build .
 
-      - name: Verify test binary exists
-        run: |
-          test -f wujihandcpp/tests/cpp11_compat/build/cpp11_compat_test
-          echo "✅ Public headers are C++11 compatible"
+      - name: Run C++11 compatibility test
+        run: ./wujihandcpp/tests/cpp11_compat/build/cpp11_compat_test
