@@ -14,7 +14,6 @@
 #include <memory>
 #include <mutex>
 #include <numbers>
-#include <span>
 #include <stdexcept>
 #include <thread>
 #include <type_traits>
@@ -206,7 +205,7 @@ public:
 
     void disable_thread_safe_check() { operation_thread_id_ = std::thread::id{}; }
 
-    std::vector<std::byte> raw_sdo_read(
+    std::vector<uint8_t> raw_sdo_read(
         uint16_t index, uint8_t sub_index, std::chrono::steady_clock::duration timeout) {
         operation_thread_check();
 
@@ -234,7 +233,7 @@ public:
         }
 
         // Wait for completion
-        std::vector<std::byte> result;
+        std::vector<uint8_t> result;
         {
             std::unique_lock lock{unit->mutex};
             unit->cv.wait(lock, [&] {
@@ -251,23 +250,21 @@ public:
             unit->in_use.store(false, std::memory_order_release);
 
             if (state == RawSdoUnit::State::FAILED)
-                throw device::TimeoutError(
-                    std::format(
-                        "Raw SDO read timed out: index=0x{:04X}, sub_index={}", index, sub_index));
+                throw device::TimeoutError(std::format(
+                    "Raw SDO read timed out: index=0x{:04X}, sub_index={}", index, sub_index));
         }
 
         return result;
     }
 
     void raw_sdo_write(
-        uint16_t index, uint8_t sub_index, std::span<const std::byte> data,
+        uint16_t index, uint8_t sub_index, const void* data, size_t size,
         std::chrono::steady_clock::duration timeout) {
         operation_thread_check();
 
-        if (data.size() != 1 && data.size() != 2 && data.size() != 4 && data.size() != 8)
+        if (size != 1 && size != 2 && size != 4 && size != 8)
             throw std::invalid_argument(
-                std::format(
-                    "Raw SDO write data size must be 1, 2, 4, or 8 bytes, got {}", data.size()));
+                std::format("Raw SDO write data size must be 1, 2, 4, or 8 bytes, got {}", size));
 
         // Find an available slot
         RawSdoUnit* unit = nullptr;
@@ -290,8 +287,8 @@ public:
             unit->state = RawSdoUnit::State::PENDING;
             unit->timeout_point = std::chrono::steady_clock::now() + timeout;
             // Cache write data for sdo_thread to send
-            std::memcpy(unit->write_data.data(), data.data(), data.size());
-            unit->write_data_size = static_cast<uint8_t>(data.size());
+            std::memcpy(unit->write_data.data(), data, size);
+            unit->write_data_size = static_cast<uint8_t>(size);
         }
 
         // Wait for completion (sdo_thread will send the write request)
@@ -308,9 +305,8 @@ public:
             unit->in_use.store(false, std::memory_order_release);
 
             if (state == RawSdoUnit::State::FAILED)
-                throw device::TimeoutError(
-                    std::format(
-                        "Raw SDO write timed out: index=0x{:04X}, sub_index={}", index, sub_index));
+                throw device::TimeoutError(std::format(
+                    "Raw SDO write timed out: index=0x{:04X}, sub_index={}", index, sub_index));
         }
     }
 
@@ -335,7 +331,7 @@ private:
     };
     struct alignas(64) StorageUnit {
         constexpr StorageUnit()
-            : version(0) {};
+            : version(0){};
 
         StorageInfo info;
 
@@ -379,11 +375,11 @@ private:
             FAILED
         } state = State::IDLE;
 
-        std::vector<std::byte> read_result;
+        std::vector<uint8_t> read_result;
         std::chrono::steady_clock::time_point timeout_point;
 
         // Write data cache - used to defer write operations to sdo_thread
-        std::array<std::byte, 8> write_data{};
+        std::array<uint8_t, 8> write_data{};
         uint8_t write_data_size = 0;
     };
 
@@ -461,10 +457,9 @@ private:
     }
 
     static int32_t to_raw_position(double angle) {
-        return static_cast<int32_t>(std::round(
-            std::clamp<double>(
-                angle * (std::numeric_limits<int32_t>::max() / (2 * std::numbers::pi)),
-                std::numeric_limits<int32_t>::min(), std::numeric_limits<int32_t>::max())));
+        return static_cast<int32_t>(std::round(std::clamp<double>(
+            angle * (std::numeric_limits<int32_t>::max() / (2 * std::numbers::pi)),
+            std::numeric_limits<int32_t>::min(), std::numeric_limits<int32_t>::max())));
     }
 
     static constexpr double extract_raw_position(int32_t angle) {
@@ -904,10 +899,9 @@ private:
         const std::size_t required = sizeof(Struct);
         const std::ptrdiff_t remaining = sentinel - pointer;
         if (remaining < static_cast<std::ptrdiff_t>(required)) {
-            throw std::runtime_error(
-                std::format(
-                    "{} truncated: requires {} bytes, but {} remain", typeid(Struct).name(),
-                    required, remaining));
+            throw std::runtime_error(std::format(
+                "{} truncated: requires {} bytes, but {} remain", typeid(Struct).name(), required,
+                remaining));
         }
 
         const auto& data = *reinterpret_cast<const Struct*>(pointer);
@@ -1036,8 +1030,8 @@ WUJIHANDCPP_API void Handler::write_async(
     impl_->write_async(data, storage_id, timeout, callback, callback_context);
 }
 
-WUJIHANDCPP_API auto Handler::realtime_get_joint_actual_position()
-    -> const std::atomic<double> (&)[5][4] {
+WUJIHANDCPP_API auto
+    Handler::realtime_get_joint_actual_position() -> const std::atomic<double> (&)[5][4] {
     return impl_->realtime_get_joint_actual_position();
 }
 
@@ -1064,15 +1058,15 @@ WUJIHANDCPP_API void Handler::disable_thread_safe_check() {
     return impl_->disable_thread_safe_check();
 }
 
-WUJIHANDCPP_API std::vector<std::byte> Handler::raw_sdo_read(
+WUJIHANDCPP_API std::vector<uint8_t> Handler::raw_sdo_read(
     uint16_t index, uint8_t sub_index, std::chrono::steady_clock::duration timeout) {
     return impl_->raw_sdo_read(index, sub_index, timeout);
 }
 
 WUJIHANDCPP_API void Handler::raw_sdo_write(
-    uint16_t index, uint8_t sub_index, std::span<const std::byte> data,
+    uint16_t index, uint8_t sub_index, const void* data, size_t size,
     std::chrono::steady_clock::duration timeout) {
-    impl_->raw_sdo_write(index, sub_index, data, timeout);
+    impl_->raw_sdo_write(index, sub_index, data, size, timeout);
 }
 
 } // namespace wujihandcpp::protocol

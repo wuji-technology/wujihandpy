@@ -62,26 +62,26 @@ public:
 
 private:
     FilterT filter_;
-    FilterT::Unit units_[5][4];
+    typename FilterT::Unit units_[5][4];
 };
 
 template <typename FilterT>
 class FilteredController<FilterT, true> : public FilteredController<FilterT, false> {
-    using Base = FilteredController<FilterT, false>;
-    using JointPositions = Base::JointPositions;
+    typedef FilteredController<FilterT, false> Base;
+    typedef typename Base::JointPositions JointPositions;
 
 public:
     explicit FilteredController(const double (&initial)[5][4], const FilterT& filter)
         : Base(initial, filter) {
         for (size_t i = 0; i < 5; ++i)
             for (size_t j = 0; j < 4; ++j)
-                actual_[i][j].store(initial[i][j], std::memory_order::relaxed);
+                actual_[i][j].store(initial[i][j], std::memory_order_relaxed);
     }
 
     JointPositions step(JointPositions* actual) noexcept override {
         for (size_t i = 0; i < 5; i++)
             for (size_t j = 0; j < 4; j++)
-                actual_[i][j].store(actual->value[i][j], std::memory_order::relaxed);
+                actual_[i][j].store(actual->value[i][j], std::memory_order_relaxed);
 
         return Base::step(actual);
     }
