@@ -4,7 +4,7 @@
 
 提供更简洁、更高效、更易用的接口与灵巧手设备进行交互。
 
-Python 版本 [WujihandPy](https://github.com/Wuji-Technology-Co-Ltd/wujihandpy)（基于 pybind11 绑定），已发布至 PyPI，可通过 pip 安装。
+Python 版本 [WujihandPy](https://github.com/wuji-technology/wujihandpy)（基于 pybind11 绑定），已发布至 PyPI，可通过 pip 安装。
 
 ## 最低系统要求 (Linux)
 
@@ -53,7 +53,7 @@ Ubuntu 24 拥有较新的 glibc，GCC-14 支持完整的 C++20 特性，两者�
 
 ### SDK 发布包​​
 
-如果不希望使用 Docker，也可通过 [Release 页面](https://github.com/Wuji-Technology-Co-Ltd/wujihandcpp/releases) 的发布包​​进行安装。
+如果不希望使用 Docker，也可通过 [Release 页面](https://github.com/wuji-technology/wujihandcpp/releases) 的发布包​​进行安装。
 
 - Debian/Ubuntu: `sudo apt install ./wujihandcpp-<version>-<arch>.deb`
 

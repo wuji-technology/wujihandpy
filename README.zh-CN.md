@@ -102,7 +102,7 @@ time = hand.read_system_time()
 position = hand.finger(1).joint(0).read_joint_actual_position()
 ```
 
-关节角度为 `np.float64` 类型，单位为弧度；零点与正方向与 [URDF 文件](https://github.com/Wuji-Technology-Co-Ltd/wujihand-urdf) 的定义一致。
+关节角度为 `np.float64` 类型，单位为弧度；零点与正方向与 [URDF 文件](https://github.com/wuji-technology/wujihand-urdf) 的定义一致。
 
 用一条指令读取多个数据称为**批量读（Bulk-Read）**。
 
