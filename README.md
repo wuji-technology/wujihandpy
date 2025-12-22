@@ -103,7 +103,7 @@ For example, read the current position of joint 0 on finger 1 (index finger):
 position = hand.finger(1).joint(0).read_joint_actual_position()
 ```
 
-Joint angles are of type `np.float64` in radians. The zero point and positive direction follow the definitions in the [URDF files](https://github.com/Wuji-Technology-Co-Ltd/wujihand-urdf).
+Joint angles are of type `np.float64` in radians. The zero point and positive direction follow the definitions in the [URDF files](https://github.com/wuji-technology/wujihand-urdf).
 
 Reading multiple data items with a single command is called **Bulk-Read**.
 

@@ -14,9 +14,9 @@ maintainers = [{ name = "Wuji Technology", email = "support@pan-motor.com" }]
 dependencies = ["numpy"]
 
 [project.urls]
-homepage = "https://github.com/Wuji-Technology-Co-Ltd/wujihandpy"
-repository = "https://github.com/Wuji-Technology-Co-Ltd/wujihandpy"
-"Bug Tracker" = "https://github.com/Wuji-Technology-Co-Ltd/wujihandpy/issues"
+homepage = "https://github.com/wuji-technology/wujihandpy"
+repository = "https://github.com/wuji-technology/wujihandpy"
+"Bug Tracker" = "https://github.com/wuji-technology/wujihandpy/issues"
 
 [tool.scikit-build]
 metadata.version.provider = "scikit_build_core.metadata.setuptools_scm"

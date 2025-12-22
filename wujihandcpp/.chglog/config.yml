@@ -2,7 +2,7 @@ style: github
 template: CHANGELOG.tpl.md
 info:
   title: CHANGELOG
-  repository_url: https://github.com/Wuji-Technology-Co-Ltd/wujihandcpp
+  repository_url: https://github.com/wuji-technology/wujihandcpp
 options:
   commits:
     # filters:

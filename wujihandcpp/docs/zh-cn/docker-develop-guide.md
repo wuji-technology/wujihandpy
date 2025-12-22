@@ -56,7 +56,7 @@ docker pull wujitechnology/wujihandcpp-develop:latest
 ## 拉取仓库
 
 ```bash
-git clone https://github.com/Wuji-Technology-Co-Ltd/wujihandcpp.git
+git clone https://github.com/wuji-technology/wujihandcpp.git
 cd wujihandcpp
 ```
 
