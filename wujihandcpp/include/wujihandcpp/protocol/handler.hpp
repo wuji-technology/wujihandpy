@@ -97,6 +97,8 @@ public:
     WUJIHANDCPP_API auto
         realtime_get_joint_actual_position() -> const std::atomic<double> (&)[5][4];
 
+    WUJIHANDCPP_API auto realtime_get_joint_actual_effort() -> const std::atomic<double> (&)[5][4];
+
     WUJIHANDCPP_API void realtime_set_joint_target_position(const double (&positions)[5][4]);
 
     WUJIHANDCPP_API void

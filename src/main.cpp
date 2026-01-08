@@ -43,6 +43,7 @@ PYBIND11_MODULE(_core, m) {
                            const py::object&) { self.close(); })
         .def("close", &IControllerWrapper::close)
         .def("get_joint_actual_position", &IControllerWrapper::get_joint_actual_position)
+        .def("get_joint_actual_effort", &IControllerWrapper::get_joint_actual_effort)
         .def(
             "set_joint_target_position", &IControllerWrapper::set_joint_target_position,
             py::arg("value_array"));
@@ -99,7 +100,8 @@ PYBIND11_MODULE(_core, m) {
     register_py_interface<data::joint::FirmwareDate>("firmware_date", hand, finger, joint);
     register_py_interface<data::joint::ControlMode>("control_mode", hand, finger, joint);
     register_py_interface<data::joint::SinLevel>("sin_level", hand, finger, joint);
-    register_py_interface<data::joint::CurrentLimit>("current_limit", hand, finger, joint);
+    register_py_interface<data::joint::EffortLimit>("effort_limit", hand, finger, joint);
+    register_py_interface<data::joint::CurrentLimit>("current_limit", hand, finger, joint);  // deprecated, use effort_limit
     register_py_interface<data::joint::BusVoltage>("bus_voltage", hand, finger, joint);
     register_py_interface<data::joint::Temperature>("temperature", hand, finger, joint);
     register_py_interface<data::joint::ResetError>("reset_error", hand, finger, joint);

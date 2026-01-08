@@ -113,7 +113,7 @@ PACKED_STRUCT(CommandResult { int32_t positions[5][4]; });
 
 PACKED_STRUCT(JointPosCurErr {
     int32_t position;
-    float iq_a;
+    float effort_feedback;
     uint32_t error_code;
 });
 PACKED_STRUCT(CommandResultPosCurErr { JointPosCurErr joint[5][4]; });

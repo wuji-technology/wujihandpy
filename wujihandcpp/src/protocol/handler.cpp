@@ -131,6 +131,10 @@ public:
         return pdo_read_position_;
     }
 
+    auto realtime_get_joint_actual_effort() -> const std::atomic<double> (&)[5][4] {
+        return pdo_read_actual_effort_;
+    }
+
     void realtime_set_joint_target_position(const double (&positions)[5][4]) {
         operation_thread_check();
 
@@ -788,6 +792,12 @@ private:
             }
     }
 
+    void update_pdo_efforts(const protocol::pdo::JointPosCurErr (&joint)[5][4]) {
+        for (int i = 0; i < 5; i++)
+            for (int j = 0; j < 4; j++)
+                pdo_read_actual_effort_[i][j].store(static_cast<double>(joint[i][j].effort_feedback), std::memory_order::relaxed);
+    }
+
     void handle_error_code_update(int finger, int joint, uint32_t previous, uint32_t current) {
         if (current == previous)
             return;
@@ -838,6 +848,7 @@ private:
                 read_frame_struct<protocol::pdo::CommandResultPosCurErr>(pointer, sentinel);
             update_pdo_positions(data.joint);
             update_pdo_error_codes(data.joint);
+            update_pdo_efforts(data.joint);
 
             pdo_read_result_version_.store(
                 pdo_read_result_version_.load(std::memory_order::relaxed) + 1,
@@ -973,6 +984,7 @@ private:
     std::map<uint32_t, StorageUnit*> index_storage_map_;
 
     std::atomic<double> pdo_read_position_[5][4]{};
+    std::atomic<double> pdo_read_actual_effort_[5][4]{};
     std::atomic<uint32_t> pdo_read_error_code_[5][4]{};
     std::atomic<uint64_t> pdo_read_result_version_ = 0;
     static_assert(std::atomic<double>::is_always_lock_free);
@@ -1033,6 +1045,10 @@ WUJIHANDCPP_API void Handler::write_async(
 WUJIHANDCPP_API auto
     Handler::realtime_get_joint_actual_position() -> const std::atomic<double> (&)[5][4] {
     return impl_->realtime_get_joint_actual_position();
+}
+
+WUJIHANDCPP_API auto Handler::realtime_get_joint_actual_effort() -> const std::atomic<double> (&)[5][4] {
+    return impl_->realtime_get_joint_actual_effort();
 }
 
 WUJIHANDCPP_API void Handler::realtime_set_joint_target_position(const double (&positions)[5][4]) {

@@ -14,6 +14,10 @@ public:
         throw std::logic_error("Upstream is disabled.");
     };
 
+    virtual auto get_joint_actual_effort() -> const std::atomic<double> (&)[5][4] {
+        throw std::logic_error("Upstream is disabled.");
+    };
+
     virtual void set_joint_target_position(const double (&positions)[5][4]) = 0;
 };
 

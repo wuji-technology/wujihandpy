@@ -170,6 +170,9 @@ public:
                 logging::log(logging::Level::DEBUG, debug_msg, sizeof(debug_msg) - 1);
             }
         }
+
+        // Store full system version for feature checks
+        full_system_version_ = full_system_version;
     }
 
     Finger finger_thumb() { return finger(0); }
@@ -186,6 +189,14 @@ public:
 
     auto realtime_get_joint_actual_position() -> const std::atomic<double> (&)[5][4] {
         return handler_.realtime_get_joint_actual_position();
+    }
+
+    auto realtime_get_joint_actual_effort() -> const std::atomic<double> (&)[5][4] {
+        if (full_system_version_ < data::FirmwareVersionData{1, 2, 0})
+            throw std::runtime_error(
+                "Effort feedback requires firmware version >= 1.2.0 (current: "
+                + full_system_version_.to_string() + ")");
+        return handler_.realtime_get_joint_actual_effort();
     }
 
     void realtime_set_joint_target_position(const double (&positions)[5][4]) {
@@ -320,6 +331,10 @@ private:
             return hand_.realtime_get_joint_actual_position();
         }
 
+        auto get_joint_actual_effort() -> const std::atomic<double> (&)[5][4] override {
+            return hand_.realtime_get_joint_actual_effort();
+        }
+
         void set_joint_target_position(const double (&positions)[5][4]) override {
             hand_.realtime_set_joint_target_position(positions);
         }
@@ -404,6 +419,10 @@ private:
             controller_->set(positions);
         }
 
+        auto get_joint_actual_effort() -> const std::atomic<double> (&)[5][4] override {
+            return hand_.realtime_get_joint_actual_effort();
+        }
+
     private:
         Hand& hand_;
         FilteredController<FilterT, true>* controller_;
@@ -422,7 +441,7 @@ private:
             write_async<data::joint::ControlMode>(latch, 5);
             write_async<data::hand::RPdoId>(latch, 0x01);
             if (enable_upstream)
-                write_async<data::hand::TPdoId>(latch, 0x01);
+                write_async<data::hand::TPdoId>(latch, 0x02);
             else
                 write_async<data::hand::TPdoId>(latch, 0x00);
             write_async<data::hand::PdoInterval>(latch, 2000);
@@ -521,6 +540,7 @@ private:
     bool feature_rpdo_directly_distribute_ = false;
     bool feature_exception_detect_ = false;
     bool feature_tpdo_proactively_report_ = false;
+    data::FirmwareVersionData full_system_version_{};
 
     static constexpr uint16_t index_offset_ = 0x0000;
     static constexpr int storage_offset_ = 0;

@@ -48,7 +48,8 @@ def run(hand: wujihandpy.Hand):
             # Print control error
             # Realtime APIs never block
             error = target - controller.get_joint_actual_position()
-            print(error)
+            effort = controller.get_joint_actual_effort()
+            print(f"error: {error[1, :]}  effort: {effort[1, :]}")
 
             x += math.pi / update_rate
             time.sleep(update_period)
