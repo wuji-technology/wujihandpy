@@ -99,12 +99,12 @@ PACKED_STRUCT(Header {
 
 PACKED_STRUCT(Read {
     uint8_t write_id = 0x00;
-    uint8_t read_id = 0x01;
+    uint8_t read_id = 0x02;  // 0x02 = pos + effort + error
 });
 
 PACKED_STRUCT(Write {
     uint8_t write_id = 0x01;
-    uint8_t read_id; // 0x00 || 0x01
+    uint8_t read_id; // 0x00 = none, 0x01 = pos only, 0x02 = pos + effort + error
     int32_t target_positions[5][4];
     uint32_t timestamp;
 });

@@ -41,7 +41,8 @@ public:
             POSITION = 1ul << 2,
             POSITION_REVERSED = 1ul << 3,
             VELOCITY = 1ul << 4,
-            VELOCITY_REVERSED = 1ul << 5
+            VELOCITY_REVERSED = 1ul << 5,
+            EFFORT_LIMIT = 1ul << 6  // mA storage <-> A external (scale by 1000)
         };
         uint32_t policy : 30;
     };

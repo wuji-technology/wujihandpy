@@ -441,6 +441,10 @@ private:
             if (storage.info.policy & StorageInfo::POSITION_REVERSED)
                 value = -value;
             storage.value.store(Buffer8{value}, std::memory_order::relaxed);
+        } else if (storage.info.policy & StorageInfo::EFFORT_LIMIT) {
+            // Convert A to mA (default: 1.5A, max: 3.5A)
+            auto value = static_cast<uint16_t>(data.as<double>() * 1000.0);
+            storage.value.store(Buffer8{value}, std::memory_order::relaxed);
         } else
             storage.value.store(data, std::memory_order::relaxed);
     }
@@ -455,6 +459,9 @@ private:
             if (storage.info.policy & StorageInfo::POSITION_REVERSED)
                 value = -value;
             return Buffer8{value};
+        } else if (storage.info.policy & StorageInfo::EFFORT_LIMIT) {
+            // Convert mA to A
+            return Buffer8{data.as<uint16_t>() / 1000.0};
         }
 
         return data;
@@ -948,7 +955,7 @@ private:
         bool upstream_enabled, const double (&target_positions)[5][4], uint32_t timestamp) {
         std::byte* buffer = pdo_builder_.allocate(sizeof(protocol::pdo::Write));
         auto payload = new (buffer) protocol::pdo::Write{};
-        payload->read_id = upstream_enabled ? 0x01 : 0x00;
+        payload->read_id = upstream_enabled ? 0x02 : 0x00;  // 0x02 = pos + effort + error
 
         for (int i = 0; i < 5; i++)
             for (int j = 0; j < 4; j++) {

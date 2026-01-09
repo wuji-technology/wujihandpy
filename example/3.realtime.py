@@ -20,6 +20,10 @@ def run(hand: wujihandpy.Hand):
     # Print arrays with 2 decimal places and no scientific notation
     np.set_printoptions(precision=2, suppress=True)
 
+    # Read effort limit for normalization (returns value in A, e.g. 1.5)
+    effort_limit = hand.read_joint_effort_limit()
+    print(f"effort_limit:\n{effort_limit}\n")
+
     with hand.realtime_controller(
         enable_upstream=True, filter=wujihandpy.filter.LowPass(cutoff_freq=5.0)
     ) as controller:
@@ -49,7 +53,10 @@ def run(hand: wujihandpy.Hand):
             # Realtime APIs never block
             error = target - controller.get_joint_actual_position()
             effort = controller.get_joint_actual_effort()
-            print(f"error: {error[1, :]}  effort: {effort[1, :]}")
+            effort_pct = effort / effort_limit * 100
+
+            # Print F2 (index finger) error and effort percentage
+            print(f"error: {error[1, :]}  effort%: {effort_pct[1, :]}")
 
             x += math.pi / update_rate
             time.sleep(update_period)
