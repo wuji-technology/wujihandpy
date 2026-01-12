@@ -55,7 +55,7 @@ clang-tidy -p build src/main.cpp
 3. **C++ SDK 层** (`wujihandcpp/`) - 核心设备通信实现
 
 **设备层次模型：**
-```
+```text
 Hand (灵巧手)
   └── Finger[5] (5个手指)
       └── Joint[4] (每个手指4个关节)
@@ -83,7 +83,7 @@ Hand (灵巧手)
 ### C++ SDK 层 (`wujihandcpp/`)
 
 **目录结构：**
-```
+```text
 wujihandcpp/
 ├── include/wujihandcpp/    # 公开 API 头文件
 │   ├── device/             # Hand, Finger, Joint, Controller
@@ -107,7 +107,8 @@ wujihandcpp/
 
 **关节数据类型：**
 - 只读: FirmwareVersion, Temperature, ErrorCode, ActualPosition, UpperLimit, LowerLimit
-- 只写: ControlMode, CurrentLimit, Enabled, TargetPosition
+- 读写: EffortLimit（原 CurrentLimit）
+- 只写: ControlMode, Enabled, TargetPosition
 
 ## Code Style
 

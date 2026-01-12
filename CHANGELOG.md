@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Real-time `joint_effort` reading via `IController.get_joint_effort()`
+- Real-time `joint_effort` reading via `IController.get_joint_actual_effort()`
 - `joint_effort_limit` now supports read operations (previously write-only)
 - Example: add `read_joint_effort_limit()` demo in `1.read.py`
 
