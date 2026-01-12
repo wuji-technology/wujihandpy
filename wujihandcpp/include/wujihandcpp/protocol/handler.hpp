@@ -41,7 +41,8 @@ public:
             POSITION = 1ul << 2,
             POSITION_REVERSED = 1ul << 3,
             VELOCITY = 1ul << 4,
-            VELOCITY_REVERSED = 1ul << 5
+            VELOCITY_REVERSED = 1ul << 5,
+            EFFORT_LIMIT = 1ul << 6  // mA storage <-> A external (scale by 1000)
         };
         uint32_t policy : 30;
     };
@@ -96,6 +97,8 @@ public:
 
     WUJIHANDCPP_API auto
         realtime_get_joint_actual_position() -> const std::atomic<double> (&)[5][4];
+
+    WUJIHANDCPP_API auto realtime_get_joint_actual_effort() -> const std::atomic<double> (&)[5][4];
 
     WUJIHANDCPP_API void realtime_set_joint_target_position(const double (&positions)[5][4]);
 

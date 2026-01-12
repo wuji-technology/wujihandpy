@@ -52,6 +52,25 @@ struct WriteOnlyData {
     }
 };
 
+template <typename Base_, uint16_t index_, uint8_t sub_index_, typename ValueType_>
+struct ReadWriteData {
+    using Base = Base_;
+
+    ReadWriteData() = delete;
+
+    static constexpr bool readable = true;
+    static constexpr bool writable = true;
+
+    static constexpr uint16_t index = index_;
+    static constexpr uint8_t sub_index = sub_index_;
+
+    using ValueType = ValueType_;
+
+    static constexpr StorageInfo info(uint32_t) {
+        return StorageInfo{sizeof(ValueType), index, sub_index, 0};
+    }
+};
+
 struct alignas(uint32_t) FirmwareVersionData {
     FirmwareVersionData() = default;
 

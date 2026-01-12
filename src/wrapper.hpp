@@ -253,6 +253,41 @@ public:
         return py::array_t<ValueType>({5, 4}, buffer, free);
     }
 
+    // Get EffortLimit with unit conversion (mA -> A)
+    template <typename Data>
+    requires(std::is_same_v<typename Data::Base, T>) auto get_effort_limit_as_ampere() {
+        return T::template get<Data>() / 1000.0;
+    }
+
+    template <typename Data>
+    requires(
+        std::is_same_v<T, wujihandcpp::device::Finger>
+        && std::is_same_v<typename Data::Base, wujihandcpp::device::Joint>)
+    auto get_effort_limit_as_ampere() {
+        auto buffer = new double[4];
+        for (int j = 0; j < 4; j++)
+            buffer[j] = T::joint(j).template get<Data>() / 1000.0;
+
+        py::capsule free(buffer, [](void* ptr) { delete[] static_cast<double*>(ptr); });
+
+        return py::array_t<double>({4}, buffer, free);
+    }
+
+    template <typename Data>
+    requires(
+        std::is_same_v<T, wujihandcpp::device::Hand>
+        && std::is_same_v<typename Data::Base, wujihandcpp::device::Joint>)
+    auto get_effort_limit_as_ampere() {
+        auto buffer = new double[5 * 4];
+        for (int i = 0; i < 5; i++)
+            for (int j = 0; j < 4; j++)
+                buffer[4 * i + j] = T::finger(i).joint(j).template get<Data>() / 1000.0;
+
+        py::capsule free(buffer, [](void* ptr) { delete[] static_cast<double*>(ptr); });
+
+        return py::array_t<double>({5, 4}, buffer, free);
+    }
+
     IControllerWrapper realtime_controller(bool enable_upstream, const filter::IFilter& filter) {
         return filter.create_controller(*this, enable_upstream);
     }

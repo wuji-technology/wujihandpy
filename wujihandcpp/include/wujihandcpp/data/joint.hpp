@@ -24,7 +24,15 @@ struct SinLevel : WriteOnlyData<device::Joint, 0x05, 8, uint16_t> {};
 struct PositionFilterCutoffFreq : WriteOnlyData<device::Joint, 0x05, 19, float> {};
 struct TorqueSlopeLimitPerCycle : WriteOnlyData<device::Joint, 0x05, 20, float> {};
 
-struct CurrentLimit : WriteOnlyData<device::Joint, 0x07, 2, uint16_t> {};
+struct EffortLimit : ReadWriteData<device::Joint, 0x07, 2, double> {
+    static constexpr StorageInfo info(uint32_t) {
+        // Storage is uint16_t (mA), external is double (A)
+        return StorageInfo{sizeof(uint16_t), index, sub_index, StorageInfo::EFFORT_LIMIT};
+    }
+};
+
+// Deprecated alias for backward compatibility
+using CurrentLimit [[deprecated("Use EffortLimit instead")]] = EffortLimit;
 
 struct BusVoltage : ReadOnlyData<device::Joint, 0x0B, 8, float> {};
 struct Temperature : ReadOnlyData<device::Joint, 0x0B, 9, float> {};

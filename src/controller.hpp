@@ -40,6 +40,21 @@ public:
         return py::array_t<double>({5, 4}, buffer, free);
     }
 
+    py::array_t<double> get_joint_actual_effort() {
+        if (!controller_)
+            throw std::runtime_error("Controller is closed.");
+
+        const auto& efforts = controller_->get_joint_actual_effort();
+
+        auto buffer = new double[5 * 4];
+        for (size_t i = 0; i < 5; i++)
+            for (size_t j = 0; j < 4; j++)
+                buffer[4 * i + j] = efforts[i][j].load(std::memory_order::relaxed);
+        py::capsule free(buffer, [](void* ptr) { delete[] static_cast<double*>(ptr); });
+
+        return py::array_t<double>({5, 4}, buffer, free);
+    }
+
     void set_joint_target_position(const py::array_t<double>& array) {
         if (!controller_)
             throw std::runtime_error("Controller is closed.");
