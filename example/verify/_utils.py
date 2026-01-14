@@ -58,7 +58,7 @@ def scan_hands() -> list[str]:
         RuntimeError: 扫描失败或 libusb 不可用
     """
     import platform
-    
+
     # 根据平台加载对应的 libusb 库
     system = platform.system()
     if system == "Linux":
@@ -69,7 +69,7 @@ def scan_hands() -> list[str]:
         lib_name = "libusb-1.0.dll"
     else:
         raise RuntimeError(f"不支持的操作系统: {system}")
-    
+
     try:
         libusb = ctypes.CDLL(lib_name)
     except OSError:
@@ -96,7 +96,7 @@ def scan_hands() -> list[str]:
 
     # 初始化 libusb
     libusb.libusb_init(None)
-    
+
     try:
         # 获取设备列表
         device_list = ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p))()
