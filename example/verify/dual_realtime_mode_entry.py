@@ -24,6 +24,7 @@ import wujihandpy
 
 from _utils import (
     HandInfo,
+    check_effort_support,
     connect_hands,
     create_arg_parser,
     print_summary,
@@ -51,6 +52,14 @@ def verify_single_hand(hand_info: HandInfo) -> bool:
             enable_upstream=True, filter=default_filter
         ) as controller:
             print(f"  [{hand_name}] 成功进入实时模式")
+
+            # 检测是否支持 effort 功能
+            print(f"\n[{hand_name}] 检测 effort 功能支持...")
+            effort_supported = check_effort_support(hand, hand_name)
+
+            if not effort_supported:
+                print(f"\n[{hand_name}] [SKIP] 该设备固件版本不支持 effort 功能，跳过验证")
+                return True  # 固件不支持不算失败
 
             # 获取 effort 数据
             print(f"\n[{hand_name}] 调用 get_joint_actual_effort()...")

@@ -168,3 +168,33 @@ def print_summary(results: dict[str, bool], test_name: str = "验证") -> bool:
     print("=" * 60)
 
     return all_pass
+
+
+def check_effort_support(hand: wujihandpy.Hand, hand_name: str = "设备") -> bool:
+    """
+    检测设备是否支持 effort feedback 功能
+
+    Effort 功能需要固件版本 >= 1.2.0
+
+    Args:
+        hand: 灵巧手设备实例
+        hand_name: 设备名称（用于打印）
+
+    Returns:
+        是否支持 effort 功能
+    """
+    try:
+        # 尝试创建一个实时控制器来检测
+        # 如果不支持会抛出异常
+        with hand.realtime_controller(
+            enable_upstream=True, filter=wujihandpy.filter.LowPass(cutoff_freq=100.0)
+        ) as controller:
+            # 尝试调用 get_joint_actual_effort()
+            _ = controller.get_joint_actual_effort()
+            return True
+    except RuntimeError as e:
+        if "Effort feedback requires firmware version" in str(e):
+            print(f"  [WARNING] {hand_name} 不支持 effort 功能: {e}")
+            return False
+        # 其他异常，重新抛出
+        raise

@@ -26,6 +26,7 @@ import wujihandpy
 
 from _utils import (
     HandInfo,
+    check_effort_support,
     connect_hands,
     create_arg_parser,
     disable_all_hands,
@@ -40,6 +41,7 @@ class ControllerContext:
     hand_info: HandInfo
     controller: wujihandpy.IController
     effort_limit: np.ndarray
+    effort_supported: bool
 
 
 FINGER_NAMES = ["拇指", "食指", "中指", "无名指", "小指"]
@@ -59,11 +61,17 @@ def print_hand_status(
     hand_name = ctx.hand_info.name
     controller = ctx.controller
     effort_limit = ctx.effort_limit
+    effort_supported = ctx.effort_supported
 
-    # 实时读取关节位置和 effort (5x4 array)
+    # 实时读取关节位置 (5x4 array)
     positions = controller.get_joint_actual_position()
-    effort = controller.get_joint_actual_effort()
-    effort_pct = effort / effort_limit * 100
+
+    # 根据是否支持 effort 选择显示内容
+    if effort_supported:
+        effort = controller.get_joint_actual_effort()
+        effort_pct = effort / effort_limit * 100
+    else:
+        effort_pct = None
 
     # 跟随模式：将当前位置设为目标位置，使手可以被推动
     controller.set_joint_target_position(positions)
@@ -77,9 +85,12 @@ def print_hand_status(
     # 按手指分组输出
     for i, name in enumerate(FINGER_NAMES):
         pos = positions[i]
-        eff = effort_pct[i]
         pos_str = f"[{pos[0]:7.2f}, {pos[1]:7.2f}, {pos[2]:7.2f}, {pos[3]:7.2f}]"
-        eff_str = f"[{eff[0]:6.1f}%, {eff[1]:6.1f}%, {eff[2]:6.1f}%, {eff[3]:6.1f}%]"
+        if effort_supported:
+            eff = effort_pct[i]
+            eff_str = f"[{eff[0]:6.1f}%, {eff[1]:6.1f}%, {eff[2]:6.1f}%, {eff[3]:6.1f}%]"
+        else:
+            eff_str = "[  N/A  ,   N/A  ,   N/A  ,   N/A  ]"
         print(f"{name:<8} {pos_str:<35} {eff_str:<35}")
 
 
@@ -102,8 +113,14 @@ def main(
     # 读取 effort limit 用于计算百分比
     print("\n读取 Effort Limit...")
     effort_limits = {}
+    effort_supported = {}
     for info in hands:
         effort_limits[info.name] = info.hand.read_joint_effort_limit()
+        # 检测是否支持 effort 功能
+        print(f"  检测 {info.name} effort 功能支持...")
+        effort_supported[info.name] = check_effort_support(info.hand, info.name)
+        if not effort_supported[info.name]:
+            print(f"  {info.name}: 固件版本 < 1.2.0，不支持 effort 显示")
 
     # 启用所有关节
     print("\n启用所有关节...")
@@ -132,6 +149,7 @@ def main(
                         hand_info=info,
                         controller=controller,
                         effort_limit=effort_limits[info.name],
+                        effort_supported=effort_supported[info.name],
                     )
                 )
 

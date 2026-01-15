@@ -27,6 +27,7 @@ import numpy as np
 import wujihandpy
 from _utils import (
     HandInfo,
+    check_effort_support,
     connect_hands,
     create_arg_parser,
     disable_all_hands,
@@ -51,9 +52,16 @@ def run_realtime_control(hands: list[HandInfo], duration: float = 5.0) -> dict[s
     # 读取 effort limit
     print("\n[步骤 2] 读取 effort limit...")
     effort_limits: dict[str, np.ndarray] = {}
+    effort_supported: dict[str, bool] = {}
     for info in hands:
         effort_limits[info.name] = info.hand.read_joint_effort_limit()
         print(f"  {info.name} effort_limit (F2):\n  {effort_limits[info.name][1]}")
+
+        # 检测是否支持 effort 功能
+        print(f"\n  [{info.name}] 检测 effort 功能支持...")
+        effort_supported[info.name] = check_effort_support(info.hand, info.name)
+        if not effort_supported[info.name]:
+            print(f"  [{info.name}] 固件版本 < 1.2.0，不支持 effort 显示")
 
     # 创建实时控制器
     print("\n[步骤 3] 创建实时控制器...")
@@ -106,9 +114,12 @@ def run_realtime_control(hands: list[HandInfo], duration: float = 5.0) -> dict[s
                 # 每秒打印一次状态
                 if iteration % int(update_rate) == 0:
                     error = target - controller.get_joint_actual_position()
-                    effort = controller.get_joint_actual_effort()
-                    effort_pct = effort / effort_limits[info.name] * 100
-                    print(f"  {info.name} - error: {error[1, :]}  effort%: {effort_pct[1, :]}")
+                    if effort_supported[info.name]:
+                        effort = controller.get_joint_actual_effort()
+                        effort_pct = effort / effort_limits[info.name] * 100
+                        print(f"  {info.name} - error: {error[1, :]}  effort%: {effort_pct[1, :]}")
+                    else:
+                        print(f"  {info.name} - error: {error[1, :]}  effort%: N/A (固件不支持)")
 
             x += math.pi / update_rate
             iteration += 1

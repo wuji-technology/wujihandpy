@@ -35,6 +35,7 @@ import wujihandpy
 
 from _utils import (
     HandInfo,
+    check_effort_support,
     connect_hands,
     create_arg_parser,
     disable_all_hands,
@@ -94,6 +95,19 @@ def run_verification_single(
     """
     hand = hand_info.hand
     hand_name = hand_info.name
+
+    # 检测是否支持 effort 功能
+    print(f"\n[{hand_name}] 检测 effort 功能支持...")
+    effort_supported = check_effort_support(hand, hand_name)
+    if not effort_supported:
+        print(f"\n[{hand_name}] [SKIP] 该设备固件版本不支持 effort 功能，无法运行此测试")
+        print(f"[{hand_name}] 请升级固件至 >= 1.2.0 版本后重试")
+        return {
+            "hand_name": hand_name,
+            "passed": True,  # 固件不支持不算失败
+            "skipped": True,
+            "reason": "firmware version too old",
+        }
 
     mode_names = {
         MotionMode.PERIODIC: "周期屈伸",
@@ -434,11 +448,25 @@ def main(
 
         # 对每只手运行验证
         results: dict[str, bool] = {}
+        skipped_hands: list[str] = []
         for hand_info in hands:
             result = run_verification_single(
                 hand_info, mode=mode, duration=duration
             )
-            results[hand_info.name] = result.get("passed", False)
+            if result.get("skipped"):
+                skipped_hands.append(hand_info.name)
+                results[hand_info.name] = True  # 跳过不算失败
+            else:
+                results[hand_info.name] = result.get("passed", False)
+
+        # 打印跳过提示
+        if skipped_hands:
+            print("\n" + "=" * 60)
+            print("以下设备因固件版本过低已跳过:")
+            for name in skipped_hands:
+                print(f"  - {name}: 固件版本 < 1.2.0，不支持 effort 功能")
+            print("请升级固件后重试")
+            print("=" * 60)
 
         # 打印总结
         all_pass = print_summary(results, "Effort 同步验证")
