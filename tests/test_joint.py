@@ -1,5 +1,12 @@
 """
 Joint 类测试用例
+
+提供:
+- 关节只读属性测试
+- 关节写入属性测试
+- 关节位置测试
+- 所有关节测试
+- 错误处理和恢复测试
 """
 import pytest
 import numpy as np
@@ -193,3 +200,52 @@ class TestJointAllJoints:
                 assert joint.read_joint_error_code() is not None
                 assert joint.read_joint_upper_limit() is not None
                 assert joint.read_joint_lower_limit() is not None
+
+
+class TestJointErrorHandling:
+    """关节错误处理测试。"""
+
+    @pytest.mark.P2
+    def test_joint_index_out_of_range(self, connected_hand):
+        """测试关节索引越界。"""
+        finger = connected_hand.finger(0)  # 拇指
+        with pytest.raises((IndexError, RuntimeError)) as exc_info:
+            finger.joint(4)  # 只能是 0-3
+        # 验证错误消息有帮助
+        assert len(str(exc_info.value)) > 0
+
+    @pytest.mark.P2
+    def test_joint_negative_index(self, connected_hand):
+        """测试关节负数索引。"""
+        finger = connected_hand.finger(0)  # 拇指
+        with pytest.raises((IndexError, RuntimeError)) as exc_info:
+            finger.joint(-1)
+        # 验证错误消息有帮助
+        assert len(str(exc_info.value)) > 0
+
+    @pytest.mark.P2
+    def test_invalid_joint_operation_after_disable(self, thumb_joint):
+        """测试禁用关节后的操作。"""
+        # 先启用再禁用
+        thumb_joint.write_joint_enabled(True)
+        thumb_joint.write_joint_enabled(False)
+        # 读取应该仍然正常
+        position = thumb_joint.read_joint_actual_position()
+        assert position is not None
+
+    @pytest.mark.P2
+    def test_joint_operation_after_timeout(self, thumb_joint):
+        """
+        测试超时后的关节操作恢复。
+
+        验证一个操作超时不 影响后续操作。
+        """
+        # 第一次超时操作
+        try:
+            thumb_joint.read_joint_actual_position(timeout=0.001)
+        except wh.TimeoutError:
+            pass  # 预期超时
+
+        # 第二次正常操作应该成功
+        position = thumb_joint.read_joint_actual_position(timeout=5.0)
+        assert position is not None

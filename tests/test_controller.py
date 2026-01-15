@@ -1,5 +1,10 @@
 """
 IController 实时控制器测试用例
+
+提供:
+- 基础控制器功能测试
+- 固件版本检测机制
+- 优雅的错误处理
 """
 import pytest
 import numpy as np
@@ -30,12 +35,22 @@ class TestIControllerBasic:
         assert positions.shape == (5, 4)
 
     @pytest.mark.P0
-    def test_get_joint_actual_effort(self, controller):
-        """测试获取所有关节实际力矩。"""
-        efforts = controller.get_joint_actual_effort()
-        assert efforts is not None
-        assert isinstance(efforts, np.ndarray)
-        assert efforts.shape == (5, 4)
+    def test_get_joint_actual_effort(self, effort_supported_hand):
+        """
+        测试获取所有关节实际力矩。
+
+        注意: 此测试需要固件版本 >= 1.2.0
+        如果固件不支持，测试会被跳过。
+        """
+        # 使用专门的 fixture 确保固件支持
+        with effort_supported_hand.realtime_controller(
+            enable_upstream=True,
+            filter=wh.filter.LowPass(10.0)
+        ) as controller:
+            efforts = controller.get_joint_actual_effort()
+            assert efforts is not None
+            assert isinstance(efforts, np.ndarray)
+            assert efforts.shape == (5, 4)
 
     @pytest.mark.P0
     def test_set_joint_target_position(self, controller):
@@ -115,9 +130,23 @@ class TestIControllerNoUpstream:
 
     @pytest.mark.P1
     def test_get_effort_requires_upstream(self, controller_no_upstream):
-        """测试无上游时获取力矩会抛出异常。"""
-        with pytest.raises(Exception):
+        """
+        测试无上游时获取力矩会抛出异常。
+
+        注意: 即使固件支持 effort feedback，无上游也无法获取。
+        此测试在两种情况下都会通过:
+        1. 固件不支持 effort → SDK 抛出固件版本异常
+        2. 固件支持但无上游 → 抛出运行时异常
+        """
+        with pytest.raises(Exception) as exc_info:
             controller_no_upstream.get_joint_actual_effort()
+
+        # 验证异常消息包含有用的信息
+        error_msg = str(exc_info.value)
+        # 可能是 "Effort feedback requires firmware version" 或 "upstream" 相关错误
+        assert "Effort feedback requires firmware version" in error_msg or \
+               "upstream" in error_msg.lower() or \
+               "requires" in error_msg.lower()
 
 
 class TestIControllerRealTimeControl:

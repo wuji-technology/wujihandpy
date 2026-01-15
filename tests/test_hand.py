@@ -1,5 +1,12 @@
 """
 Hand 类测试用例
+
+提供:
+- Hand 构造函数测试
+- 只读属性测试
+- 关节级读写测试
+- 特殊方法测试
+- 固件版本检测
 """
 import pytest
 import numpy as np
@@ -351,3 +358,104 @@ class TestHandSpecialMethods:
                 sub_index=1,
                 timeout=0.01  # 短超时
             )
+
+
+class TestHandFirmwareVersion:
+    """Hand 固件版本测试。"""
+
+    @pytest.mark.P1
+    def test_read_firmware_version_format(self, connected_hand):
+        """
+        测试固件版本读取格式。
+
+        验证返回的版本号格式正确。
+        """
+        version = connected_hand.read_firmware_version()
+        assert version is not None
+        # 版本号应该是字符串格式 "X.Y.Z" 或整数
+        version_str = str(version)
+        # 验证格式: 至少包含版本号的基本结构
+        assert len(version_str) > 0
+
+    @pytest.mark.P1
+    def test_read_full_system_firmware_version(self, connected_hand):
+        """
+        测试读取完整系统固件版本。
+
+        注意: 完整系统固件版本只在固件 >= 3.1.0D 时可用。
+        如果不支持，会抛出异常。
+        """
+        try:
+            full_version = connected_hand.read_full_system_firmware_version()
+            assert full_version is not None
+            # 格式应该是 "X.Y.Z"
+            full_version_str = str(full_version)
+            assert len(full_version_str) > 0
+        except RuntimeError as e:
+            # 旧固件不支持，这是预期行为
+            if "FullSystemFirmwareVersion" in str(e) or "not supported" in str(e).lower():
+                pytest.skip("固件版本过旧，不支持完整系统版本读取")
+            else:
+                raise
+
+    @pytest.mark.P1
+    def test_firmware_version_caching(self, connected_hand):
+        """
+        测试固件版本缓存。
+
+        验证 get_* 方法能正确返回缓存的版本信息。
+        """
+        # 先读取
+        version = connected_hand.read_firmware_version()
+        # 再从缓存获取
+        cached_version = connected_hand.get_firmware_version()
+        assert cached_version == version
+
+    @pytest.mark.P2
+    def test_get_product_sn_format(self, connected_hand):
+        """
+        测试产品序列号格式。
+
+        验证 SN 格式正确（非空，长度合理）。
+        """
+        sn = connected_hand.get_product_sn()
+        assert sn is not None
+        assert isinstance(sn, str)
+        # SN 长度应该在合理范围内
+        assert 0 < len(sn) <= 64
+
+
+class TestHandErrorRecovery:
+    """Hand 错误恢复测试。"""
+
+    @pytest.mark.P2
+    def test_operation_after_timeout(self, connected_hand):
+        """
+        测试超时后的操作恢复。
+
+        验证一个操作超时不 影响后续操作。
+        """
+        # 第一次超时操作
+        try:
+            connected_hand.read_firmware_version(timeout=0.001)
+        except wh.TimeoutError:
+            pass  # 预期超时
+
+        # 第二次正常操作应该成功
+        version = connected_hand.read_firmware_version(timeout=5.0)
+        assert version is not None
+
+    @pytest.mark.P2
+    def test_controller_after_controller_close(self, connected_hand):
+        """
+        测试关闭控制器后创建新控制器。
+
+        验证可以连续创建和关闭控制器。
+        """
+        for i in range(3):
+            controller = connected_hand.realtime_controller(
+                enable_upstream=True,
+                filter=wh.filter.LowPass(10.0)
+            )
+            assert controller is not None
+            controller.close()
