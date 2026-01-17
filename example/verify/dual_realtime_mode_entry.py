@@ -7,10 +7,10 @@ realtime_controller 模式验证脚本
 用例步骤与预期结果：
 1. 使用 with hand.realtime_controller(enable_upstream=True) 进入实时模式
 2. 调用 get_joint_actual_effort() 获取 effort 数据
-3. 预期：正常返回数据，无异常
+3: 预期：正常返回数据，无异常
 
 支持单/双灵巧手：
-- 不指定序列号时自动连接第一个设备
+- 不指定序列号时自动扫描并连接所有可用设备
 - 通过 --sn 参数指定一个或两个序列号
 """
 
