@@ -9,8 +9,8 @@
 - 跟随模式：手可被推动，观察 effort 变化
 
 支持单/双灵巧手：
-- 不指定序列号时自动连接第一个设备
-- 通过 --sn 参数指定一个或两个序列号
+- 不指定序列号且开启自动扫描时，将扫描并连接所有可用设备
+- 通过 --sn 参数指定一个或两个序列号（不使用自动扫描）
 """
 
 from __future__ import annotations
@@ -70,8 +70,6 @@ def print_hand_status(
     if effort_supported:
         effort = controller.get_joint_actual_effort()
         effort_pct = effort / effort_limit * 100
-    else:
-        effort_pct = None
 
     # 跟随模式：将当前位置设为目标位置，使手可以被推动
     controller.set_joint_target_position(positions)
@@ -97,6 +95,7 @@ def print_hand_status(
 def main(
     freq: float = 100.0,
     serial_numbers: Optional[list[str]] = None,
+    auto_scan: bool = False,
 ) -> None:
     """
     主函数
@@ -104,10 +103,11 @@ def main(
     Args:
         freq: 读取频率 (Hz)
         serial_numbers: 灵巧手序列号列表
+        auto_scan: 是否自动扫描连接设备
     """
     # 连接设备
     print("连接灵巧手设备...")
-    hands = connect_hands(serial_numbers)
+    hands = connect_hands(serial_numbers, auto_scan=auto_scan)
     print(f"共连接 {len(hands)} 只灵巧手")
 
     # 读取 effort limit 用于计算百分比
@@ -196,4 +196,4 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    main(freq=args.freq, serial_numbers=args.serial_numbers)
+    main(freq=args.freq, serial_numbers=args.serial_numbers, auto_scan=args.auto_scan)

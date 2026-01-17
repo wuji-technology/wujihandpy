@@ -11,8 +11,8 @@
 3. 预期：所有手都能正常响应写入命令
 
 支持单/双灵巧手：
-- 不指定序列号时自动连接第一个设备
-- 通过 --sn 参数指定一个或两个序列号
+- 未指定序列号时，通过自动扫描连接所有可用设备
+- 通过 --sn 参数指定一个或多个序列号，仅连接指定设备
 """
 
 from __future__ import annotations
@@ -82,12 +82,13 @@ def verify_single_hand(hand_info: HandInfo) -> bool:
         return False
 
 
-def main(serial_numbers: Optional[list[str]] = None) -> bool:
+def main(serial_numbers: Optional[list[str]] = None, auto_scan: bool = False) -> bool:
     """
     主函数
 
     Args:
         serial_numbers: 灵巧手序列号列表
+        auto_scan: 是否自动扫描连接设备
 
     Returns:
         是否全部验证通过
@@ -98,7 +99,7 @@ def main(serial_numbers: Optional[list[str]] = None) -> bool:
 
     # 连接设备
     print("\n[步骤 1] 连接设备...")
-    hands = connect_hands(serial_numbers)
+    hands = connect_hands(serial_numbers, auto_scan=auto_scan)
     print(f"  共连接 {len(hands)} 只灵巧手")
 
     try:
@@ -126,5 +127,5 @@ if __name__ == "__main__":
     parser = create_arg_parser("灵巧手写入控制验证")
     args = parser.parse_args()
 
-    success = main(serial_numbers=args.serial_numbers)
+    success = main(serial_numbers=args.serial_numbers, auto_scan=args.auto_scan)
     sys.exit(0 if success else 1)

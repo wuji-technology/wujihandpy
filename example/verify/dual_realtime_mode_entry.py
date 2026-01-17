@@ -7,10 +7,10 @@ realtime_controller 模式验证脚本
 用例步骤与预期结果：
 1. 使用 with hand.realtime_controller(enable_upstream=True) 进入实时模式
 2. 调用 get_joint_actual_effort() 获取 effort 数据
-3. 预期：正常返回数据，无异常
+3: 预期：正常返回数据，无异常
 
 支持单/双灵巧手：
-- 不指定序列号时自动连接第一个设备
+- 不指定序列号时自动扫描并连接所有可用设备
 - 通过 --sn 参数指定一个或两个序列号
 """
 
@@ -115,12 +115,13 @@ def verify_single_hand(hand_info: HandInfo) -> bool:
         return False
 
 
-def main(serial_numbers: Optional[list[str]] = None) -> bool:
+def main(serial_numbers: Optional[list[str]] = None, auto_scan: bool = False) -> bool:
     """
     主函数
 
     Args:
         serial_numbers: 灵巧手序列号列表
+        auto_scan: 是否自动扫描连接设备
 
     Returns:
         是否全部验证通过
@@ -131,7 +132,7 @@ def main(serial_numbers: Optional[list[str]] = None) -> bool:
 
     # 连接设备
     print("\n[步骤 1] 连接设备...")
-    hands = connect_hands(serial_numbers)
+    hands = connect_hands(serial_numbers, auto_scan=auto_scan)
     print(f"  共连接 {len(hands)} 只灵巧手")
 
     # 对每只手进行验证
@@ -153,5 +154,5 @@ if __name__ == "__main__":
     parser = create_arg_parser("realtime_controller 模式验证")
     args = parser.parse_args()
 
-    success = main(serial_numbers=args.serial_numbers)
+    success = main(serial_numbers=args.serial_numbers, auto_scan=args.auto_scan)
     sys.exit(0 if success else 1)

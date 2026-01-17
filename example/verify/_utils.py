@@ -7,10 +7,151 @@
 from __future__ import annotations
 
 import argparse
+import ctypes
 from dataclasses import dataclass
 from typing import Callable, Optional
 
 import wujihandpy
+
+# USB 设备 VID/PID
+WUJI_VID = 0x0483
+WUJI_PID = 0x7530
+
+
+def get_hand_name_by_sn(sn: str) -> str:
+    """
+    根据序列号第6位判断左右手
+
+    规则:
+        - L: 左手 (Left)
+        - R: 右手 (Right)
+        - 其他或无 SN: 未知
+
+    Args:
+        sn: 序列号，示例: LQSQJL.260112.004 (第6位是 'L')
+
+    Returns:
+        "左手"、"右手" 或 "未知"
+    """
+    if not sn or len(sn) < 6:
+        return "未知"
+
+    sixth_char = sn[5].upper()
+    if sixth_char == "L":
+        return "左手"
+    elif sixth_char == "R":
+        return "右手"
+    else:
+        return "未知"
+
+
+def scan_hands() -> list[str]:
+    """
+    扫描所有连接的灵巧手设备并返回序列号列表
+
+    使用 libusb 扫描 USB 设备，查找所有匹配 VID/PID 的设备并读取其序列号
+
+    Returns:
+        扫描到的设备序列号列表
+
+    Raises:
+        RuntimeError: 扫描失败或 libusb 不可用
+    """
+    import platform
+    
+    # 根据平台加载对应的 libusb 库
+    system = platform.system()
+    if system == "Linux":
+        lib_name = "libusb-1.0.so.0"
+    elif system == "Darwin":
+        lib_name = "libusb-1.0.dylib"
+    elif system == "Windows":
+        lib_name = "libusb-1.0.dll"
+    else:
+        raise RuntimeError(f"不支持的操作系统: {system}")
+    
+    try:
+        libusb = ctypes.CDLL(lib_name)
+    except OSError:
+        raise RuntimeError(f"libusb-1.0 不可用，请确保已安装 libusb 开发库 ({lib_name})")
+
+    # 定义 libusb 设备描述符结构
+    class DeviceDescriptor(ctypes.Structure):
+        _fields_ = [
+            ("bLength", ctypes.c_uint8),
+            ("bDescriptorType", ctypes.c_uint8),
+            ("bcdUSB", ctypes.c_uint16),
+            ("bDeviceClass", ctypes.c_uint8),
+            ("bDeviceSubClass", ctypes.c_uint8),
+            ("bDeviceProtocol", ctypes.c_uint8),
+            ("bMaxPacketSize0", ctypes.c_uint8),
+            ("idVendor", ctypes.c_uint16),
+            ("idProduct", ctypes.c_uint16),
+            ("bcdDevice", ctypes.c_uint16),
+            ("iManufacturer", ctypes.c_uint8),
+            ("iProduct", ctypes.c_uint8),
+            ("iSerialNumber", ctypes.c_uint8),
+            ("bNumConfigurations", ctypes.c_uint8),
+        ]
+
+    # 初始化 libusb
+    libusb.libusb_init(None)
+    
+    try:
+        # 获取设备列表
+        device_list = ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p))()
+        device_count = libusb.libusb_get_device_list(None, ctypes.byref(device_list))
+        if device_count < 0:
+            raise RuntimeError(f"获取设备列表失败: {device_count}")
+
+        serial_numbers: list[str] = []
+
+        try:
+            for i in range(device_count):
+                device = device_list[i]
+
+                # 获取设备描述符
+                descriptor = DeviceDescriptor()
+                ret = libusb.libusb_get_device_descriptor(
+                    device, ctypes.byref(descriptor)
+                )
+                if ret != 0:
+                    continue
+
+                # 检查 VID/PID 是否匹配
+                if descriptor.idVendor != WUJI_VID:
+                    continue
+                if descriptor.idProduct != WUJI_PID:
+                    continue
+
+                # 检查是否有序列号
+                if descriptor.iSerialNumber == 0:
+                    continue
+
+                # 打开设备以读取序列号
+                handle = ctypes.c_void_p()
+                ret = libusb.libusb_open(device, ctypes.byref(handle))
+                if ret != 0:
+                    continue
+
+                # 读取序列号
+                serial_buf = ctypes.create_string_buffer(256)
+                n = libusb.libusb_get_string_descriptor_ascii(
+                    handle, descriptor.iSerialNumber, serial_buf, 255
+                )
+                libusb.libusb_close(handle)
+
+                if n > 0:
+                    sn = serial_buf.value.decode("utf-8", errors="ignore")
+                    if sn and sn not in serial_numbers:
+                        serial_numbers.append(sn)
+
+        finally:
+            libusb.libusb_free_device_list(device_list, 1)
+    finally:
+        libusb.libusb_exit(None)
+
+    return serial_numbers
 
 
 @dataclass
@@ -39,19 +180,28 @@ def create_arg_parser(description: str) -> argparse.ArgumentParser:
         dest="serial_numbers",
         nargs="+",
         metavar="SN",
-        help="灵巧手序列号，可指定 1-2 个。不指定时自动连接第一个检测到的设备",
+        help="灵巧手序列号，可指定多个。不指定时自动扫描所有设备",
+    )
+    parser.add_argument(
+        "--scan",
+        "--auto",
+        dest="auto_scan",
+        action="store_true",
+        help="自动扫描并连接所有检测到的灵巧手设备",
     )
     return parser
 
 
 def connect_hands(
     serial_numbers: Optional[list[str]] = None,
+    auto_scan: bool = False,
 ) -> list[HandInfo]:
     """
     连接灵巧手设备
 
     Args:
-        serial_numbers: 序列号列表，None 或空列表时自动连接第一个设备
+        serial_numbers: 序列号列表，None 时使用自动扫描
+        auto_scan: 是否自动扫描所有设备
 
     Returns:
         连接成功的设备信息列表
@@ -61,23 +211,42 @@ def connect_hands(
     """
     hands: list[HandInfo] = []
 
-    if not serial_numbers:
-        # 未指定序列号，尝试连接默认设备
+    # 如果 auto_scan 为 True 或未指定序列号，则扫描设备
+    if auto_scan or not serial_numbers:
+        print("扫描灵巧手设备...")
         try:
-            hand = wujihandpy.Hand()
-            sn = hand.get_product_sn()
-            hands.append(HandInfo(name="灵巧手", hand=hand, serial_number=sn))
-            print(f"  已连接: 灵巧手 (SN: {sn})")
-        except Exception as e:
-            raise RuntimeError(f"无法连接灵巧手设备: {e}") from e
-    else:
-        # 按指定序列号连接
-        names = ["左手", "右手"] if len(serial_numbers) == 2 else [f"手{i+1}" for i in range(len(serial_numbers))]
-        for i, sn in enumerate(serial_numbers):
+            scanned_sns = scan_hands()
+        except RuntimeError as e:
+            # 扫描失败，回退到单设备连接
+            print(f"  [WARNING] 自动扫描失败: {e}")
+            print("  回退到单设备连接...")
+            scanned_sns = []
+
+        if scanned_sns:
+            serial_numbers = scanned_sns
+            print(f"  扫描到 {len(scanned_sns)} 个设备: {scanned_sns}")
+        elif serial_numbers:
+            # 已指定序列号，使用指定序列号
+            pass
+        else:
+            # 未指定序列号且扫描失败，尝试连接默认设备
+            try:
+                hand = wujihandpy.Hand()
+                sn = hand.get_product_sn()
+                name = get_hand_name_by_sn(sn)
+                hands.append(HandInfo(name=name, hand=hand, serial_number=sn))
+                print(f"  已连接: {name} (SN: {sn})")
+            except Exception as e:
+                raise RuntimeError(f"无法连接灵巧手设备: {e}") from e
+            return hands
+
+    # 按序列号连接
+    if serial_numbers:
+        for sn in serial_numbers:
             try:
                 hand = wujihandpy.Hand(serial_number=sn)
                 actual_sn = hand.get_product_sn()
-                name = names[i] if i < len(names) else f"手{i+1}"
+                name = get_hand_name_by_sn(actual_sn)
                 hands.append(HandInfo(name=name, hand=hand, serial_number=actual_sn))
                 print(f"  已连接: {name} (SN: {actual_sn})")
             except Exception as e:
@@ -136,8 +305,9 @@ def disable_all_hands(hands: list[HandInfo]) -> None:
         try:
             info.hand.write_joint_enabled(False)
             print(f"  {info.name} 关节已禁用")
-        except Exception:
-            pass
+        except Exception as e:
+            # 禁用失败时继续处理其他设备，但输出警告便于排查问题
+            print(f"  [WARNING] {info.name} 关节禁用失败: {e}")
 
 
 def print_summary(results: dict[str, bool], test_name: str = "验证") -> bool:
@@ -193,6 +363,8 @@ def check_effort_support(hand: wujihandpy.Hand, hand_name: str = "设备") -> bo
             _ = controller.get_joint_actual_effort()
             return True
     except RuntimeError as e:
+        # 通过检查错误消息判断是否为固件版本不支持 effort 功能
+        # 这种字符串匹配方式虽然不够稳健，但目前 SDK 未提供专用异常类型
         if "Effort feedback requires firmware version" in str(e):
             print(f"  [WARNING] {hand_name} 不支持 effort 功能: {e}")
             return False

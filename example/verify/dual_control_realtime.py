@@ -11,8 +11,9 @@
 3. 预期：所有手都能正常执行实时控制
 
 支持单/双灵巧手：
-- 不指定序列号时自动连接第一个设备
-- 通过 --sn 参数指定一个或两个序列号
+- 不指定序列号且未开启自动扫描时，默认连接第一个检测到的设备
+- 不指定序列号且使用 --auto-scan 参数时，将自动扫描并连接所有检测到的设备
+- 通过 --sn 参数指定一个或多个序列号
 """
 
 from __future__ import annotations
@@ -136,18 +137,19 @@ def run_realtime_control(hands: list[HandInfo], duration: float = 5.0) -> dict[s
         for info in hands:
             try:
                 controllers[info.name].__exit__(None, None, None)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"  [WARN] 退出 {info.name} 的实时控制器时发生异常: {e}")
 
     return results
 
 
-def main(serial_numbers: Optional[list[str]] = None, duration: float = 5.0) -> bool:
+def main(serial_numbers: Optional[list[str]] = None, auto_scan: bool = False, duration: float = 5.0) -> bool:
     """
     主函数
 
     Args:
         serial_numbers: 灵巧手序列号列表
+        auto_scan: 是否自动扫描连接设备
         duration: 运行时长（秒）
 
     Returns:
@@ -159,7 +161,7 @@ def main(serial_numbers: Optional[list[str]] = None, duration: float = 5.0) -> b
 
     # 连接设备
     print("\n[步骤 1] 连接设备...")
-    hands = connect_hands(serial_numbers)
+    hands = connect_hands(serial_numbers, auto_scan=auto_scan)
     print(f"  共连接 {len(hands)} 只灵巧手")
 
     try:
@@ -190,5 +192,5 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    success = main(serial_numbers=args.serial_numbers, duration=args.time)
+    success = main(serial_numbers=args.serial_numbers, auto_scan=args.auto_scan, duration=args.time)
     sys.exit(0 if success else 1)
