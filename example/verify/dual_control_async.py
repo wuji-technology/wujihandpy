@@ -121,6 +121,7 @@ async def run_with_timeout(
             # 无限运行直到用户中断
             await asyncio.gather(*tasks)
     except asyncio.CancelledError:
+        # 正常的任务取消（如用户中断或外部超时结束），在此静默忽略即可
         pass
 
     return results
@@ -169,8 +170,8 @@ async def async_main(
             try:
                 await info.hand.write_joint_enabled_async(False)
                 print(f"  {info.name} 关节已禁用")
-            except Exception:
-                pass
+            except Exception as exc:
+                print(f"  无法禁用 {info.name} 关节: {exc}", file=sys.stderr)
 
 
 def main(serial_numbers: Optional[list[str]] = None, auto_scan: bool = False, duration: float = 5.0) -> bool:

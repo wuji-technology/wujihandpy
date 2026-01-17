@@ -137,8 +137,8 @@ def run_realtime_control(hands: list[HandInfo], duration: float = 5.0) -> dict[s
         for info in hands:
             try:
                 controllers[info.name].__exit__(None, None, None)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"  [WARN] 退出 {info.name} 的实时控制器时发生异常: {e}")
 
     return results
 
