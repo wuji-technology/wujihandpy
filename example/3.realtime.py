@@ -24,6 +24,20 @@ def run(hand: wujihandpy.Hand):
     effort_limit = hand.read_joint_effort_limit()
     print(f"effort_limit:\n{effort_limit}\n")
 
+    # Check if effort is supported (requires firmware >= 1.2.0)
+    effort_supported = True
+    try:
+        with hand.realtime_controller(
+            enable_upstream=True, filter=wujihandpy.filter.LowPass(cutoff_freq=100.0)
+        ) as controller:
+            _ = controller.get_joint_actual_effort()
+    except RuntimeError as e:
+        if "Effort feedback requires firmware version" in str(e):
+            print(f"[WARNING] Firmware does not support effort feedback: {e}")
+            effort_supported = False
+        else:
+            raise
+
     with hand.realtime_controller(
         enable_upstream=True, filter=wujihandpy.filter.LowPass(cutoff_freq=5.0)
     ) as controller:
@@ -52,11 +66,15 @@ def run(hand: wujihandpy.Hand):
             # Print control error
             # Realtime APIs never block
             error = target - controller.get_joint_actual_position()
-            effort = controller.get_joint_actual_effort()
-            effort_pct = effort / effort_limit * 100
 
-            # Print F2 (index finger) error and effort percentage
-            print(f"error: {error[1, :]}  effort%: {effort_pct[1, :]}")
+            if effort_supported:
+                effort = controller.get_joint_actual_effort()
+                effort_pct = effort / effort_limit * 100
+                # Print F2 (index finger) error and effort percentage
+                print(f"error: {error[1, :]}  effort%: {effort_pct[1, :]}")
+            else:
+                # Print F2 (index finger) error only
+                print(f"error: {error[1, :]}  effort%: N/A (firmware < 1.2.0)")
 
             x += math.pi / update_rate
             time.sleep(update_period)
