@@ -128,14 +128,13 @@ async def run_with_timeout(
 
 
 async def async_main(
-    serial_numbers: Optional[list[str]] = None, auto_scan: bool = False, duration: float = 5.0
+    serial_numbers: Optional[list[str]] = None, duration: float = 5.0
 ) -> bool:
     """
     异步主函数
 
     Args:
         serial_numbers: 灵巧手序列号列表
-        auto_scan: 是否自动扫描连接设备
         duration: 运行时长（秒）
 
     Returns:
@@ -147,7 +146,7 @@ async def async_main(
 
     # 连接设备
     print("\n[步骤 1] 连接设备...")
-    hands = connect_hands(serial_numbers, auto_scan=auto_scan)
+    hands = connect_hands(serial_numbers)
     print(f"  共连接 {len(hands)} 只灵巧手")
 
     try:
@@ -174,20 +173,19 @@ async def async_main(
                 print(f"  无法禁用 {info.name} 关节: {exc}", file=sys.stderr)
 
 
-def main(serial_numbers: Optional[list[str]] = None, auto_scan: bool = False, duration: float = 5.0) -> bool:
+def main(serial_numbers: Optional[list[str]] = None, duration: float = 5.0) -> bool:
     """
     主函数入口
 
     Args:
         serial_numbers: 灵巧手序列号列表
-        auto_scan: 是否自动扫描连接设备
         duration: 运行时长（秒）
 
     Returns:
         是否全部验证通过
     """
     try:
-        return asyncio.run(async_main(serial_numbers, auto_scan, duration))
+        return asyncio.run(async_main(serial_numbers, duration))
     except KeyboardInterrupt:
         print("\n程序已退出")
         return True
@@ -205,5 +203,5 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    success = main(serial_numbers=args.serial_numbers, auto_scan=args.auto_scan, duration=args.time)
+    success = main(serial_numbers=args.serial_numbers, duration=args.time)
     sys.exit(0 if success else 1)
