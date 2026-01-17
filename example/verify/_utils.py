@@ -180,28 +180,19 @@ def create_arg_parser(description: str) -> argparse.ArgumentParser:
         dest="serial_numbers",
         nargs="+",
         metavar="SN",
-        help="灵巧手序列号，可指定多个。不指定时自动扫描所有设备",
-    )
-    parser.add_argument(
-        "--scan",
-        "--auto",
-        dest="auto_scan",
-        action="store_true",
-        help="自动扫描并连接所有检测到的灵巧手设备",
+        help="灵巧手序列号，可指定多个。不指定时默认自动扫描所有设备",
     )
     return parser
 
 
 def connect_hands(
     serial_numbers: Optional[list[str]] = None,
-    auto_scan: bool = False,
 ) -> list[HandInfo]:
     """
     连接灵巧手设备
 
     Args:
-        serial_numbers: 序列号列表，None 时使用自动扫描
-        auto_scan: 是否自动扫描所有设备
+        serial_numbers: 序列号列表，None 时自动扫描所有设备
 
     Returns:
         连接成功的设备信息列表
@@ -211,8 +202,8 @@ def connect_hands(
     """
     hands: list[HandInfo] = []
 
-    # 如果 auto_scan 为 True 或未指定序列号，则扫描设备
-    if auto_scan or not serial_numbers:
+    # 如果未指定序列号，则扫描设备
+    if not serial_numbers:
         print("扫描灵巧手设备...")
         try:
             scanned_sns = scan_hands()
@@ -225,11 +216,8 @@ def connect_hands(
         if scanned_sns:
             serial_numbers = scanned_sns
             print(f"  扫描到 {len(scanned_sns)} 个设备: {scanned_sns}")
-        elif serial_numbers:
-            # 已指定序列号，使用指定序列号
-            pass
         else:
-            # 未指定序列号且扫描失败，尝试连接默认设备
+            # 扫描失败，尝试连接默认设备
             try:
                 hand = wujihandpy.Hand()
                 sn = hand.get_product_sn()

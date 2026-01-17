@@ -419,7 +419,6 @@ def main(
     mode: Optional[MotionMode] = None,
     duration: float = 5.0,
     serial_numbers: Optional[list[str]] = None,
-    auto_scan: bool = False,
 ):
     """
     主函数
@@ -428,7 +427,6 @@ def main(
         mode: 运动模式，None 时交互式选择
         duration: 测试持续时间（秒）
         serial_numbers: 灵巧手序列号列表
-        auto_scan: 是否自动扫描连接设备
     """
     print("=" * 60)
     print("Effort 数据 1kHz 同步更新验证")
@@ -440,7 +438,7 @@ def main(
 
     # 连接设备
     print("\n[步骤 1] 连接设备...")
-    hands = connect_hands(serial_numbers, auto_scan=auto_scan)
+    hands = connect_hands(serial_numbers)
     print(f"  共连接 {len(hands)} 只灵巧手")
 
     try:
@@ -504,6 +502,5 @@ if __name__ == "__main__":
         mode=mode,
         duration=args.duration,
         serial_numbers=args.serial_numbers,
-        auto_scan=args.auto_scan,
     )
     exit(0 if success else 1)

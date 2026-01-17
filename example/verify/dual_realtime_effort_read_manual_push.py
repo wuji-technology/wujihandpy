@@ -95,7 +95,6 @@ def print_hand_status(
 def main(
     freq: float = 100.0,
     serial_numbers: Optional[list[str]] = None,
-    auto_scan: bool = False,
 ) -> None:
     """
     主函数
@@ -103,11 +102,10 @@ def main(
     Args:
         freq: 读取频率 (Hz)
         serial_numbers: 灵巧手序列号列表
-        auto_scan: 是否自动扫描连接设备
     """
     # 连接设备
     print("连接灵巧手设备...")
-    hands = connect_hands(serial_numbers, auto_scan=auto_scan)
+    hands = connect_hands(serial_numbers)
     print(f"共连接 {len(hands)} 只灵巧手")
 
     # 读取 effort limit 用于计算百分比
@@ -196,4 +194,4 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    main(freq=args.freq, serial_numbers=args.serial_numbers, auto_scan=args.auto_scan)
+    main(freq=args.freq, serial_numbers=args.serial_numbers)
