@@ -9,8 +9,8 @@
 - 跟随模式：手可被推动，观察 effort 变化
 
 支持单/双灵巧手：
-- 不指定序列号时自动连接第一个设备
-- 通过 --sn 参数指定一个或两个序列号
+- 不指定序列号且开启自动扫描时，将扫描并连接所有可用设备
+- 通过 --sn 参数指定一个或两个序列号（不使用自动扫描）
 """
 
 from __future__ import annotations
@@ -70,8 +70,6 @@ def print_hand_status(
     if effort_supported:
         effort = controller.get_joint_actual_effort()
         effort_pct = effort / effort_limit * 100
-    else:
-        effort_pct = None
 
     # 跟随模式：将当前位置设为目标位置，使手可以被推动
     controller.set_joint_target_position(positions)
