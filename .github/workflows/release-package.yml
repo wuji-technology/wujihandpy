@@ -97,13 +97,101 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
-      - name: Extract git tag & generate change log
-        run: |
-          GIT_TAG="$(git describe --tags --abbrev=0)"
-          echo "GIT_TAG=$GIT_TAG" >> "$GITHUB_ENV"
-          echo "Using git tag: $GIT_TAG"
-          docker run -v "$PWD":/workdir quay.io/git-chglog/git-chglog $GIT_TAG > changelog.md
-          cat changelog.md
+      - name: Parse CHANGELOG and Generate Release Body
+        id: changelog
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            if (!fs.existsSync('CHANGELOG.md')) {
+              core.setFailed('CHANGELOG.md not found');
+              return;
+            }
+            const changelog = fs.readFileSync('CHANGELOG.md', 'utf8')
+              .replace(/\r\n?/g, '\n');
+
+            const tag = context.ref.replace('refs/tags/', '');
+            const version = tag.replace(/^v/, '');
+
+            // 分类映射
+            const categoryMap = {
+              'Added': 'New Features', '新增': 'New Features',
+              'Changed': 'Improvements', '变更': 'Improvements',
+              'Fixed': 'Bug Fixes', '修复': 'Bug Fixes'
+            };
+            const cautionCategories = {
+              'Removed': 'Removed', '移除': 'Removed',
+              'Deprecated': 'Deprecated', '废弃': 'Deprecated',
+              'Security': 'Security', '安全': 'Security'
+            };
+
+            function parseContent(content) {
+              const sections = { 'New Features': [], 'Improvements': [], 'Bug Fixes': [] };
+              const cautionItems = [];
+              let currentCategory = '';
+              let currentCautionPrefix = '';
+
+              for (const line of content.trim().split('\n')) {
+                const catMatch = line.match(/^### (.+)/);
+                if (catMatch) {
+                  const cat = catMatch[1].trim();
+                  if (categoryMap[cat]) {
+                    currentCategory = categoryMap[cat];
+                    currentCautionPrefix = '';
+                  } else if (cautionCategories[cat]) {
+                    currentCategory = 'CAUTION';
+                    currentCautionPrefix = cautionCategories[cat];
+                  } else {
+                    currentCategory = '';
+                  }
+                } else if (line.startsWith('- ')) {
+                  const item = line.slice(2);
+                  if (currentCategory === 'CAUTION') {
+                    cautionItems.push(`**${currentCautionPrefix}**: ${item}`);
+                  } else if (currentCategory && sections[currentCategory]) {
+                    sections[currentCategory].push(item);
+                  }
+                }
+              }
+
+              let body = '';
+              for (const section of ['New Features', 'Improvements', 'Bug Fixes']) {
+                if (sections[section].length > 0) {
+                  body += `### ${section}\n${sections[section].map(i => `- ${i}`).join('\n')}\n\n`;
+                }
+              }
+              if (cautionItems.length > 0) {
+                body += `> [!CAUTION]\n${cautionItems.map(i => `> - ${i}`).join('\n')}\n\n`;
+              }
+              return body.trim();
+            }
+
+            const escapedVersion = version.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const versionRegex = new RegExp(`## \\[${escapedVersion}\\](?:[^\\n]*-\\s*(\\d{4}-\\d{2}-\\d{2}))?[^\\n]*\\n([\\s\\S]*?)(?=\\n## \\[|$)`);
+            const match = changelog.match(versionRegex);
+
+            if (!match) {
+              core.setFailed(`Version ${version} not found in CHANGELOG.md`);
+              return;
+            }
+
+            const date = match[1] || new Date().toISOString().split('T')[0];
+            const content = match[2];
+            let body = parseContent(content);
+
+            const allVersions = [...changelog.matchAll(/## \[(\d+\.\d+\.\d+(?:-[a-zA-Z0-9.]+)?)\]/g)].map(m => m[1]);
+            const versionIndex = allVersions.indexOf(version);
+            if (versionIndex !== -1) {
+              const prevVersion = allVersions[versionIndex + 1];
+              if (prevVersion) {
+                body += `\n\n---\n\n**Full Changelog**: [v${prevVersion}...${tag}](https://github.com/${context.repo.owner}/${context.repo.repo}/compare/v${prevVersion}...${tag})`;
+              }
+            }
+
+            const releaseBody = `## ${tag} (${date})\n\n${body}`;
+            core.setOutput('body', releaseBody);
+            core.setOutput('tag', tag);
 
       - name: Download wujihandcpp builds
         uses: actions/download-artifact@v5
@@ -131,7 +219,7 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
-          body_path: changelog.md
+          body: ${{ steps.changelog.outputs.body }}
           draft: false
           prerelease: true
           make_latest: false
