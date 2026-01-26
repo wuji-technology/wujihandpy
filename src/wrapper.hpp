@@ -295,6 +295,11 @@ public:
     void start_latency_test() { T::start_latency_test(); }
     void stop_latency_test() { T::stop_latency_test(); }
 
+    // Disable thread safety check - only available for Hand
+    void disable_thread_safe_check() requires std::is_same_v<T, wujihandcpp::device::Hand> {
+        T::disable_thread_safe_check();
+    }
+
     // Raw SDO operations - only available for Hand
     py::bytes
         raw_sdo_read(int finger_id, int joint_id, uint16_t index, uint8_t sub_index, double timeout)
