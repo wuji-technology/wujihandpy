@@ -2,9 +2,8 @@ name: Auto Release from CHANGELOG
 
 on:
   push:
-    branches: [main]
-    paths: ['CHANGELOG.md']
-  workflow_dispatch:
+    tags:
+      - 'v*'
 
 permissions:
   contents: write
@@ -17,7 +16,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Parse CHANGELOG and Manage Releases
+      - name: Parse CHANGELOG and Create Release
         uses: actions/github-script@v7
         with:
           script: |
@@ -25,39 +24,36 @@ jobs:
 
             // 检查 CHANGELOG.md 是否存在
             if (!fs.existsSync('CHANGELOG.md')) {
-              console.log('CHANGELOG.md not found, skipping release');
+              core.setFailed('CHANGELOG.md not found');
               return;
             }
             const changelog = fs.readFileSync('CHANGELOG.md', 'utf8');
 
-            // 分类映射：CHANGELOG → Release 分类
+            // 从 tag 提取版本号
+            const tag = context.ref.replace('refs/tags/', '');
+            const version = tag.replace(/^v/, '');
+            console.log(`Processing tag: ${tag}, version: ${version}`);
+
+            // 分类映射
             const categoryMap = {
               'Added': 'New Features', '新增': 'New Features',
               'Changed': 'Improvements', '变更': 'Improvements',
               'Fixed': 'Bug Fixes', '修复': 'Bug Fixes'
             };
-
-            // CAUTION 分类（带前缀）
             const cautionCategories = {
               'Removed': 'Removed', '移除': 'Removed',
               'Deprecated': 'Deprecated', '废弃': 'Deprecated',
               'Security': 'Security', '安全': 'Security'
             };
 
-            // 解析内容并按分类分组
+            // 解析版本内容
             function parseContent(content) {
-              const sections = {
-                'New Features': [],
-                'Improvements': [],
-                'Bug Fixes': []
-              };
+              const sections = { 'New Features': [], 'Improvements': [], 'Bug Fixes': [] };
               const cautionItems = [];
-
-              const lines = content.trim().split('\n');
               let currentCategory = '';
               let currentCautionPrefix = '';
 
-              for (const line of lines) {
+              for (const line of content.trim().split('\n')) {
                 const catMatch = line.match(/^### (.+)/);
                 if (catMatch) {
                   const cat = catMatch[1].trim();
@@ -69,7 +65,6 @@ jobs:
                     currentCautionPrefix = cautionCategories[cat];
                   } else {
                     currentCategory = '';
-                    currentCautionPrefix = '';
                   }
                 } else if (line.startsWith('- ')) {
                   const item = line.slice(2);
@@ -81,139 +76,47 @@ jobs:
                 }
               }
 
-              // 构建输出，只包含有内容的分类
               let body = '';
-              const order = ['New Features', 'Improvements', 'Bug Fixes'];
-              for (const section of order) {
+              for (const section of ['New Features', 'Improvements', 'Bug Fixes']) {
                 if (sections[section].length > 0) {
-                  body += `### ${section}\n`;
-                  for (const item of sections[section]) {
-                    body += `- ${item}\n`;
-                  }
-                  body += '\n';
+                  body += `### ${section}\n${sections[section].map(i => `- ${i}`).join('\n')}\n\n`;
                 }
               }
-
-              // 添加 CAUTION 部分（使用 GitHub 语法）
               if (cautionItems.length > 0) {
-                body += `> [!CAUTION]\n`;
-                for (const item of cautionItems) {
-                  body += `> - ${item}\n`;
-                }
-                body += '\n';
+                body += `> [!CAUTION]\n${cautionItems.map(i => `> - ${i}`).join('\n')}\n\n`;
               }
-
               return body.trim();
             }
 
-            // 创建或更新 release
-            async function upsertRelease(tag, name, body, prerelease) {
-              // 检查 tag 是否存在
-              let tagExists = false;
-              try {
-                await github.rest.git.getRef({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  ref: `tags/${tag}`
-                });
-                tagExists = true;
-              } catch (e) {
-                if (e.status !== 404) throw e;
-              }
+            // 查找对应版本
+            const versionRegex = new RegExp(`## \\[${version}\\](?: - (\\d{4}-\\d{2}-\\d{2}))?\\n([\\s\\S]*?)(?=\\n## \\[|$)`);
+            const match = changelog.match(versionRegex);
 
-              // 创建或更新 tag
-              if (!tagExists) {
-                await github.rest.git.createRef({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  ref: `refs/tags/${tag}`,
-                  sha: context.sha
-                });
-                console.log(`Created tag: ${tag}`);
-              } else if (tag === 'next') {
-                // 更新 next tag 到最新 commit
-                await github.rest.git.updateRef({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  ref: `tags/${tag}`,
-                  sha: context.sha,
-                  force: true
-                });
-                console.log(`Updated tag: ${tag} to ${context.sha}`);
-              }
-
-              // 检查 release 是否存在
-              let releaseId = null;
-              try {
-                const { data } = await github.rest.repos.getReleaseByTag({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  tag: tag
-                });
-                releaseId = data.id;
-              } catch (e) {
-                if (e.status !== 404) throw e;
-              }
-
-              const releaseData = {
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                tag_name: tag,
-                name: name,
-                body: body,
-                prerelease: prerelease,
-                make_latest: prerelease ? 'false' : 'true'
-              };
-
-              if (releaseId) {
-                await github.rest.repos.updateRelease({
-                  ...releaseData,
-                  release_id: releaseId
-                });
-                console.log(`Updated release: ${tag} (prerelease: ${prerelease})`);
-              } else {
-                await github.rest.repos.createRelease(releaseData);
-                console.log(`Created release: ${tag} (prerelease: ${prerelease})`);
-              }
+            if (!match) {
+              core.setFailed(`Version ${version} not found in CHANGELOG.md`);
+              return;
             }
 
-            // 获取所有版本用于 Full Changelog 链接
+            const date = match[1] || new Date().toISOString().split('T')[0];
+            const content = match[2];
+            let body = parseContent(content);
+
+            // 获取所有版本用于 Full Changelog
             const allVersions = [...changelog.matchAll(/## \[(\d+\.\d+\.\d+)\]/g)].map(m => m[1]);
-
-            // 解析 [未发布]/[Unreleased] 部分
-            const unreleasedMatch = changelog.match(/## \[(?:未发布|Unreleased)\]\n([\s\S]*?)(?=\n## \[|$)/);
-            if (unreleasedMatch && unreleasedMatch[1].trim()) {
-              const content = parseContent(unreleasedMatch[1]);
-              if (content) {
-                let body = content;
-                // 添加开发版本警告到 CAUTION
-                if (!body.includes('[!CAUTION]')) {
-                  body += `\n\n> [!CAUTION]\n> - **Note**: This is a development version, content may change at any time\n`;
-                }
-                // 添加 Full Changelog
-                const prevVersion = allVersions[0];
-                if (prevVersion) {
-                  body += `\n---\n\n**Full Changelog**: [v${prevVersion}...next](https://github.com/${context.repo.owner}/${context.repo.repo}/compare/v${prevVersion}...HEAD)`;
-                }
-                await upsertRelease('next', 'next (Development)', body, true);
-              }
+            const versionIndex = allVersions.indexOf(version);
+            const prevVersion = allVersions[versionIndex + 1];
+            if (prevVersion) {
+              body += `\n\n---\n\n**Full Changelog**: [v${prevVersion}...${tag}](https://github.com/${context.repo.owner}/${context.repo.repo}/compare/v${prevVersion}...${tag})`;
             }
 
-            // 解析最新正式版本
-            const versionRegex = /## \[(\d+\.\d+\.\d+)\] - (\d{4}-\d{2}-\d{2})\n([\s\S]*?)(?=\n## \[|$)/;
-            const versionMatch = changelog.match(versionRegex);
-            if (versionMatch) {
-              const [, version, date, rawContent] = versionMatch;
-              const tag = `v${version}`;
-              const name = `v${version} (${date})`;
-              let body = parseContent(rawContent);
-
-              // 添加 Full Changelog
-              const versionIndex = allVersions.indexOf(version);
-              const prevVersion = allVersions[versionIndex + 1];
-              if (prevVersion) {
-                body += `\n\n---\n\n**Full Changelog**: [v${prevVersion}...v${version}](https://github.com/${context.repo.owner}/${context.repo.repo}/compare/v${prevVersion}...v${version})`;
-              }
-
-              await upsertRelease(tag, name, body, false);
-            }
+            // 创建 Pre-release
+            await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: tag,
+              name: tag,
+              body: `## ${tag} (${date})\n\n${body}`,
+              prerelease: true,
+              make_latest: 'false'
+            });
+            console.log(`Created pre-release: ${tag}`);
