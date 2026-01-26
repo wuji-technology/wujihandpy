@@ -217,6 +217,10 @@ class Finger:
 class Hand:
     def __init__(self, serial_number: str | None = None, usb_pid: typing.SupportsInt = -1, usb_vid: typing.SupportsInt = 1155, mask: typing.Annotated[numpy.typing.ArrayLike, numpy.bool_] | None = None) -> None:
         ...
+    def disable_thread_safe_check(self) -> None:
+        """
+        Disable thread safety check to allow multi-threaded usage. When disabled, user must ensure thread-safe access using external mutex.
+        """
     def finger(self, index: typing.SupportsInt) -> Finger:
         ...
     def get_firmware_date(self) -> numpy.uint32:
