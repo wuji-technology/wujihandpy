@@ -16,7 +16,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Parse CHANGELOG and Create Release
+      - name: Parse CHANGELOG and Upsert Release
         uses: actions/github-script@v7
         with:
           script: |
@@ -27,9 +27,10 @@ jobs:
               core.setFailed('CHANGELOG.md not found');
               return;
             }
-            const changelog = fs.readFileSync('CHANGELOG.md', 'utf8');
+            const changelog = fs.readFileSync('CHANGELOG.md', 'utf8')
+              .replace(/\r\n?/g, '\n');
 
-            // 从 tag 提取版本号
+            // 从 tag 提取版本号（支持预发布版本如 1.0.0-rc4）
             const tag = context.ref.replace('refs/tags/', '');
             const version = tag.replace(/^v/, '');
             console.log(`Processing tag: ${tag}, version: ${version}`);
@@ -88,8 +89,11 @@ jobs:
               return body.trim();
             }
 
-            // 查找对应版本
-            const versionRegex = new RegExp(`## \\[${version}\\](?: - (\\d{4}-\\d{2}-\\d{2}))?\\n([\\s\\S]*?)(?=\\n## \\[|$)`);
+            // 转义版本号中的特殊字符用于正则匹配
+            const escapedVersion = version.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+            // 版本匹配正则（支持多种日期格式）
+            const versionRegex = new RegExp(`## \\[${escapedVersion}\\](?:[^\\n]*-\\s*(\\d{4}-\\d{2}-\\d{2}))?[^\\n]*\\n([\\s\\S]*?)(?=\\n## \\[|$)`);
             const match = changelog.match(versionRegex);
 
             if (!match) {
@@ -101,22 +105,55 @@ jobs:
             const content = match[2];
             let body = parseContent(content);
 
-            // 获取所有版本用于 Full Changelog
-            const allVersions = [...changelog.matchAll(/## \[(\d+\.\d+\.\d+)\]/g)].map(m => m[1]);
-            const versionIndex = allVersions.indexOf(version);
-            const prevVersion = allVersions[versionIndex + 1];
-            if (prevVersion) {
-              body += `\n\n---\n\n**Full Changelog**: [v${prevVersion}...${tag}](https://github.com/${context.repo.owner}/${context.repo.repo}/compare/v${prevVersion}...${tag})`;
+            if (!body) {
+              console.log(`Warning: No content parsed for version ${version}`);
             }
 
-            // 创建 Pre-release
-            await github.rest.repos.createRelease({
+            // 获取所有版本用于 Full Changelog（支持预发布版本）
+            const allVersions = [...changelog.matchAll(/## \[(\d+\.\d+\.\d+(?:-[a-zA-Z0-9.]+)?)\]/g)].map(m => m[1]);
+            const versionIndex = allVersions.indexOf(version);
+            if (versionIndex === -1) {
+              console.log(`Warning: version ${version} not found in version list for Full Changelog`);
+            } else {
+              const prevVersion = allVersions[versionIndex + 1];
+              if (prevVersion) {
+                body += `\n\n---\n\n**Full Changelog**: [v${prevVersion}...${tag}](https://github.com/${context.repo.owner}/${context.repo.repo}/compare/v${prevVersion}...${tag})`;
+              }
+            }
+
+            // 检查 release 是否已存在（upsert 模式）
+            let releaseId = null;
+            try {
+              const { data } = await github.rest.repos.getReleaseByTag({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag: tag
+              });
+              releaseId = data.id;
+              console.log(`Found existing release: ${tag} (id: ${releaseId})`);
+            } catch (e) {
+              if (e.status !== 404) throw e;
+              console.log(`No existing release for tag: ${tag}`);
+            }
+
+            const releaseBody = `## ${tag} (${date})\n\n${body}`;
+            const releaseData = {
               owner: context.repo.owner,
               repo: context.repo.repo,
               tag_name: tag,
               name: tag,
-              body: `## ${tag} (${date})\n\n${body}`,
+              body: releaseBody,
               prerelease: true,
               make_latest: 'false'
-            });
-            console.log(`Created pre-release: ${tag}`);
+            };
+
+            if (releaseId) {
+              await github.rest.repos.updateRelease({
+                ...releaseData,
+                release_id: releaseId
+              });
+              console.log(`Updated release: ${tag}`);
+            } else {
+              await github.rest.repos.createRelease(releaseData);
+              console.log(`Created pre-release: ${tag}`);
+            }
