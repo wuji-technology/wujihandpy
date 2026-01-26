@@ -3,11 +3,6 @@ name: Release Package CI
 on:
   push:
     tags: ["v*"]
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: "Release tag (e.g. v1.2.3)"
-        required: true
 
 jobs:
   build:
@@ -115,16 +110,8 @@ jobs:
             const changelog = fs.readFileSync('CHANGELOG.md', 'utf8')
               .replace(/\r\n?/g, '\n');
 
-            // 支持 tag push 和 workflow_dispatch 两种触发方式
-            const ref = context.ref;
-            const dispatchTag = '${{ github.event.inputs.tag }}';
-            const tag = ref.startsWith('refs/tags/')
-              ? ref.replace('refs/tags/', '')
-              : dispatchTag;
-            if (!tag) {
-              core.setFailed('No tag provided. For workflow_dispatch, please supply input "tag" (e.g. v1.2.3).');
-              return;
-            }
+            // 从 tag 提取版本号
+            const tag = context.ref.replace('refs/tags/', '');
             const version = tag.replace(/^v/, '');
 
             // 分类映射
@@ -203,10 +190,7 @@ jobs:
             }
 
             const releaseBody = `## ${tag} (${date})\n\n${body}`;
-            const isPrerelease = /-/.test(version);
             core.setOutput('body', releaseBody);
-            core.setOutput('tag', tag);
-            core.setOutput('prerelease', isPrerelease.toString());
 
       - name: Download wujihandcpp builds
         uses: actions/download-artifact@v5
@@ -232,10 +216,10 @@ jobs:
         id: create_release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.changelog.outputs.tag }}
-          name: ${{ steps.changelog.outputs.tag }}
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
           body: ${{ steps.changelog.outputs.body }}
           draft: false
-          prerelease: ${{ steps.changelog.outputs.prerelease == 'true' }}
-          make_latest: ${{ steps.changelog.outputs.prerelease == 'true' && 'false' || 'true' }}
+          prerelease: true
+          make_latest: false
           files: build/wujihandcpp/*
