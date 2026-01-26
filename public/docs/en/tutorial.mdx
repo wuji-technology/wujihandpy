@@ -1,0 +1,399 @@
+---
+title: Tutorial
+description: Wuji Hand SDK (wujihandpy) tutorial covering device connection, synchronous/asynchronous read/write, and real-time control.
+---
+
+## 1. Device Connection and Selection
+This section describes how to connect to dexterous hand devices in wujihandpy and how to filter devices when multiple devices are present.
+
+### 1.1 Interface Overview
+```python
+class Hand:
+    def __init__(self, serial_number: str | None = None, ...) -> None:
+        ...
+```
+
+### 1.2 Connecting to a Device
+Call `wujihandpy.Hand()` to create a `Hand` object and connect to the dexterous hand:
+```python
+hand = wujihandpy.Hand()
+```
+If only one dexterous hand is connected to the system, it will automatically connect to that device.
+
+### 1.3 Filtering Devices
+When multiple dexterous hands are connected to the system, using the no-argument constructor will result in an error. For example:
+```
+[ERROR] 2 devices found with specified vendor id (0x0483)
+[ERROR]   Device 1 (0483:2000): Serial Number = 337238793233 <-- Matched #1
+[ERROR]   Device 2 (0483:2000): Serial Number = 337238873233 <-- Matched #2
+[ERROR] To ensure correct device selection, please specify the Serial Number
+Traceback (most recent call last):
+  File "/workspaces/quickstart.py", line 5, in <module>
+    hand = wujihandpy.Hand()
+           ^^^^^^^^^^^^^^^^^
+RuntimeError: Failed to init.
+```
+To resolve this issue, you can explicitly specify the device to connect to using the `serial_number` parameter:
+```python
+hand = wujihandpy.Hand(serial_number="337238793233")
+```
+This ensures that the program always connects to the correct device instance.
+
+### 1.4 Querying Device Serial Numbers
+If you're unsure of the device's serial number, you can execute the following command in the terminal to view all connected dexterous hands:
+```bash
+lsusb -v -d 0483:2000 | grep iSerial
+```
+Example output:
+```
+  iSerial                 3 337238793233
+                            ^^^^^^^^^^^^  <-- Device Serial Number
+```
+The highlighted number is the serial number of the dexterous hand, which can be passed directly to the constructor's `serial_number` parameter.
+
+
+## 2. Reading Data
+This section describes how to read data in synchronous mode in wujihandpy.
+### 2.1 Interface Overview
+Calling `read_*` series functions sends a synchronous read request to the dexterous hand and blocks the current thread until the device returns a result. Function return indicates that the read has completed successfully.
+
+<Callout type="warning">
+  **Latency Characteristics of Non-Real-Time Interfaces**
+
+  Each synchronous request causes approximately 5~10 ms of blocking and is suitable for non-real-time tasks. Do not use these APIs in real-time control loops or high-frequency loops requiring high real-time performance.
+
+  For real-time control scenarios, consider:
+
+  - Using [Unidirectional/Bidirectional Real-Time Controllers](#4-real-time-control)
+  - Using [Async APIs](#5-async-readwrite) in a low-speed bypass loop
+</Callout>
+
+### 2.2 Single Value Reading
+When the read level matches the object level, the function returns a single scalar value.
+```python
+class Hand:
+    def read_<dataname>(self) -> datatype
+
+class Finger:
+    def read_<dataname>(self) -> datatype
+
+class Joint:
+    def read_<dataname>(self) -> datatype
+```
+
+#### Examples:
+Read the dexterous hand's uptime (Hand level) using `hand`:
+```python
+time = hand.read_system_time()
+```
+Read the current position of the index finger's proximal joint (Joint level) using `joint`:
+```python
+position = hand.finger(1).joint(0).read_joint_actual_position()
+```
+
+### 2.3 Batch Reading
+When the read level is lower than the object level, the function returns a matrix containing multiple data points.
+```python
+class Hand:
+    def read_<dataname>(self) -> np.NDArray[datatype]
+
+class Finger:
+    def read_<dataname>(self) -> np.NDArray[datatype]
+
+class Joint:
+    def read_<dataname>(self) -> np.NDArray[datatype]
+```
+
+#### Examples:
+Request the current position data for all joints in the entire hand (20 joints in total) using `hand` (Joint level):
+```python
+positions = hand.read_joint_actual_position()
+```
+The function returns an `np.NDArray[np.float64]`, where each row corresponds to a finger and each column corresponds to a joint:
+```python
+>>> print(positions)
+[[ 0.975  0.523  0.271 -0.450]
+ [ 0.382  0.241 -0.003 -0.275]
+ [-0.299  0.329  0.067 -0.286]
+ [-0.122  0.228  0.315 -0.178]
+ [ 0.205  0.087  0.288 -0.149]]
+```
+Similarly, you can request all joint positions for a single finger using `finger`:
+```python
+>>> print(hand.finger(1).read_joint_actual_position())
+[ 0.382  0.241 -0.003 -0.275]
+```
+
+### 2.4 More Examples
+- [example/1.read.py](https://github.com/wuji-technology/wujihandpy/blob/main/example/1.read.py)
+
+
+## 3. Writing Data
+This section describes how to write data in synchronous mode in wujihandpy.
+### 3.1 Interface Overview
+Calling `write_*` series functions sends a synchronous write request to the dexterous hand and blocks the current thread until the device returns a result. Function return indicates that the write has completed successfully.
+
+<Callout type="warning">
+  **Latency Characteristics of Non-Real-Time Interfaces**
+
+  Each synchronous request causes approximately 5~10 ms of blocking and is suitable for non-real-time tasks. Do not use these APIs in real-time control loops or high-frequency loops requiring high real-time performance.
+
+  For real-time control scenarios, consider:
+
+  - Using [Unidirectional/Bidirectional Real-Time Controllers](#4-real-time-control)
+  - Using [Async APIs](#5-async-readwrite) in a low-speed bypass loop
+</Callout>
+
+### 3.2 Single Value Writing
+When the write level matches the object level, the function uses a single scalar value.
+```python
+class Hand:
+    def write_<dataname>(self, datatype) -> None
+
+class Finger:
+    def write_<dataname>(self, datatype) -> None
+
+class Joint:
+    def write_<dataname>(self, datatype) -> None
+```
+
+#### Examples:
+Enable the index finger's proximal joint (Joint level):
+```python
+hand.finger(1).joint(0).write_joint_enabled(True)
+```
+
+### 3.3 Batch Writing
+When the write level is lower than the object level, the function can accept either a single scalar value or a matrix containing multiple data points.
+```python
+class Hand:
+    @typing.overload
+    def write_<dataname>(self, datatype) -> None
+    @typing.overload
+    def write_<dataname>(self, np.NDArray[datatype]) -> None
+
+class Finger:
+    @typing.overload
+    def write_<dataname>(self, datatype) -> None
+    @typing.overload
+    def write_<dataname>(self, np.NDArray[datatype]) -> None
+
+class Joint:
+    @typing.overload
+    def write_<dataname>(self, datatype) -> None
+    @typing.overload
+    def write_<dataname>(self, np.NDArray[datatype]) -> None
+```
+
+#### Examples:
+Enable all joints in the entire hand (Joint level) using `hand`:
+```python
+hand.write_joint_enabled(True)
+```
+Or enable the index finger while disabling all other fingers:
+```python
+hand.write_joint_enabled(
+    np.array(
+        [
+            #  J1     J2     J3     J4
+            [False, False, False, False],  # F1
+            [ True,  True,  True,  True],  # F2
+            [False, False, False, False],  # F3
+            [False, False, False, False],  # F4
+            [False, False, False, False],  # F5
+        ],
+        dtype=bool,
+    )
+)
+```
+Similarly, you can write target control angles to all joints in the entire hand:
+```python
+hand.write_joint_target_position(0.0)
+# Equals to
+hand.write_joint_target_position(
+    np.array(
+        [
+            # J1   J2   J3   J4
+            [0.0, 0.0, 0.0, 0.0],  # F1
+            [0.0, 0.0, 0.0, 0.0],  # F2
+            [0.0, 0.0, 0.0, 0.0],  # F3
+            [0.0, 0.0, 0.0, 0.0],  # F4
+            [0.0, 0.0, 0.0, 0.0],  # F5
+        ],
+        dtype=np.float64,
+    )
+)
+```
+
+### 3.4 Invalid Value Writing
+
+Typically, invalid value writes are handled automatically, such as:
+- Angles exceeding the valid range are automatically clamped to upper and lower bounds.
+
+However, this is not absolute. When values have logical errors, such as:
+- Setting the effort limit of a joint to an invalid value (too large or too small)
+
+This will cause the operation to fail and throw a TimeoutError.
+
+### 3.5 More Examples
+- [example/2.write.py](https://github.com/wuji-technology/wujihandpy/blob/main/example/2.write.py)
+
+
+## 4. Real-Time Control
+This section describes how to control the dexterous hand in real-time mode in wujihandpy.
+
+### 4.1 Interface Overview
+```python
+class Hand:
+    def realtime_controller(self, enable_upstream: bool, filter: filter.IFilter) -> IController:
+        ...
+
+class IController:
+    def set_joint_target_position(self, value_array: np.NDArray[np.float64]) -> None:
+        ...
+    def get_joint_actual_position(self) -> np.NDArray[np.float64]:
+        ...
+    def get_joint_actual_effort(self) -> np.NDArray[np.float64]:
+        ...
+    def close(self) -> None:
+        ...
+```
+
+Calling `Hand.realtime_controller()` puts the dexterous hand into real-time control mode and returns a real-time controller object `IController`.
+After entering real-time control mode, a 16 kHz real-time filter starts on the motor side to smooth control signals into a stable 16 kHz stream.
+
+### 4.2 Filters
+The real-time controller requires a filter object (`filter.IFilter`) to smoothly adjust target values.
+<Callout type="info">
+  The initial value of the filter is automatically set to the actual position of the dexterous hand, so there is no need to worry about initial transition issues.
+</Callout>
+
+wujihandpy provides the following commonly used filters:
+- `filter.LowPass(cutoff_freq: float)`: First-order low-pass filter with adjustable cutoff frequency. When set to a cutoff frequency >= 1 kHz, the filter is disabled.
+
+<Callout type="warning">
+  Because filter logic runs on the motor driver board, custom filters are not supported.
+</Callout>
+
+### 4.3 Context Manager
+`IController` can be used as a context manager:
+
+```python
+with hand.realtime_controller(
+    enable_upstream=False,
+    filter=wujihandpy.filter.LowPass(cutoff_freq=2.0),
+) as controller:
+    ...  # Use controller to perform real-time control
+```
+When the `with` block ends, `controller.close()` is automatically called, ensuring the dexterous hand correctly exits real-time control mode.
+
+#### Automatic Destruction
+If a context manager is not used, `IController` will automatically call `close()` during destruction. Due to Python's garbage collection delay, the dexterous hand may not immediately exit real-time mode. If precise control of exit timing is not needed, you can directly rely on destruction behavior.
+
+### 4.4 Real-Time Writing
+```python
+def set_joint_target_position(self, value_array: np.NDArray[np.float64]) -> None
+```
+The `set_joint_target_position()` function sends target control values to the motor driver board as quickly as possible without blocking.
+
+### 4.5 Real-Time Reading
+The motor automatically reports current position and effort at a 1 kHz rate. The following functions are non-blocking and immediately return the latest cached readings.
+
+```python
+def get_joint_actual_position(self) -> np.NDArray[np.float64]: ...
+def get_joint_actual_effort(self) -> np.NDArray[np.float64]: ...
+```
+
+<Callout type="info">
+**What is Effort?**
+
+Effort is the actuation value in current space, filtered before output. It is not the actual measured current—think of it as relative actuation strength.
+
+Typical use cases:
+- Collision detection: a sudden increase in effort indicates joint obstruction
+- Load monitoring: calculate output percentage via `effort / effort_limit`
+</Callout>
+
+### 4.6 Example
+```python
+import wujihandpy
+import numpy as np
+
+hand = wujihandpy.Hand()
+try:
+    hand.write_joint_enabled(True)
+    # Enter real-time control mode using a first-order low-pass filter with 5 Hz cutoff frequency
+    with hand.realtime_controller(
+        enable_upstream=True,
+        filter=wujihandpy.filter.LowPass(cutoff_freq=5.0)
+    ) as controller:
+        while True:
+            # Real-time write target position (non-blocking)
+            controller.set_joint_target_position(np.zeros((5, 4)))
+            # Real-time read position and effort (non-blocking)
+            position = controller.get_joint_actual_position()
+            effort = controller.get_joint_actual_effort()
+            print(f"pos: {position[1, :]}  effort: {effort[1, :]}")
+finally:
+    hand.write_joint_enabled(False)
+```
+
+### 4.7 Advanced Examples
+- [example/3.realtime.py](https://github.com/wuji-technology/wujihandpy/blob/main/example/3.realtime.py)
+
+
+## 5. Async Read/Write
+This section describes how to read/write data in asynchronous mode in wujihandpy.
+
+### 5.1 Interface Overview
+Both read and write interfaces provide asynchronous versions with function names suffixed with `_async` for performing non-blocking I/O operations in coroutine environments.
+```python
+async def read_<dataname>_async(self) -> datatype
+async def read_<dataname>_async(self) -> np.NDArray[datatype]  # Batch read
+
+async def write_<dataname>_async(self, value: datatype)
+async def write_<dataname>_async(self, values: np.NDArray[datatype])  # Batch write
+```
+When calling asynchronous interfaces, use `await`. The event loop is not blocked during the wait. Function return indicates that the operation has completed successfully.
+
+<Callout type="warning">
+  **Latency Characteristics of Non-Real-Time Interfaces**
+
+  Asynchronous requests also require 5~10 ms to complete. They are not inherently faster; they simply do not block the event loop.
+
+  Compared to synchronous interfaces, the only difference with asynchronous interfaces is that they allow other coroutine tasks to execute during the wait.
+  Therefore, do not call these APIs in real-time control loops or high-frequency loops requiring high real-time performance.
+
+  For real-time control scenarios, consider:
+
+  - Using [Unidirectional/Bidirectional Real-Time Controllers](#4-real-time-control)
+  - Using [Async APIs](#5-async-readwrite) in a low-speed bypass loop
+</Callout>
+
+### 5.2 Example
+```python
+import asyncio
+import wujihandpy
+
+async def main():
+    hand = wujihandpy.Hand()
+    try:
+        await hand.write_joint_enabled_async(True)
+        # Execute the following tasks in parallel:
+        # - Move index finger joint 1 to 1.57 rad (approximately 90° downward)
+        # - Move index finger joint 3 to 1.57 rad (approximately 90° downward)
+        # - Wait for 0.5 seconds simultaneously
+        await asyncio.gather(
+            hand.finger(1).joint(0).write_joint_target_position_async(1.57),
+            hand.finger(1).joint(2).write_joint_target_position_async(1.57),
+            asyncio.sleep(0.5),
+        )
+    finally:
+        await hand.write_joint_enabled_async(False)
+
+# Start the event loop and run the main task
+asyncio.run(main())
+```
+
+### 5.3 Advanced Examples
+- [example/4.async.py](https://github.com/wuji-technology/wujihandpy/blob/main/example/4.async.py)

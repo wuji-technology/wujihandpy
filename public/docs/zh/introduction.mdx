@@ -1,0 +1,170 @@
+---
+title: 入门
+description: 了解 Wuji Hand SDK (wujihandpy) 的安装配置、快速上手示例及核心概念，包括设备模型和数据模型。
+---
+
+## 1. 兼容性与要求
+- CPU：x86_64 (AMD64) / arm64 (aarch64)
+- Python：3.8–3.14
+- 操作系统：Ubuntu 22.04 LTS / Ubuntu 24.04 LTS
+
+## 2. 安装指南
+本节介绍 wujihandpy 的安装方法以及常见安装问题的解决方案。  
+
+### 2.1 安装
+wujihandpy 支持 `pip` 一键安装：
+```bash
+pip install wujihandpy
+```
+<Callout type="warning">
+  说明：除非希望对 wujihandpy 进行二次开发，否则请勿将 wujihandpy 的 Git Repo 克隆至本地，否则可能导致 IDE 误判 .pyi 文件的位置，造成代码补全异常。
+</Callout>
+
+Linux 需配置 udev 以允许非 root 访问 USB：
+```bash
+echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0483", MODE="0666"' |
+sudo tee /etc/udev/rules.d/95-wujihand.rules &&
+sudo udevadm control --reload-rules &&
+sudo udevadm trigger
+```
+
+### 2.2 故障排除
+
+#### 2.2.1 升级 pip
+若出现 `Could not find a version that satisfies the requirement`（以 Ubuntu 20.04 为例）：
+```text
+ERROR: Could not find a version that satisfies the requirement wujihandpy (from versions: none)
+ERROR: No matching distribution found for wujihandpy
+```
+考虑尝试升级 pip，并使用升级后的 pip 安装：
+```bash
+python3 -m pip install --upgrade pip && python3 -m pip install wujihandpy
+```
+若问题未解决，请确认系统版本和 Python 版本是否符合 [兼容性与要求](#1-兼容性与要求)。
+
+#### 2.2.2 使用虚拟环境
+若出现 `This environment is externally managed`（以 Ubuntu 24.04 为例）：
+```text
+error: externally-managed-environment
+
+× This environment is externally managed
+╰─> To install Python packages system-wide, try apt install
+    python3-xyz, where xyz is the package you are trying to
+    install.
+
+    If you wish to install a non-Debian-packaged Python package,
+    create a virtual environment using python3 -m venv path/to/venv.
+    Then use path/to/venv/bin/python and path/to/venv/bin/pip. Make
+    sure you have python3-full installed.
+
+    If you wish to install a non-Debian packaged Python application,
+    it may be easiest to use pipx install xyz, which will manage a
+    virtual environment for you. Make sure you have pipx installed.
+
+    See /usr/share/doc/python3.12/README.venv for more information.
+
+note: If you believe this is a mistake, please contact your Python installation or OS distribution provider. You can override this, at the risk of breaking your Python installation or OS, by passing --break-system-packages.
+hint: See PEP 668 for the detailed specification.
+```
+这表示 pip 被系统包管理器接管，需要使用虚拟环境 (venv) 进行安装。
+
+## 3. 快速上手
+本节给出最小可运行示例，帮助快速测试灵巧手与 wujihandpy 库。
+```python
+# quickstart.py
+import time
+import wujihandpy
+
+hand = wujihandpy.Hand()
+try:
+    # 使能所有关节（阻塞，保证成功）
+    hand.write_joint_enabled(True)
+
+    # 使食指第 0 关节转至 1.57 rad（约 90° 下压）
+    hand.finger(1).joint(0).write_joint_target_position(1.57)
+
+    # 等待动作完成
+    time.sleep(0.5)
+finally:
+    # 使用完毕务必失能所有关节
+    hand.write_joint_enabled(False)
+```
+使用以下命令运行上述代码，即可看到灵巧手食指第一关节运动到指定位置：
+```bash
+python3 quickstart.py
+```
+
+### 3.1 故障排除
+
+#### 3.1.1 灵巧手未连接
+```text
+[ERROR] No device found with specified vendor id (0x0483)
+Traceback (most recent call last):
+  File "/workspaces/quickstart.py", line 5, in <module>
+    hand = wujihandpy.Hand()
+           ^^^^^^^^^^^^^^^^^
+RuntimeError: Failed to init.
+```
+若出现以上报错，请确认灵巧手已通过 USB 连接至电脑。
+可以通过 `lsusb` 确认设备是否正确识别，若设备已正确连接，则 `lsusb` 产生类似如下输出：
+```text
+Bus 001 Device 032: ID 0483:2000 WUJITECH WUJIHAND
+```
+当使用 USB C-to-C 线缆连接灵巧手时，部分电脑可能无法正确识别设备，请更换为 USB A-to-C 线缆重试。
+
+#### 3.1.2 权限不足
+```text
+[ERROR] No device found with specified vendor id (0x0483)
+[ERROR]   Device 1 (0483:2000): Ignored because device could not be opened: -3 (ERROR_ACCESS)
+[ERROR] Consider relaxing some filters
+Traceback (most recent call last):
+  File "/workspaces/quickstart.py", line 5, in <module>
+    hand = wujihandpy.Hand()
+           ^^^^^^^^^^^^^^^^^
+RuntimeError: Failed to init.
+```
+若出现以上报错（ERROR_ACCESS），表示当前用户对 USB 设备没有读写权限。
+请检查 [安装](#21-安装) 中的 Linux udev 配置部分，完成权限配置后重试。
+<Callout type="warning">
+  注意：若在 Docker 镜像中开发 (DevContainer)，udev 配置命令仍需在宿主机中执行。
+</Callout>
+
+## 4. 核心概念
+本节介绍 wujihandpy 的设备模型和数据模型，帮助理解库的整体架构和使用方式。
+
+### 4.1 设备模型
+wujihandpy 拥有三层设备模型，分别为 Hand, Finger, Joint。其层级关系为：`Hand.finger(i) -> Finger`，`Finger.joint(j) -> Joint`。其中，
+- **Hand** 表示完整的灵巧手设备，可通过 wujihandpy.Hand() 创建。
+- **Finger** 是对 Hand 的轻量引用，不持有独立状态，可多次构造和销毁。Finger 对象可由 `hand.finger(i)` (0 ≤ i < 5) 构造，i 与实际手指的具体对应关系如下：
+  - 0：拇指
+  - 1：食指
+  - 2：中指
+  - 3：无名指
+  - 4：小指
+- **Joint** 也是对 Hand 的轻量引用，不持有独立状态，可多次构造和销毁。Joint 对象可由 `finger.joint(j)` (0 ≤ j < 4) 构造，j 与实际关节的对应关系大致如下：
+  - 0：近端关节
+  - ...
+  - 3：远端关节
+
+### 4.2 数据模型
+数据是可读/可写的对象，与设备类似，数据也存在层级关系：
+<Callout type="info">
+  说明：此处仅列举部分数据字段作为示例，完整 API Reference 参见 [字段列表](../api-reference/#1-字段列表)。
+
+</Callout>
+- **Hand** 层：整手唯一的数据位于该层，例如：
+  - `handedness`: 手性（左/右手）
+  - `firmware_version`: 固件版本
+  - `system_time`: 上电时间
+
+- **Finger** 层：每手指持有一个独立副本的数据位于该层，目前该层无数据。
+
+- **Joint** 层：每关节持有一个独立副本的数据位于该层，例如：
+  - `joint_enabled`: 关节是否使能
+  - `joint_actual_position`: 关节当前位置
+  - `joint_target_position`: 关节目标位置
+  - `joint_temperature`: 关节当前温度
+  - `joint_error_code`: 关节错误码
+
+  > 说明：属于 Joint 层的所有数据，在命名上均以 `joint` 开头。
+

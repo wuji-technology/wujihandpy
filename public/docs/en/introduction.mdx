@@ -1,0 +1,165 @@
+---
+title: Getting Started
+description: Learn about Wuji Hand SDK (wujihandpy) installation, quick start examples, and core concepts including device model and data model.
+---
+
+## 1. Compatibility and Requirements
+- CPU: x86_64 (AMD64) / arm64 (aarch64)
+- Python: 3.8–3.14
+- OS: Ubuntu 22.04 LTS / Ubuntu 24.04 LTS
+
+## 2. Installation Guide
+This section covers the installation of wujihandpy, system requirements, and solutions to common installation issues.  
+
+### 2.1 Installation
+wujihandpy supports one-step installation via `pip`:
+```bash
+pip install wujihandpy
+```
+<Callout type="warning">
+  Note: Unless you intend to develop wujihandpy itself, do not clone the wujihandpy Git repository locally, as this may cause your IDE to misidentify the location of .pyi files, resulting in abnormal code completion.
+</Callout>
+
+On Linux, configure udev to allow non-root USB access:
+```bash
+echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="0483", MODE="0666"' |
+sudo tee /etc/udev/rules.d/95-wujihand.rules &&
+sudo udevadm control --reload-rules &&
+sudo udevadm trigger
+```
+
+### 2.2 Troubleshooting
+
+#### 2.2.1 Upgrade pip
+If you encounter `Could not find a version that satisfies the requirement` (using Ubuntu 20.04 as an example):
+```text
+ERROR: Could not find a version that satisfies the requirement wujihandpy (from versions: none)
+ERROR: No matching distribution found for wujihandpy
+```
+Consider upgrading pip and using the upgraded pip to install:
+```bash
+python3 -m pip install --upgrade pip && python3 -m pip install wujihandpy
+```
+If the issue remains unresolved, please verify that your system version and Python version meet the [Compatibility and Requirements](#1-compatibility-and-requirements).
+
+#### 2.2.2 Using Virtual Environments
+If you encounter `This environment is externally managed` (using Ubuntu 24.04 as an example):
+```text
+error: externally-managed-environment
+
+× This environment is externally managed
+╰─> To install Python packages system-wide, try apt install
+    python3-xyz, where xyz is the package you are trying to
+    install.
+
+    If you wish to install a non-Debian-packaged Python package,
+    create a virtual environment using python3 -m venv path/to/venv.
+    Then use path/to/venv/bin/python and path/to/venv/bin/pip. Make
+    sure you have python3-full installed.
+
+    If you wish to install a non-Debian packaged Python application,
+    it may be easiest to use pipx install xyz, which will manage a
+    virtual environment for you. Make sure you have pipx installed.
+
+    See /usr/share/doc/python3.12/README.venv for more information.
+
+note: If you believe this is a mistake, please contact your Python installation or OS distribution provider. You can override this, at the risk of breaking your Python installation or OS, by passing --break-system-packages.
+hint: See PEP 668 for the detailed specification.
+```
+This indicates that pip is managed by the system package manager and requires using a virtual environment (venv) for installation.
+
+## 3. Quick Start
+This section provides a minimal working example to help you quickly test the dexterous hand with the wujihandpy library.
+```python
+# quickstart.py
+import time
+import wujihandpy
+
+hand = wujihandpy.Hand()
+try:
+    # Enable all joints (blocking, ensures success)
+    hand.write_joint_enabled(True)
+
+    # Move index finger joint 0 to 1.57 rad (approximately 90° downward)
+    hand.finger(1).joint(0).write_joint_target_position(1.57)
+
+    # Wait for motion to complete
+    time.sleep(0.5)
+finally:
+    # Always disable all joints when finished
+    hand.write_joint_enabled(False)
+```
+Run the above code with the following command to see the dexterous hand's index finger first joint move to the specified position:
+```bash
+python3 quickstart.py
+```
+
+### 3.1 Troubleshooting
+
+#### 3.1.1 Dexterous Hand Not Connected
+```text
+[ERROR] No device found with specified vendor id (0x0483)
+Traceback (most recent call last):
+  File "/workspaces/quickstart.py", line 5, in <module>
+    hand = wujihandpy.Hand()
+           ^^^^^^^^^^^^^^^^^
+RuntimeError: Failed to init.
+```
+If you encounter the above error, please confirm that the dexterous hand is connected to the computer via USB.
+You can use `lsusb` to verify the device is properly recognized. If the device is correctly connected, `lsusb` will produce output similar to:
+```text
+Bus 001 Device 032: ID 0483:2000 WUJITECH WUJIHAND
+```
+When using a USB C-to-C cable to connect the dexterous hand, some computers may not properly recognize the device. Please try replacing it with a USB A-to-C cable.
+
+#### 3.1.2 Insufficient Permissions
+```text
+[ERROR] No device found with specified vendor id (0x0483)
+[ERROR]   Device 1 (0483:2000): Ignored because device could not be opened: -3 (ERROR_ACCESS)
+[ERROR] Consider relaxing some filters
+Traceback (most recent call last):
+  File "/workspaces/quickstart.py", line 5, in <module>
+    hand = wujihandpy.Hand()
+           ^^^^^^^^^^^^^^^^^
+RuntimeError: Failed to init.
+```
+If you encounter the above error (ERROR_ACCESS), it indicates that the current user does not have read/write permissions for the USB device.
+Please check the Linux udev configuration section in [Installation](#21-installation), complete the permission configuration, and try again.
+> Note: If developing in a Docker container (DevContainer), the udev configuration commands must still be executed on the host machine.
+
+## 4. Core Concepts
+This section introduces wujihandpy's device model and data model to help you understand the library's overall architecture and usage patterns.
+
+### 4.1 Device Model
+wujihandpy has a three-layer device model: Hand, Finger, and Joint. The hierarchy is: `Hand.finger(i) -> Finger`, `Finger.joint(j) -> Joint`. Specifically:
+- **Hand** represents the complete dexterous hand device and can be created via wujihandpy.Hand().
+- **Finger** is a lightweight reference to Hand, does not hold independent state, and can be constructed and destroyed multiple times. Finger objects can be constructed via `hand.finger(i)` (0 ≤ i < 5), where i corresponds to actual fingers as follows:
+  - 0: Thumb
+  - 1: Index finger
+  - 2: Middle finger
+  - 3: Ring finger
+  - 4: Pinky finger
+- **Joint** is also a lightweight reference to Hand, does not hold independent state, and can be constructed and destroyed multiple times. Joint objects can be constructed via `finger.joint(j)` (0 ≤ j < 4), where j roughly corresponds to actual joints as follows:
+  - 0: Proximal joint
+  - ...
+  - 3: Distal joint
+
+### 4.2 Data Model
+Data consists of readable/writable objects. Similar to devices, data also has a hierarchical relationship:
+> Note: Only some data fields are listed here as examples. For the complete API Reference, see [Field List](../api-reference/#1-field-list).
+- **Hand** layer: Data unique to the entire hand resides at this layer, for example:
+  - `handedness`: Handedness (left/right hand)
+  - `firmware_version`: Firmware version
+  - `system_time`: Uptime
+
+- **Finger** layer: Data where each finger holds an independent copy resides at this layer. Currently, this layer has no data.
+
+- **Joint** layer: Data where each joint holds an independent copy resides at this layer, for example:
+  - `joint_enabled`: Whether the joint is enabled
+  - `joint_actual_position`: Current joint position
+  - `joint_target_position`: Target joint position
+  - `joint_temperature`: Current joint temperature
+  - `joint_error_code`: Joint error code
+
+  > Note: All data belonging to the Joint layer is prefixed with `joint` in naming.
+
