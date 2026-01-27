@@ -2,8 +2,6 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![Release](https://img.shields.io/github/v/release/wuji-technology/wujihandpy)](https://github.com/wuji-technology/wujihandpy/releases)
 
-Visit Wuji Docs Center to read the [Wuji Hand SDK User Guide](https://docs.wuji.tech/docs/en/wuji-hand/latest/sdk-user-guide/introduction).
-
 Wuji Hand SDK: C++ core with Python bindings, for controlling and communicating with Wuji Hand. WujihandPy is the Python binding of [WujihandCpp](wujihandcpp/README.md), providing an easy-to-use Python API for Wujihand dexterous-hand devices. Supports synchronous, asynchronous, unchecked operations and real-time control.
 
 **Get started with [Quick Start](#quick-start). For detailed documentation, please refer to [SDK Tutorial](https://docs.wuji.tech/docs/en/wuji-hand/latest/sdk-user-guide/introduction) on Wuji Docs Center.**
