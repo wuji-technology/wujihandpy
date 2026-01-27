@@ -1,0 +1,803 @@
+---
+title: API Reference
+description: Complete Wuji Hand SDK (wujihandpy) API reference, including field lists and method descriptions for Hand, Finger, and Joint classes.
+---
+
+## 1. Field List
+This section introduces all available data fields in wujihandpy.
+
+### 1.1 Hand Layer
+This layer contains device-unique general fields, such as handedness, firmware version, etc.
+#### handedness
+This field indicates the handedness of the dexterous hand (left/right hand, 0 for left, 1 for right).
+- **Type**: `uint8`
+- **Read/Write**: Read-only
+#### firmware_version
+This field indicates the version number of the dexterous hand firmware.
+- **Type**: `uint32`
+- **Read/Write**: Read-only
+#### firmware_date
+This field indicates the compilation date of the dexterous hand firmware.
+- **Type**: `uint32`
+- **Read/Write**: Read-only
+#### system_time
+This field indicates the system running time of the dexterous hand, in milliseconds.
+- **Type**: `uint32`
+- **Read/Write**: Read-only
+#### temperature
+This field indicates the current temperature near the wrist of the dexterous hand, in degrees Celsius.
+- **Type**: `float32`
+- **Read/Write**: Read-only
+#### input_voltage
+This field indicates the measured input voltage of the dexterous hand, in volts.
+- **Type**: `float32`
+- **Read/Write**: Read-only
+
+### 1.2 Joint Layer
+This layer contains fields where each joint holds an independent copy, such as enabled status, target position, etc.
+#### joint_hardware_version
+This field records the version number of the joint driver board firmware.
+- **Type**: `uint32`
+- **Read/Write**: Read-only
+#### joint_hardware_date
+This field records the compilation date of the joint driver board firmware.
+- **Type**: `uint32`
+- **Read/Write**: Read-only
+#### joint_control_mode
+This field is used to set the control mode of the joint.
+- **Type**: `uint16`
+- **Read/Write**: Write-only
+
+> Note: The mode switches automatically, and this field should not be modified under normal circumstances.
+
+#### joint_sin_level
+This field is used to set the sine wave excitation level of the joint drive.
+- **Type**: `uint16`
+- **Read/Write**: Write-only
+
+> Note: This field is used for internal debugging and should not be modified under normal circumstances.
+
+#### joint_effort_limit
+This field is used to set the upper effort limit allowed by the joint.
+- **Type**: `float64`
+- **Unit**: Ampere (A)
+- **Default**: `1.5`
+- **Valid Range**: `0.0 ~ 3.5` (values exceeding 3.5 will be clamped to 3.5)
+- **Read/Write**: Read-Write
+
+<Callout type="info">
+**What is Effort?**
+
+Effort is the actuation value in current space, filtered before output. It is not the actual measured current—think of it as relative actuation strength, useful for load monitoring and collision detection. See [joint_effort](#joint_effort) for details.
+</Callout>
+
+<Callout type="warning">
+**Thermal Protection: Effort Limit is dynamically adjusted based on temperature**
+
+To protect the device, the firmware automatically reduces the effective effort limit based on joint temperature:
+
+| Temperature Status | Effective Effort Limit |
+|-------------------|------------------------|
+| Normal | User-set value (default 1.5A) |
+| Temperature Warning (Tier 1) | User-set value × 70% |
+| Temperature Alert (Tier 2) | User-set value × 40% |
+
+When the temperature returns to a safe range, the effort limit automatically recovers. The value returned by `read_joint_effort_limit()` is the user-set value, not the current effective value.
+</Callout>
+
+<Callout type="error">
+**Warning: Modifying Effort Limit may cause device damage**
+
+Modifying this parameter changes the maximum output capability of the joint. Users are responsible for any damage caused by adjusting the effort limit.
+
+- Default value of 1.5 is suitable for most applications
+- Maximum value is 3.5, values exceeding this will be automatically clamped
+- Increasing this value increases joint load capacity but also increases the risk of damage
+- Affects joint lifespan and accelerates component wear with unpredictable impact
+- May cause irreversible damage to joints under certain operating conditions
+- May accelerate thermal protection triggering, reducing continuous operation time
+- May cause other serious consequences beyond those listed above
+</Callout>
+
+#### joint_bus_voltage
+This field records the current measured bus voltage of the joint.
+- **Type**: `float32`
+- **Read/Write**: Read-only
+#### joint_temperature
+This field records the current temperature of the joint driver board, in degrees Celsius.
+- **Type**: `float32`
+- **Read/Write**: Read-only
+#### joint_reset_error
+Writing `1` to this field can clear the error status reported by the joint.
+- **Type**: `uint16`
+- **Read/Write**: Write-only
+
+<Callout type="warning">
+  This field can only clear error codes and cannot resolve issues with the dexterous hand.
+  Do not abuse this field, especially do not use it in a loop, as it may cause damage to the dexterous hand.
+</Callout>
+
+#### joint_error_code
+This field indicates the current error code of each joint, used for diagnosing operational status.
+A value of `0` indicates no abnormality in the joint.
+- **Type**: `uint32`
+- **Read/Write**: Read-only
+
+#### joint_effort
+This field provides real-time effort feedback of the joint.
+- **Type**: `float32`
+- **Unit**: Ampere (A)
+- **Read/Write**: Read-only
+
+<Callout type="info">
+**Understanding Effort**
+
+Effort is the actuation effort in current space, filtered before output.
+- It is **not** the actual measured current
+- It is **not** the direct output of the current loop
+- Should be interpreted as relative actuation strength, suitable for load monitoring and collision detection
+
+Typical use cases:
+- Collision detection: sudden increase in effort indicates joint obstruction
+- Output monitoring: calculate output percentage via `effort / effort_limit`
+</Callout>
+
+#### joint_enabled
+This field controls the enabling and disabling of the joint.
+- **Type**: `bool`
+- **Default**: `False`
+- **Valid Range**: `True / False`
+- **Read/Write**: Write-only
+#### joint_actual_position
+This field provides the actual position of the joint.
+- **Type**: `float64`
+- **Read/Write**: Read-only
+#### joint_target_position
+Writing to this field can issue the target control angle of the joint. If the value exceeds the valid range, it will be automatically clamped to the allowed interval.
+- **Type**: `float64`
+- **Valid Range**: `joint_lower_limit ~ joint_upper_limit`
+- **Read/Write**: Write-only
+#### joint_upper_limit
+This field records the upper position limit of the joint.
+- **Type**: `float64`
+- **Read/Write**: Read-only
+
+<Callout type="info">
+**Difference from URDF Joint Range**
+
+There are slight precision errors during joint processing, causing the actual physical limits of each joint to vary slightly.
+The dexterous hand calibrates the actual limits of each joint at the factory, and the results are written to the `joint_upper_limit` and `joint_lower_limit` fields.
+Therefore, these two fields record the calibrated actual physical limit values, which are usually slightly larger than the range defined in the URDF file.
+
+The joint range in the URDF file is a theoretical design value, conservatively scaled to account for processing errors, and can be used for simulation or neural network training.
+While `joint_upper_limit` and `joint_lower_limit` represent the actual measured range of motion.
+</Callout>
+
+#### joint_lower_limit
+This field records the lower position limit of the joint.
+- **Type**: `float64`
+- **Read/Write**: Read-only
+
+## 2. API List
+### 2.1 Hand Class
+
+#### 2.1.1 Constructor
+- `__init__(serial_number=None, usb_pid=-1, usb_vid=1155, mask=None) -> None`
+  *Initialize connection to the dexterous hand, supports specifying device via serial number, USB ID, or device mask*
+
+#### 2.1.2 Finger Access
+- `finger(index) -> Finger`
+  *Get the finger object at the specified index, index range 0-4*
+
+#### 2.1.3 System Information
+
+##### Firmware Information
+- `read_firmware_version(timeout=0.5) -> uint32`
+  *Synchronously read firmware version*
+- `read_firmware_version_async(timeout=0.5) -> Awaitable[uint32]`
+  *Asynchronously read firmware version*
+- `read_firmware_version_unchecked(timeout=0.5) -> None`
+  *Non-blocking read firmware version*
+- `get_firmware_version() -> uint32`
+  *Get cached firmware version*
+
+- `read_firmware_date(timeout=0.5) -> uint32`
+  *Synchronously read firmware compilation date*
+- `read_firmware_date_async(timeout=0.5) -> Awaitable[uint32]`
+  *Asynchronously read firmware compilation date*
+- `read_firmware_date_unchecked(timeout=0.5) -> None`
+  *Non-blocking read firmware compilation date*
+- `get_firmware_date() -> uint32`
+  *Get cached firmware compilation date*
+
+- `read_handedness(timeout=0.5) -> uint8`
+  *Synchronously read left/right hand identifier (0=left, 1=right)*
+- `read_handedness_async(timeout=0.5) -> Awaitable[uint8]`
+  *Asynchronously read left/right hand identifier*
+- `read_handedness_unchecked(timeout=0.5) -> None`
+  *Non-blocking read left/right hand identifier*
+- `get_handedness() -> uint8`
+  *Get cached left/right hand identifier*
+
+##### System Status
+- `read_system_time(timeout=0.5) -> uint32`
+  *Synchronously read system running time (milliseconds)*
+- `read_system_time_async(timeout=0.5) -> Awaitable[uint32]`
+  *Asynchronously read system running time*
+- `read_system_time_unchecked(timeout=0.5) -> None`
+  *Non-blocking read system running time*
+- `get_system_time() -> uint32`
+  *Get cached system running time*
+
+- `read_temperature(timeout=0.5) -> float32`
+  *Synchronously read palm temperature (Celsius)*
+- `read_temperature_async(timeout=0.5) -> Awaitable[float32]`
+  *Asynchronously read palm temperature*
+- `read_temperature_unchecked(timeout=0.5) -> None`
+  *Non-blocking read palm temperature*
+- `get_temperature() -> float32`
+  *Get cached palm temperature*
+
+- `read_input_voltage(timeout=0.5) -> float32`
+  *Synchronously read input voltage (volts)*
+- `read_input_voltage_async(timeout=0.5) -> Awaitable[float32]`
+  *Asynchronously read input voltage*
+- `read_input_voltage_unchecked(timeout=0.5) -> None`
+  *Non-blocking read input voltage*
+- `get_input_voltage() -> float32`
+  *Get cached input voltage*
+
+#### 2.1.4 Joint Data (Batch Read, Returns {5,4} Array)
+
+##### Position Data
+- `read_joint_actual_position(timeout=0.5) -> NDArray[float64]`
+  *Synchronously read all joint actual positions (radians)*
+- `read_joint_actual_position_async(timeout=0.5) -> Awaitable[NDArray[float64]]`
+  *Asynchronously read all joint actual positions*
+- `read_joint_actual_position_unchecked(timeout=0.5) -> None`
+  *Non-blocking read all joint actual positions*
+- `get_joint_actual_position() -> NDArray[float64]`
+  *Get cached all joint actual positions*
+
+- `read_joint_upper_limit(timeout=0.5) -> NDArray[float64]`
+  *Synchronously read all joint upper limit positions (radians)*
+- `read_joint_upper_limit_async(timeout=0.5) -> Awaitable[NDArray[float64]]`
+  *Asynchronously read all joint upper limit positions*
+- `read_joint_upper_limit_unchecked(timeout=0.5) -> None`
+  *Non-blocking read all joint upper limit positions*
+- `get_joint_upper_limit() -> NDArray[float64]`
+  *Get cached all joint upper limit positions*
+
+- `read_joint_lower_limit(timeout=0.5) -> NDArray[float64]`
+  *Synchronously read all joint lower limit positions (radians)*
+- `read_joint_lower_limit_async(timeout=0.5) -> Awaitable[NDArray[float64]]`
+  *Asynchronously read all joint lower limit positions*
+- `read_joint_lower_limit_unchecked(timeout=0.5) -> None`
+  *Non-blocking read all joint lower limit positions*
+- `get_joint_lower_limit() -> NDArray[float64]`
+  *Get cached all joint lower limit positions*
+
+##### Status Monitoring
+- `read_joint_bus_voltage(timeout=0.5) -> NDArray[float32]`
+  *Synchronously read all joint bus voltages (volts)*
+- `read_joint_bus_voltage_async(timeout=0.5) -> Awaitable[NDArray[float32]]`
+  *Asynchronously read all joint bus voltages*
+- `read_joint_bus_voltage_unchecked(timeout=0.5) -> None`
+  *Non-blocking read all joint bus voltages*
+- `get_joint_bus_voltage() -> NDArray[float32]`
+  *Get cached all joint bus voltages*
+
+- `read_joint_temperature(timeout=0.5) -> NDArray[float32]`
+  *Synchronously read all joint temperatures (Celsius)*
+- `read_joint_temperature_async(timeout=0.5) -> Awaitable[NDArray[float32]]`
+  *Asynchronously read all joint temperatures*
+- `read_joint_temperature_unchecked(timeout=0.5) -> None`
+  *Non-blocking read all joint temperatures*
+- `get_joint_temperature() -> NDArray[float32]`
+  *Get cached all joint temperatures*
+
+- `read_joint_error_code(timeout=0.5) -> NDArray[uint32]`
+  *Synchronously read all joint error codes*
+- `read_joint_error_code_async(timeout=0.5) -> Awaitable[NDArray[uint32]]`
+  *Asynchronously read all joint error codes*
+- `read_joint_error_code_unchecked(timeout=0.5) -> None`
+  *Non-blocking read all joint error codes*
+- `get_joint_error_code() -> NDArray[uint32]`
+  *Get cached all joint error codes*
+
+##### Effort Limit Data
+- `read_joint_effort_limit(timeout=0.5) -> NDArray[float64]`
+  *Synchronously read all joint effort limits (Ampere)*
+- `read_joint_effort_limit_async(timeout=0.5) -> Awaitable[NDArray[float64]]`
+  *Asynchronously read all joint effort limits*
+- `read_joint_effort_limit_unchecked(timeout=0.5) -> None`
+  *Non-blocking read all joint effort limits*
+- `get_joint_effort_limit() -> NDArray[float64]`
+  *Get cached all joint effort limits*
+
+##### Hardware Information
+- `read_joint_hardware_version(timeout=0.5) -> NDArray[uint32]`
+  *Synchronously read all joint hardware versions*
+- `read_joint_hardware_version_async(timeout=0.5) -> Awaitable[NDArray[uint32]]`
+  *Asynchronously read all joint hardware versions*
+- `read_joint_hardware_version_unchecked(timeout=0.5) -> None`
+  *Non-blocking read all joint hardware versions*
+- `get_joint_hardware_version() -> NDArray[uint32]`
+  *Get cached all joint hardware versions*
+
+- `read_joint_hardware_date(timeout=0.5) -> NDArray[uint32]`
+  *Synchronously read all joint hardware production dates*
+- `read_joint_hardware_date_async(timeout=0.5) -> Awaitable[NDArray[uint32]]`
+  *Asynchronously read all joint hardware production dates*
+- `read_joint_hardware_date_unchecked(timeout=0.5) -> None`
+  *Non-blocking read all joint hardware production dates*
+- `get_joint_hardware_date() -> NDArray[uint32]`
+  *Get cached all joint hardware production dates*
+
+#### 2.1.5 Joint Control (Supports Single Value or {5,4} Array)
+
+##### Enable Control
+- `write_joint_enabled(value, timeout=0.5) -> None`
+  *Synchronously set all joint enable states*
+- `write_joint_enabled(value_array, timeout=0.5) -> None`
+  *Synchronously batch set each joint enable state*
+- `write_joint_enabled_async(value, timeout=0.5) -> Awaitable[None]`
+  *Asynchronously set all joint enable states*
+- `write_joint_enabled_async(value_array, timeout=0.5) -> Awaitable[None]`
+  *Asynchronously batch set each joint enable state*
+- `write_joint_enabled_unchecked(value, timeout=0.5) -> None`
+  *Non-blocking set all joint enable states*
+- `write_joint_enabled_unchecked(value_array, timeout=0.5) -> None`
+  *Non-blocking batch set each joint enable state*
+
+##### Position Control
+- `write_joint_target_position(value, timeout=0.5) -> None`
+  *Synchronously set all joint target positions (radians)*
+- `write_joint_target_position(value_array, timeout=0.5) -> None`
+  *Synchronously batch set each joint target position*
+- `write_joint_target_position_async(value, timeout=0.5) -> Awaitable[None]`
+  *Asynchronously set all joint target positions*
+- `write_joint_target_position_async(value_array, timeout=0.5) -> Awaitable[None]`
+  *Asynchronously batch set each joint target position*
+- `write_joint_target_position_unchecked(value, timeout=0.5) -> None`
+  *Non-blocking set all joint target positions*
+- `write_joint_target_position_unchecked(value_array, timeout=0.5) -> None`
+  *Non-blocking batch set each joint target position*
+
+##### Mode Control
+- `write_joint_control_mode(value, timeout=0.5) -> None`
+  *Synchronously set all joint control modes*
+- `write_joint_control_mode(value_array, timeout=0.5) -> None`
+  *Synchronously batch set each joint control mode*
+- `write_joint_control_mode_async(value, timeout=0.5) -> Awaitable[None]`
+  *Asynchronously set all joint control modes*
+- `write_joint_control_mode_async(value_array, timeout=0.5) -> Awaitable[None]`
+  *Asynchronously batch set each joint control mode*
+- `write_joint_control_mode_unchecked(value, timeout=0.5) -> None`
+  *Non-blocking set all joint control modes*
+- `write_joint_control_mode_unchecked(value_array, timeout=0.5) -> None`
+  *Non-blocking batch set each joint control mode*
+
+##### Effort Limit Configuration
+
+<Callout type="error">
+**Warning**: Modifying effort limit may cause device damage, see field description for details.
+</Callout>
+
+- `write_joint_effort_limit(value, timeout=0.5) -> None`
+  *Synchronously set all joint effort limits (Ampere)*
+- `write_joint_effort_limit(value_array, timeout=0.5) -> None`
+  *Synchronously batch set each joint effort limit*
+- `write_joint_effort_limit_async(value, timeout=0.5) -> Awaitable[None]`
+  *Asynchronously set all joint effort limits*
+- `write_joint_effort_limit_async(value_array, timeout=0.5) -> Awaitable[None]`
+  *Asynchronously batch set each joint effort limit*
+- `write_joint_effort_limit_unchecked(value, timeout=0.5) -> None`
+  *Non-blocking set all joint effort limits*
+- `write_joint_effort_limit_unchecked(value_array, timeout=0.5) -> None`
+  *Non-blocking batch set each joint effort limit*
+
+##### Other Parameter Configuration
+
+- `write_joint_sin_level(value, timeout=0.5) -> None`
+  *Synchronously set all joint sine wave excitation levels*
+- `write_joint_sin_level(value_array, timeout=0.5) -> None`
+  *Synchronously batch set each joint sine wave excitation level*
+- `write_joint_sin_level_async(value, timeout=0.5) -> Awaitable[None]`
+  *Asynchronously set all joint sine wave excitation levels*
+- `write_joint_sin_level_async(value_array, timeout=0.5) -> Awaitable[None]`
+  *Asynchronously batch set each joint sine wave excitation level*
+- `write_joint_sin_level_unchecked(value, timeout=0.5) -> None`
+  *Non-blocking set all joint sine wave excitation levels*
+- `write_joint_sin_level_unchecked(value_array, timeout=0.5) -> None`
+  *Non-blocking batch set each joint sine wave excitation level*
+
+- `write_joint_reset_error(value, timeout=0.5) -> None`
+  *Synchronously reset all joint errors*
+- `write_joint_reset_error(value_array, timeout=0.5) -> None`
+  *Synchronously batch reset each joint error*
+- `write_joint_reset_error_async(value, timeout=0.5) -> Awaitable[None]`
+  *Asynchronously reset all joint errors*
+- `write_joint_reset_error_async(value_array, timeout=0.5) -> Awaitable[None]`
+  *Asynchronously batch reset each joint error*
+- `write_joint_reset_error_unchecked(value, timeout=0.5) -> None`
+  *Non-blocking reset all joint errors*
+- `write_joint_reset_error_unchecked(value_array, timeout=0.5) -> None`
+  *Non-blocking batch reset each joint error*
+
+#### 2.1.6 Real-time Controller
+- `realtime_controller(enable_upstream, filter) -> IController`
+  *Create a real-time controller for high-frequency control scenarios*
+
+### 2.2 Finger Class
+
+#### 2.2.1 Joint Access
+- `joint(index) -> Joint`
+  *Get the joint object at the specified index, index range 0-3*
+
+#### 2.2.2 Joint Data (Returns 4-Element Array)
+
+##### Position Data
+- `read_joint_actual_position(timeout=0.5) -> NDArray[float64]`
+  *Synchronously read all joint actual positions of the finger (radians)*
+- `read_joint_actual_position_async(timeout=0.5) -> Awaitable[NDArray[float64]]`
+  *Asynchronously read all joint actual positions of the finger*
+- `read_joint_actual_position_unchecked(timeout=0.5) -> None`
+  *Non-blocking read all joint actual positions of the finger*
+- `get_joint_actual_position() -> NDArray[float64]`
+  *Get cached all joint actual positions of the finger*
+
+- `read_joint_upper_limit(timeout=0.5) -> NDArray[float64]`
+  *Synchronously read all joint upper limit positions of the finger (radians)*
+- `read_joint_upper_limit_async(timeout=0.5) -> Awaitable[NDArray[float64]]`
+  *Asynchronously read all joint upper limit positions of the finger*
+- `read_joint_upper_limit_unchecked(timeout=0.5) -> None`
+  *Non-blocking read all joint upper limit positions of the finger*
+- `get_joint_upper_limit() -> NDArray[float64]`
+  *Get cached all joint upper limit positions of the finger*
+
+- `read_joint_lower_limit(timeout=0.5) -> NDArray[float64]`
+  *Synchronously read all joint lower limit positions of the finger (radians)*
+- `read_joint_lower_limit_async(timeout=0.5) -> Awaitable[NDArray[float64]]`
+  *Asynchronously read all joint lower limit positions of the finger*
+- `read_joint_lower_limit_unchecked(timeout=0.5) -> None`
+  *Non-blocking read all joint lower limit positions of the finger*
+- `get_joint_lower_limit() -> NDArray[float64]`
+  *Get cached all joint lower limit positions of the finger*
+
+##### Status Monitoring
+- `read_joint_bus_voltage(timeout=0.5) -> NDArray[float32]`
+  *Synchronously read all joint bus voltages of the finger (volts)*
+- `read_joint_bus_voltage_async(timeout=0.5) -> Awaitable[NDArray[float32]]`
+  *Asynchronously read all joint bus voltages of the finger*
+- `read_joint_bus_voltage_unchecked(timeout=0.5) -> None`
+  *Non-blocking read all joint bus voltages of the finger*
+- `get_joint_bus_voltage() -> NDArray[float32]`
+  *Get cached all joint bus voltages of the finger*
+
+- `read_joint_temperature(timeout=0.5) -> NDArray[float32]`
+  *Synchronously read all joint temperatures of the finger (Celsius)*
+- `read_joint_temperature_async(timeout=0.5) -> Awaitable[NDArray[float32]]`
+  *Asynchronously read all joint temperatures of the finger*
+- `read_joint_temperature_unchecked(timeout=0.5) -> None`
+  *Non-blocking read all joint temperatures of the finger*
+- `get_joint_temperature() -> NDArray[float32]`
+  *Get cached all joint temperatures of the finger*
+
+- `read_joint_error_code(timeout=0.5) -> NDArray[uint32]`
+  *Synchronously read all joint error codes of the finger*
+- `read_joint_error_code_async(timeout=0.5) -> Awaitable[NDArray[uint32]]`
+  *Asynchronously read all joint error codes of the finger*
+- `read_joint_error_code_unchecked(timeout=0.5) -> None`
+  *Non-blocking read all joint error codes of the finger*
+- `get_joint_error_code() -> NDArray[uint32]`
+  *Get cached all joint error codes of the finger*
+
+##### Effort Limit Data
+- `read_joint_effort_limit(timeout=0.5) -> NDArray[float64]`
+  *Synchronously read all joint effort limits of the finger (Ampere)*
+- `read_joint_effort_limit_async(timeout=0.5) -> Awaitable[NDArray[float64]]`
+  *Asynchronously read all joint effort limits of the finger*
+- `read_joint_effort_limit_unchecked(timeout=0.5) -> None`
+  *Non-blocking read all joint effort limits of the finger*
+- `get_joint_effort_limit() -> NDArray[float64]`
+  *Get cached all joint effort limits of the finger*
+
+##### Hardware Information
+- `read_joint_hardware_version(timeout=0.5) -> NDArray[uint32]`
+  *Synchronously read all joint hardware versions of the finger*
+- `read_joint_hardware_version_async(timeout=0.5) -> Awaitable[NDArray[uint32]]`
+  *Asynchronously read all joint hardware versions of the finger*
+- `read_joint_hardware_version_unchecked(timeout=0.5) -> None`
+  *Non-blocking read all joint hardware versions of the finger*
+- `get_joint_hardware_version() -> NDArray[uint32]`
+  *Get cached all joint hardware versions of the finger*
+
+- `read_joint_hardware_date(timeout=0.5) -> NDArray[uint32]`
+  *Synchronously read all joint hardware production dates of the finger*
+- `read_joint_hardware_date_async(timeout=0.5) -> Awaitable[NDArray[uint32]]`
+  *Asynchronously read all joint hardware production dates of the finger*
+- `read_joint_hardware_date_unchecked(timeout=0.5) -> None`
+  *Non-blocking read all joint hardware production dates of the finger*
+- `get_joint_hardware_date() -> NDArray[uint32]`
+  *Get cached all joint hardware production dates of the finger*
+
+#### 2.2.3 Joint Control (Supports Single Value or 4-Element Array)
+
+##### Enable Control
+- `write_joint_enabled(value, timeout=0.5) -> None`
+  *Synchronously set all joint enable states of the finger*
+- `write_joint_enabled(value_array, timeout=0.5) -> None`
+  *Synchronously batch set each joint enable state of the finger*
+- `write_joint_enabled_async(value, timeout=0.5) -> Awaitable[None]`
+  *Asynchronously set all joint enable states of the finger*
+- `write_joint_enabled_async(value_array, timeout=0.5) -> Awaitable[None]`
+  *Asynchronously batch set each joint enable state of the finger*
+- `write_joint_enabled_unchecked(value, timeout=0.5) -> None`
+  *Non-blocking set all joint enable states of the finger*
+- `write_joint_enabled_unchecked(value_array, timeout=0.5) -> None`
+  *Non-blocking batch set each joint enable state of the finger*
+
+##### Position Control
+- `write_joint_target_position(value, timeout=0.5) -> None`
+  *Synchronously set all joint target positions of the finger (radians)*
+- `write_joint_target_position(value_array, timeout=0.5) -> None`
+  *Synchronously batch set each joint target position of the finger*
+- `write_joint_target_position_async(value, timeout=0.5) -> Awaitable[None]`
+  *Asynchronously set all joint target positions of the finger*
+- `write_joint_target_position_async(value_array, timeout=0.5) -> Awaitable[None]`
+  *Asynchronously batch set each joint target position of the finger*
+- `write_joint_target_position_unchecked(value, timeout=0.5) -> None`
+  *Non-blocking set all joint target positions of the finger*
+- `write_joint_target_position_unchecked(value_array, timeout=0.5) -> None`
+  *Non-blocking batch set each joint target position of the finger*
+
+##### Mode Control
+- `write_joint_control_mode(value, timeout=0.5) -> None`
+  *Synchronously set all joint control modes of the finger*
+- `write_joint_control_mode(value_array, timeout=0.5) -> None`
+  *Synchronously batch set each joint control mode of the finger*
+- `write_joint_control_mode_async(value, timeout=0.5) -> Awaitable[None]`
+  *Asynchronously set all joint control modes of the finger*
+- `write_joint_control_mode_async(value_array, timeout=0.5) -> Awaitable[None]`
+  *Asynchronously batch set each joint control mode of the finger*
+- `write_joint_control_mode_unchecked(value, timeout=0.5) -> None`
+  *Non-blocking set all joint control modes of the finger*
+- `write_joint_control_mode_unchecked(value_array, timeout=0.5) -> None`
+  *Non-blocking batch set each joint control mode of the finger*
+
+##### Effort Limit Configuration
+
+<Callout type="error">
+**Warning**: Modifying effort limit may cause device damage, see field description for details.
+</Callout>
+
+- `write_joint_effort_limit(value, timeout=0.5) -> None`
+  *Synchronously set all joint effort limits of the finger (Ampere)*
+- `write_joint_effort_limit(value_array, timeout=0.5) -> None`
+  *Synchronously batch set each joint effort limit of the finger*
+- `write_joint_effort_limit_async(value, timeout=0.5) -> Awaitable[None]`
+  *Asynchronously set all joint effort limits of the finger*
+- `write_joint_effort_limit_async(value_array, timeout=0.5) -> Awaitable[None]`
+  *Asynchronously batch set each joint effort limit of the finger*
+- `write_joint_effort_limit_unchecked(value, timeout=0.5) -> None`
+  *Non-blocking set all joint effort limits of the finger*
+- `write_joint_effort_limit_unchecked(value_array, timeout=0.5) -> None`
+  *Non-blocking batch set each joint effort limit of the finger*
+
+##### Other Parameter Configuration
+
+- `write_joint_sin_level(value, timeout=0.5) -> None`
+  *Synchronously set all joint sine wave excitation levels of the finger*
+- `write_joint_sin_level(value_array, timeout=0.5) -> None`
+  *Synchronously batch set each joint sine wave excitation level of the finger*
+- `write_joint_sin_level_async(value, timeout=0.5) -> Awaitable[None]`
+  *Asynchronously set all joint sine wave excitation levels of the finger*
+- `write_joint_sin_level_async(value_array, timeout=0.5) -> Awaitable[None]`
+  *Asynchronously batch set each joint sine wave excitation level of the finger*
+- `write_joint_sin_level_unchecked(value, timeout=0.5) -> None`
+  *Non-blocking set all joint sine wave excitation levels of the finger*
+- `write_joint_sin_level_unchecked(value_array, timeout=0.5) -> None`
+  *Non-blocking batch set each joint sine wave excitation level of the finger*
+
+- `write_joint_reset_error(value, timeout=0.5) -> None`
+  *Synchronously reset all joint errors of the finger*
+- `write_joint_reset_error(value_array, timeout=0.5) -> None`
+  *Synchronously batch reset each joint error of the finger*
+- `write_joint_reset_error_async(value, timeout=0.5) -> Awaitable[None]`
+  *Asynchronously reset all joint errors of the finger*
+- `write_joint_reset_error_async(value_array, timeout=0.5) -> Awaitable[None]`
+  *Asynchronously batch reset each joint error of the finger*
+- `write_joint_reset_error_unchecked(value, timeout=0.5) -> None`
+  *Non-blocking reset all joint errors of the finger*
+- `write_joint_reset_error_unchecked(value_array, timeout=0.5) -> None`
+  *Non-blocking batch reset each joint error of the finger*
+
+### 2.3 Joint Class
+
+#### 2.3.1 Joint Data (Returns Single Value)
+
+##### Position Data
+- `read_joint_actual_position(timeout=0.5) -> float64`
+  *Synchronously read joint actual position (radians)*
+- `read_joint_actual_position_async(timeout=0.5) -> Awaitable[float64]`
+  *Asynchronously read joint actual position*
+- `read_joint_actual_position_unchecked(timeout=0.5) -> None`
+  *Non-blocking read joint actual position*
+- `get_joint_actual_position() -> float64`
+  *Get cached joint actual position*
+
+- `read_joint_upper_limit(timeout=0.5) -> float64`
+  *Synchronously read joint upper limit position (radians)*
+- `read_joint_upper_limit_async(timeout=0.5) -> Awaitable[float64]`
+  *Asynchronously read joint upper limit position*
+- `read_joint_upper_limit_unchecked(timeout=0.5) -> None`
+  *Non-blocking read joint upper limit position*
+- `get_joint_upper_limit() -> float64`
+  *Get cached joint upper limit position*
+
+- `read_joint_lower_limit(timeout=0.5) -> float64`
+  *Synchronously read joint lower limit position (radians)*
+- `read_joint_lower_limit_async(timeout=0.5) -> Awaitable[float64]`
+  *Asynchronously read joint lower limit position*
+- `read_joint_lower_limit_unchecked(timeout=0.5) -> None`
+  *Non-blocking read joint lower limit position*
+- `get_joint_lower_limit() -> float64`
+  *Get cached joint lower limit position*
+
+##### Status Monitoring
+- `read_joint_bus_voltage(timeout=0.5) -> float32`
+  *Synchronously read joint bus voltage (volts)*
+- `read_joint_bus_voltage_async(timeout=0.5) -> Awaitable[float32]`
+  *Asynchronously read joint bus voltage*
+- `read_joint_bus_voltage_unchecked(timeout=0.5) -> None`
+  *Non-blocking read joint bus voltage*
+- `get_joint_bus_voltage() -> float32`
+  *Get cached joint bus voltage*
+
+- `read_joint_temperature(timeout=0.5) -> float32`
+  *Synchronously read joint temperature (Celsius)*
+- `read_joint_temperature_async(timeout=0.5) -> Awaitable[float32]`
+  *Asynchronously read joint temperature*
+- `read_joint_temperature_unchecked(timeout=0.5) -> None`
+  *Non-blocking read joint temperature*
+- `get_joint_temperature() -> float32`
+  *Get cached joint temperature*
+
+- `read_joint_error_code(timeout=0.5) -> uint32`
+  *Synchronously read joint error code*
+- `read_joint_error_code_async(timeout=0.5) -> Awaitable[uint32]`
+  *Asynchronously read joint error code*
+- `read_joint_error_code_unchecked(timeout=0.5) -> None`
+  *Non-blocking read joint error code*
+- `get_joint_error_code() -> uint32`
+  *Get cached joint error code*
+
+##### Effort Limit Data
+- `read_joint_effort_limit(timeout=0.5) -> float64`
+  *Synchronously read joint effort limit (Ampere)*
+- `read_joint_effort_limit_async(timeout=0.5) -> Awaitable[float64]`
+  *Asynchronously read joint effort limit*
+- `read_joint_effort_limit_unchecked(timeout=0.5) -> None`
+  *Non-blocking read joint effort limit*
+- `get_joint_effort_limit() -> float64`
+  *Get cached joint effort limit*
+
+##### Hardware Information
+- `read_joint_hardware_version(timeout=0.5) -> uint32`
+  *Synchronously read joint hardware version*
+- `read_joint_hardware_version_async(timeout=0.5) -> Awaitable[uint32]`
+  *Asynchronously read joint hardware version*
+- `read_joint_hardware_version_unchecked(timeout=0.5) -> None`
+  *Non-blocking read joint hardware version*
+- `get_joint_hardware_version() -> uint32`
+  *Get cached joint hardware version*
+
+- `read_joint_hardware_date(timeout=0.5) -> uint32`
+  *Synchronously read joint hardware production date*
+- `read_joint_hardware_date_async(timeout=0.5) -> Awaitable[uint32]`
+  *Asynchronously read joint hardware production date*
+- `read_joint_hardware_date_unchecked(timeout=0.5) -> None`
+  *Non-blocking read joint hardware production date*
+- `get_joint_hardware_date() -> uint32`
+  *Get cached joint hardware production date*
+
+#### 2.3.2 Joint Control (Single Value)
+
+##### Enable Control
+- `write_joint_enabled(value, timeout=0.5) -> None`
+  *Synchronously set joint enable state*
+- `write_joint_enabled_async(value, timeout=0.5) -> Awaitable[None]`
+  *Asynchronously set joint enable state*
+- `write_joint_enabled_unchecked(value, timeout=0.5) -> None`
+  *Non-blocking set joint enable state*
+
+##### Position Control
+- `write_joint_target_position(value, timeout=0.5) -> None`
+  *Synchronously set joint target position (radians)*
+- `write_joint_target_position_async(value, timeout=0.5) -> Awaitable[None]`
+  *Asynchronously set joint target position*
+- `write_joint_target_position_unchecked(value, timeout=0.5) -> None`
+  *Non-blocking set joint target position*
+
+##### Mode Control
+- `write_joint_control_mode(value, timeout=0.5) -> None`
+  *Synchronously set joint control mode*
+- `write_joint_control_mode_async(value, timeout=0.5) -> Awaitable[None]`
+  *Asynchronously set joint control mode*
+- `write_joint_control_mode_unchecked(value, timeout=0.5) -> None`
+  *Non-blocking set joint control mode*
+
+##### Effort Limit Configuration
+
+<Callout type="error">
+**Warning**: Modifying effort limit may cause device damage, see field description for details.
+</Callout>
+
+- `write_joint_effort_limit(value, timeout=0.5) -> None`
+  *Synchronously set joint effort limit (Ampere)*
+- `write_joint_effort_limit_async(value, timeout=0.5) -> Awaitable[None]`
+  *Asynchronously set joint effort limit*
+- `write_joint_effort_limit_unchecked(value, timeout=0.5) -> None`
+  *Non-blocking set joint effort limit*
+
+##### Other Parameter Configuration
+
+- `write_joint_sin_level(value, timeout=0.5) -> None`
+  *Synchronously set joint sine wave excitation level*
+- `write_joint_sin_level_async(value, timeout=0.5) -> Awaitable[None]`
+  *Asynchronously set joint sine wave excitation level*
+- `write_joint_sin_level_unchecked(value, timeout=0.5) -> None`
+  *Non-blocking set joint sine wave excitation level*
+
+- `write_joint_reset_error(value, timeout=0.5) -> None`
+  *Synchronously reset joint error*
+- `write_joint_reset_error_async(value, timeout=0.5) -> Awaitable[None]`
+  *Asynchronously reset joint error*
+- `write_joint_reset_error_unchecked(value, timeout=0.5) -> None`
+  *Non-blocking reset joint error*
+
+### 2.4 IController Interface
+
+#### 2.4.1 Context Management
+- `__enter__() -> IController`
+  *Context manager entry supporting with statement*
+- `__exit__(arg0, arg1, arg2) -> None`
+  *Context manager exit supporting with statement*
+- `close() -> None`
+  *Manually close the real-time controller*
+
+#### 2.4.2 Real-time Data Retrieval
+- `get_joint_actual_position() -> NDArray[float64]`
+  *Real-time get all joint actual positions (high-frequency read, returns {5,4} array)*
+- `get_joint_actual_effort() -> NDArray[float64]`
+  *Real-time get all joint efforts (high-frequency read, returns {5,4} array, unit: Ampere)*
+
+<Callout type="info">
+**Effort Real-time Feedback**
+
+`get_joint_actual_effort()` returns the actuation effort in current space, filtered before output.
+- Only available in real-time controller mode
+- Suitable for collision detection and load monitoring
+- Calculate output percentage via `effort / effort_limit`
+</Callout>
+
+#### 2.4.3 Real-time Data Setting
+- `set_joint_target_position(value_array) -> None`
+  *Real-time set all joint target positions (high-frequency write, parameter is {5,4} array)*
+
+---
+
+### 2.5 Array Shape Description
+
+- **Hand Class Batch Operations**: Returns/receives arrays shaped `{5, 4}` (5 fingers × 4 joints)
+- **Finger Class Batch Operations**: Returns/receives arrays shaped `{4}` (4 joints)
+- **Joint Class Operations**: Returns/receives scalar values (single joint)
+- **IController Operations**: Handles arrays shaped `{5, 4}` for high-frequency real-time control
+
+### 2.6 Operation Mode Description
+
+- **Synchronous Operations** (`read_*`, `write_*`): Blocking operations, ensure read/write success
+- **Asynchronous Operations** (`*_async`): Returns Awaitable objects, supports await syntax
+- **Non-blocking Operations** (`*_unchecked`): Returns immediately, does not guarantee operation success, suitable for high-frequency scenarios
+- **Cached Retrieval** (`get_*`): Gets the most recently read data, does not block

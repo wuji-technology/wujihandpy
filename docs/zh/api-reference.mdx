@@ -1,0 +1,803 @@
+---
+title: API 参考
+description: Wuji Hand SDK (wujihandpy) 完整 API 参考，包括 Hand、Finger、Joint 类的字段列表和方法说明。
+---
+
+## 1. 字段列表
+本节介绍 wujihandpy 中所有可用的数据字段。
+
+### 1.1 Hand 层
+该层包含整手设备唯一的通用字段，例如手性、固件版本等。  
+#### handedness
+该字段表示灵巧手的手性（左/右手，0 表示左手，1 表示右手）。  
+- **类型**：`uint8`
+- **读写属性**：只读
+#### firmware_version
+该字段表示灵巧手固件的版本号。  
+- **类型**：`uint32`
+- **读写属性**：只读
+#### firmware_date
+该字段表示灵巧手固件的编译日期。  
+- **类型**：`uint32`
+- **读写属性**：只读
+#### system_time
+该字段表示灵巧手系统运行时间，单位为毫秒。  
+- **类型**：`uint32`
+- **读写属性**：只读
+#### temperature
+该字段表示灵巧手手腕附近的当前温度，单位为摄氏度。  
+- **类型**：`float32`
+- **读写属性**：只读
+#### input_voltage
+该字段表示灵巧手母线电压的实测值，单位为伏特。  
+- **类型**：`float32`
+- **读写属性**：只读
+
+### 1.2 Joint 层
+该层包含每关节持有一个独立副本的字段，例如使能、目标位置等。  
+#### joint_hardware_version
+该字段记录关节驱动板固件的版本号。  
+- **类型**：`uint32`
+- **读写属性**：只读
+#### joint_hardware_date
+该字段记录关节驱动板固件的编译日期。  
+- **类型**：`uint32`
+- **读写属性**：只读
+#### joint_control_mode
+该字段用于设置关节的控制模式。  
+- **类型**：`uint16`
+- **读写属性**：只写
+
+> 说明：模式会自动切换，一般情况下不应修改该字段。
+
+#### joint_sin_level
+该字段用于设置关节驱动的正弦波激励档位。  
+- **类型**：`uint16`
+- **读写属性**：只写
+
+> 说明：该字段用于内部调试，一般情况下不应修改该字段。
+
+#### joint_effort_limit
+该字段用于设置关节允许的 effort 上限。
+- **类型**：`float64`
+- **单位**：安培 (A)
+- **默认值**：`1.5`
+- **合法范围**：`0.0 ~ 3.5`（超过 3.5 会被限制为 3.5）
+- **读写属性**：读写
+
+<Callout type="info">
+**什么是 Effort？**
+
+Effort 是电流空间的执行器作用量，经过滤波处理后输出。它不是实际测量的电流值，应将其理解为相对驱动强度，适用于负载监控和碰撞检测等场景。详见 [joint_effort](#joint_effort) 字段。
+</Callout>
+
+<Callout type="warning">
+**过热保护：Effort 限制 会随温度动态调整**
+
+为保护设备，固件会根据关节温度自动降低实际生效的 effort 限制：
+
+| 温度状态 | 实际 Effort 限制 |
+|---------|-----------------|
+| 正常 | 用户设定值 (默认 1.5A) |
+| 温度预警 (Tier 1) | 用户设定值 × 70% |
+| 温度告警 (Tier 2) | 用户设定值 × 40% |
+
+当温度恢复到安全范围后，effort 限制会自动恢复。通过 `read_joint_effort_limit()` 读取的是用户设定值，而非当前实际生效值。
+</Callout>
+
+<Callout type="error">
+**警告：修改 Effort 限制 可能导致设备损坏**
+
+修改此参数会改变关节的最大输出能力。如因调整 effort limit 导致设备损坏，用户需自行承担责任。
+
+- 默认值 1.5 适用于大多数应用场景
+- 最大值 3.5，超过此值会被自动限制
+- 增大此值会增加关节负载能力，但也增加损坏风险
+- 影响相关关节运动寿命，加速各零件磨损且无法预估影响大小
+- 可能在某工况下直接造成相关关节出现不可逆的损坏
+- 可能加速关节热保护触发，减少持续运动时间
+- 可能出现除以上情况下的其他严重后果
+</Callout>
+
+#### joint_bus_voltage
+该字段记录关节当前的母线电压实测值。  
+- **类型**：`float32`
+- **读写属性**：只读
+#### joint_temperature
+该字段记录关节驱动板当前的温度，单位为摄氏度。  
+- **类型**：`float32`
+- **读写属性**：只读
+#### joint_reset_error
+向该字段写入 `1` 可清除关节上报的错误状态。  
+- **类型**：`uint16`
+- **读写属性**：只写
+
+<Callout type="warning">
+  该字段仅能清除错误码，不能解决灵巧手出现的问题。  
+  切勿滥用此字段，尤其不能在循环中使用此字段，否则可能导致灵巧手损坏。
+</Callout>
+
+#### joint_error_code
+该字段表示各关节的当前错误码，用于诊断运行状态。
+值为 `0` 时表示关节无异常。
+- **类型**：`uint32`
+- **读写属性**：只读
+
+#### joint_effort
+该字段提供关节的实时 effort 反馈。
+- **类型**：`float32`
+- **单位**：安培 (A)
+- **读写属性**：只读
+
+<Callout type="info">
+**Effort 的含义**
+
+Effort 是电流空间的执行器作用量 (actuation effort in current space)，经过滤波处理后输出。
+- **不是**实际测量的电流值
+- **不是**电流环的直接输出
+- 应将其理解为相对驱动强度，适用于负载监控和碰撞检测
+
+典型应用场景：
+- 碰撞检测：effort 突增表示关节受阻
+- 输出监控：可通过 `effort / effort_limit` 计算当前输出百分比
+</Callout>
+
+#### joint_enabled
+该字段控制关节的使能和失能。  
+- **类型**：`bool`
+- **默认值**：`False`
+- **合法范围**：`True / False`
+- **读写属性**：只写
+#### joint_actual_position
+该字段提供关节的实际位置。  
+- **类型**：`float64`
+- **读写属性**：只读
+#### joint_target_position
+写入该字段可下发关节的目标控制角度。若数值超出合法范围，会自动限幅至允许区间。
+- **类型**：`float64`
+- **合法范围**：`joint_lower_limit ~ joint_upper_limit`
+- **读写属性**：只写
+#### joint_upper_limit
+该字段记录关节的运行位置上限。
+- **类型**：`float64`
+- **读写属性**：只读
+
+<Callout type="info">
+**与 URDF 关节范围的区别**
+
+各关节在加工时存在微小的精度误差，使每个关节的实际物理极限略有不同。  
+灵巧手在出厂时会对各关节的实际极限进行标定，结果写入 `joint_upper_limit` 和 `joint_lower_limit` 字段。  
+因此，这两个字段记录的是经标定的实际物理极限值，通常略大于 URDF 文件中定义的范围。
+
+URDF 文件中的关节范围是理论设计值，经过保守缩放以考虑加工误差，可用于仿真或神经网络训练。  
+而 `joint_upper_limit` 与 `joint_lower_limit` 表示实际测得的可运动范围。
+</Callout>
+
+#### joint_lower_limit
+该字段记录关节的运行位置下限。  
+- **类型**：`float64`
+- **读写属性**：只读
+
+## 2. API 列表
+### 2.1 Hand 类
+
+#### 2.1.1 构造函数
+- `__init__(serial_number=None, usb_pid=-1, usb_vid=1155, mask=None) -> None`
+  *初始化灵巧手连接，支持通过序列号、USB ID 或设备掩码指定设备*
+
+#### 2.1.2 手指访问
+- `finger(index) -> Finger`
+  *获取指定索引的手指对象，索引范围 0-4*
+
+#### 2.1.3 系统信息
+
+##### 固件信息
+- `read_firmware_version(timeout=0.5) -> uint32`
+  *同步读取固件版本号*
+- `read_firmware_version_async(timeout=0.5) -> Awaitable[uint32]`
+  *异步读取固件版本号*
+- `read_firmware_version_unchecked(timeout=0.5) -> None`
+  *非阻塞读取固件版本号*
+- `get_firmware_version() -> uint32`
+  *获取缓存的固件版本号*
+
+- `read_firmware_date(timeout=0.5) -> uint32`
+  *同步读取固件编译日期*
+- `read_firmware_date_async(timeout=0.5) -> Awaitable[uint32]`
+  *异步读取固件编译日期*
+- `read_firmware_date_unchecked(timeout=0.5) -> None`
+  *非阻塞读取固件编译日期*
+- `get_firmware_date() -> uint32`
+  *获取缓存的固件编译日期*
+
+- `read_handedness(timeout=0.5) -> uint8`
+  *同步读取左右手标识（0=左，1=右）*
+- `read_handedness_async(timeout=0.5) -> Awaitable[uint8]`
+  *异步读取左右手标识*
+- `read_handedness_unchecked(timeout=0.5) -> None`
+  *非阻塞读取左右手标识*
+- `get_handedness() -> uint8`
+  *获取缓存的左右手标识*
+
+##### 系统状态
+- `read_system_time(timeout=0.5) -> uint32`
+  *同步读取系统运行时间（毫秒）*
+- `read_system_time_async(timeout=0.5) -> Awaitable[uint32]`
+  *异步读取系统运行时间*
+- `read_system_time_unchecked(timeout=0.5) -> None`
+  *非阻塞读取系统运行时间*
+- `get_system_time() -> uint32`
+  *获取缓存的系统运行时间*
+
+- `read_temperature(timeout=0.5) -> float32`
+  *同步读取手掌温度（摄氏度）*
+- `read_temperature_async(timeout=0.5) -> Awaitable[float32]`
+  *异步读取手掌温度*
+- `read_temperature_unchecked(timeout=0.5) -> None`
+  *非阻塞读取手掌温度*
+- `get_temperature() -> float32`
+  *获取缓存的手掌温度*
+
+- `read_input_voltage(timeout=0.5) -> float32`
+  *同步读取输入电压（伏特）*
+- `read_input_voltage_async(timeout=0.5) -> Awaitable[float32]`
+  *异步读取输入电压*
+- `read_input_voltage_unchecked(timeout=0.5) -> None`
+  *非阻塞读取输入电压*
+- `get_input_voltage() -> float32`
+  *获取缓存的输入电压*
+
+#### 2.1.4 关节数据（批量读取，返回 {5,4} 数组）
+
+##### 位置数据
+- `read_joint_actual_position(timeout=0.5) -> NDArray[float64]`
+  *同步读取所有关节实际位置（弧度）*
+- `read_joint_actual_position_async(timeout=0.5) -> Awaitable[NDArray[float64]]`
+  *异步读取所有关节实际位置*
+- `read_joint_actual_position_unchecked(timeout=0.5) -> None`
+  *非阻塞读取所有关节实际位置*
+- `get_joint_actual_position() -> NDArray[float64]`
+  *获取缓存的所有关节实际位置*
+
+- `read_joint_upper_limit(timeout=0.5) -> NDArray[float64]`
+  *同步读取所有关节上限位置（弧度）*
+- `read_joint_upper_limit_async(timeout=0.5) -> Awaitable[NDArray[float64]]`
+  *异步读取所有关节上限位置*
+- `read_joint_upper_limit_unchecked(timeout=0.5) -> None`
+  *非阻塞读取所有关节上限位置*
+- `get_joint_upper_limit() -> NDArray[float64]`
+  *获取缓存的所有关节上限位置*
+
+- `read_joint_lower_limit(timeout=0.5) -> NDArray[float64]`
+  *同步读取所有关节下限位置（弧度）*
+- `read_joint_lower_limit_async(timeout=0.5) -> Awaitable[NDArray[float64]]`
+  *异步读取所有关节下限位置*
+- `read_joint_lower_limit_unchecked(timeout=0.5) -> None`
+  *非阻塞读取所有关节下限位置*
+- `get_joint_lower_limit() -> NDArray[float64]`
+  *获取缓存的所有关节下限位置*
+
+##### 状态监控
+- `read_joint_bus_voltage(timeout=0.5) -> NDArray[float32]`
+  *同步读取所有关节母线电压（伏特）*
+- `read_joint_bus_voltage_async(timeout=0.5) -> Awaitable[NDArray[float32]]`
+  *异步读取所有关节母线电压*
+- `read_joint_bus_voltage_unchecked(timeout=0.5) -> None`
+  *非阻塞读取所有关节母线电压*
+- `get_joint_bus_voltage() -> NDArray[float32]`
+  *获取缓存的所有关节母线电压*
+
+- `read_joint_temperature(timeout=0.5) -> NDArray[float32]`
+  *同步读取所有关节温度（摄氏度）*
+- `read_joint_temperature_async(timeout=0.5) -> Awaitable[NDArray[float32]]`
+  *异步读取所有关节温度*
+- `read_joint_temperature_unchecked(timeout=0.5) -> None`
+  *非阻塞读取所有关节温度*
+- `get_joint_temperature() -> NDArray[float32]`
+  *获取缓存的所有关节温度*
+
+- `read_joint_error_code(timeout=0.5) -> NDArray[uint32]`
+  *同步读取所有关节错误码*
+- `read_joint_error_code_async(timeout=0.5) -> Awaitable[NDArray[uint32]]`
+  *异步读取所有关节错误码*
+- `read_joint_error_code_unchecked(timeout=0.5) -> None`
+  *非阻塞读取所有关节错误码*
+- `get_joint_error_code() -> NDArray[uint32]`
+  *获取缓存的所有关节错误码*
+
+##### Effort 限制 数据
+- `read_joint_effort_limit(timeout=0.5) -> NDArray[float64]`
+  *同步读取所有关节 effort limit（安培）*
+- `read_joint_effort_limit_async(timeout=0.5) -> Awaitable[NDArray[float64]]`
+  *异步读取所有关节 effort limit*
+- `read_joint_effort_limit_unchecked(timeout=0.5) -> None`
+  *非阻塞读取所有关节 effort limit*
+- `get_joint_effort_limit() -> NDArray[float64]`
+  *获取缓存的所有关节 effort limit*
+
+##### 硬件信息
+- `read_joint_hardware_version(timeout=0.5) -> NDArray[uint32]`
+  *同步读取所有关节硬件版本*
+- `read_joint_hardware_version_async(timeout=0.5) -> Awaitable[NDArray[uint32]]`
+  *异步读取所有关节硬件版本*
+- `read_joint_hardware_version_unchecked(timeout=0.5) -> None`
+  *非阻塞读取所有关节硬件版本*
+- `get_joint_hardware_version() -> NDArray[uint32]`
+  *获取缓存的所有关节硬件版本*
+
+- `read_joint_hardware_date(timeout=0.5) -> NDArray[uint32]`
+  *同步读取所有关节硬件生产日期*
+- `read_joint_hardware_date_async(timeout=0.5) -> Awaitable[NDArray[uint32]]`
+  *异步读取所有关节硬件生产日期*
+- `read_joint_hardware_date_unchecked(timeout=0.5) -> None`
+  *非阻塞读取所有关节硬件生产日期*
+- `get_joint_hardware_date() -> NDArray[uint32]`
+  *获取缓存的所有关节硬件生产日期*
+
+#### 2.1.5 关节控制（支持单个值或 {5,4} 数组）
+
+##### 使能控制
+- `write_joint_enabled(value, timeout=0.5) -> None`
+  *同步设置所有关节使能状态*
+- `write_joint_enabled(value_array, timeout=0.5) -> None`
+  *同步批量设置各关节使能状态*
+- `write_joint_enabled_async(value, timeout=0.5) -> Awaitable[None]`
+  *异步设置所有关节使能状态*
+- `write_joint_enabled_async(value_array, timeout=0.5) -> Awaitable[None]`
+  *异步批量设置各关节使能状态*
+- `write_joint_enabled_unchecked(value, timeout=0.5) -> None`
+  *非阻塞设置所有关节使能状态*
+- `write_joint_enabled_unchecked(value_array, timeout=0.5) -> None`
+  *非阻塞批量设置各关节使能状态*
+
+##### 位置控制
+- `write_joint_target_position(value, timeout=0.5) -> None`
+  *同步设置所有关节目标位置（弧度）*
+- `write_joint_target_position(value_array, timeout=0.5) -> None`
+  *同步批量设置各关节目标位置*
+- `write_joint_target_position_async(value, timeout=0.5) -> Awaitable[None]`
+  *异步设置所有关节目标位置*
+- `write_joint_target_position_async(value_array, timeout=0.5) -> Awaitable[None]`
+  *异步批量设置各关节目标位置*
+- `write_joint_target_position_unchecked(value, timeout=0.5) -> None`
+  *非阻塞设置所有关节目标位置*
+- `write_joint_target_position_unchecked(value_array, timeout=0.5) -> None`
+  *非阻塞批量设置各关节目标位置*
+
+##### 模式控制
+- `write_joint_control_mode(value, timeout=0.5) -> None`
+  *同步设置所有关节控制模式*
+- `write_joint_control_mode(value_array, timeout=0.5) -> None`
+  *同步批量设置各关节控制模式*
+- `write_joint_control_mode_async(value, timeout=0.5) -> Awaitable[None]`
+  *异步设置所有关节控制模式*
+- `write_joint_control_mode_async(value_array, timeout=0.5) -> Awaitable[None]`
+  *异步批量设置各关节控制模式*
+- `write_joint_control_mode_unchecked(value, timeout=0.5) -> None`
+  *非阻塞设置所有关节控制模式*
+- `write_joint_control_mode_unchecked(value_array, timeout=0.5) -> None`
+  *非阻塞批量设置各关节控制模式*
+
+##### Effort 限制 配置
+
+<Callout type="error">
+**警告**：修改 effort limit 可能导致设备损坏，详见字段说明。
+</Callout>
+
+- `write_joint_effort_limit(value, timeout=0.5) -> None`
+  *同步设置所有关节 effort limit（安培）*
+- `write_joint_effort_limit(value_array, timeout=0.5) -> None`
+  *同步批量设置各关节 effort limit*
+- `write_joint_effort_limit_async(value, timeout=0.5) -> Awaitable[None]`
+  *异步设置所有关节 effort limit*
+- `write_joint_effort_limit_async(value_array, timeout=0.5) -> Awaitable[None]`
+  *异步批量设置各关节 effort limit*
+- `write_joint_effort_limit_unchecked(value, timeout=0.5) -> None`
+  *非阻塞设置所有关节 effort limit*
+- `write_joint_effort_limit_unchecked(value_array, timeout=0.5) -> None`
+  *非阻塞批量设置各关节 effort limit*
+
+##### 其他参数配置
+
+- `write_joint_sin_level(value, timeout=0.5) -> None`
+  *同步设置所有关节正弦波激励档位*
+- `write_joint_sin_level(value_array, timeout=0.5) -> None`
+  *同步批量设置各关节正弦波激励档位*
+- `write_joint_sin_level_async(value, timeout=0.5) -> Awaitable[None]`
+  *异步设置所有关节正弦波激励档位*
+- `write_joint_sin_level_async(value_array, timeout=0.5) -> Awaitable[None]`
+  *异步批量设置各关节正弦波激励档位*
+- `write_joint_sin_level_unchecked(value, timeout=0.5) -> None`
+  *非阻塞设置所有关节正弦波激励档位*
+- `write_joint_sin_level_unchecked(value_array, timeout=0.5) -> None`
+  *非阻塞批量设置各关节正弦波激励档位*
+
+- `write_joint_reset_error(value, timeout=0.5) -> None`
+  *同步重置所有关节错误*
+- `write_joint_reset_error(value_array, timeout=0.5) -> None`
+  *同步批量重置各关节错误*
+- `write_joint_reset_error_async(value, timeout=0.5) -> Awaitable[None]`
+  *异步重置所有关节错误*
+- `write_joint_reset_error_async(value_array, timeout=0.5) -> Awaitable[None]`
+  *异步批量重置各关节错误*
+- `write_joint_reset_error_unchecked(value, timeout=0.5) -> None`
+  *非阻塞重置所有关节错误*
+- `write_joint_reset_error_unchecked(value_array, timeout=0.5) -> None`
+  *非阻塞批量重置各关节错误*
+
+#### 2.1.6 实时控制器
+- `realtime_controller(enable_upstream, filter) -> IController`
+  *创建实时控制器，用于高频控制场景*
+
+### 2.2 Finger 类
+
+#### 2.2.1 关节访问
+- `joint(index) -> Joint`
+  *获取指定索引的关节对象，索引范围 0-3*
+
+#### 2.2.2 关节数据（返回 4 元素数组）
+
+##### 位置数据
+- `read_joint_actual_position(timeout=0.5) -> NDArray[float64]`
+  *同步读取手指所有关节实际位置（弧度）*
+- `read_joint_actual_position_async(timeout=0.5) -> Awaitable[NDArray[float64]]`
+  *异步读取手指所有关节实际位置*
+- `read_joint_actual_position_unchecked(timeout=0.5) -> None`
+  *非阻塞读取手指所有关节实际位置*
+- `get_joint_actual_position() -> NDArray[float64]`
+  *获取缓存的手指所有关节实际位置*
+
+- `read_joint_upper_limit(timeout=0.5) -> NDArray[float64]`
+  *同步读取手指所有关节上限位置（弧度）*
+- `read_joint_upper_limit_async(timeout=0.5) -> Awaitable[NDArray[float64]]`
+  *异步读取手指所有关节上限位置*
+- `read_joint_upper_limit_unchecked(timeout=0.5) -> None`
+  *非阻塞读取手指所有关节上限位置*
+- `get_joint_upper_limit() -> NDArray[float64]`
+  *获取缓存的手指所有关节上限位置*
+
+- `read_joint_lower_limit(timeout=0.5) -> NDArray[float64]`
+  *同步读取手指所有关节下限位置（弧度）*
+- `read_joint_lower_limit_async(timeout=0.5) -> Awaitable[NDArray[float64]]`
+  *异步读取手指所有关节下限位置*
+- `read_joint_lower_limit_unchecked(timeout=0.5) -> None`
+  *非阻塞读取手指所有关节下限位置*
+- `get_joint_lower_limit() -> NDArray[float64]`
+  *获取缓存的手指所有关节下限位置*
+
+##### 状态监控
+- `read_joint_bus_voltage(timeout=0.5) -> NDArray[float32]`
+  *同步读取手指所有关节母线电压（伏特）*
+- `read_joint_bus_voltage_async(timeout=0.5) -> Awaitable[NDArray[float32]]`
+  *异步读取手指所有关节母线电压*
+- `read_joint_bus_voltage_unchecked(timeout=0.5) -> None`
+  *非阻塞读取手指所有关节母线电压*
+- `get_joint_bus_voltage() -> NDArray[float32]`
+  *获取缓存的手指所有关节母线电压*
+
+- `read_joint_temperature(timeout=0.5) -> NDArray[float32]`
+  *同步读取手指所有关节温度（摄氏度）*
+- `read_joint_temperature_async(timeout=0.5) -> Awaitable[NDArray[float32]]`
+  *异步读取手指所有关节温度*
+- `read_joint_temperature_unchecked(timeout=0.5) -> None`
+  *非阻塞读取手指所有关节温度*
+- `get_joint_temperature() -> NDArray[float32]`
+  *获取缓存的手指所有关节温度*
+
+- `read_joint_error_code(timeout=0.5) -> NDArray[uint32]`
+  *同步读取手指所有关节错误码*
+- `read_joint_error_code_async(timeout=0.5) -> Awaitable[NDArray[uint32]]`
+  *异步读取手指所有关节错误码*
+- `read_joint_error_code_unchecked(timeout=0.5) -> None`
+  *非阻塞读取手指所有关节错误码*
+- `get_joint_error_code() -> NDArray[uint32]`
+  *获取缓存的手指所有关节错误码*
+
+##### Effort 限制 数据
+- `read_joint_effort_limit(timeout=0.5) -> NDArray[float64]`
+  *同步读取手指所有关节 effort limit（安培）*
+- `read_joint_effort_limit_async(timeout=0.5) -> Awaitable[NDArray[float64]]`
+  *异步读取手指所有关节 effort limit*
+- `read_joint_effort_limit_unchecked(timeout=0.5) -> None`
+  *非阻塞读取手指所有关节 effort limit*
+- `get_joint_effort_limit() -> NDArray[float64]`
+  *获取缓存的手指所有关节 effort limit*
+
+##### 硬件信息
+- `read_joint_hardware_version(timeout=0.5) -> NDArray[uint32]`
+  *同步读取手指所有关节硬件版本*
+- `read_joint_hardware_version_async(timeout=0.5) -> Awaitable[NDArray[uint32]]`
+  *异步读取手指所有关节硬件版本*
+- `read_joint_hardware_version_unchecked(timeout=0.5) -> None`
+  *非阻塞读取手指所有关节硬件版本*
+- `get_joint_hardware_version() -> NDArray[uint32]`
+  *获取缓存的手指所有关节硬件版本*
+
+- `read_joint_hardware_date(timeout=0.5) -> NDArray[uint32]`
+  *同步读取手指所有关节硬件生产日期*
+- `read_joint_hardware_date_async(timeout=0.5) -> Awaitable[NDArray[uint32]]`
+  *异步读取手指所有关节硬件生产日期*
+- `read_joint_hardware_date_unchecked(timeout=0.5) -> None`
+  *非阻塞读取手指所有关节硬件生产日期*
+- `get_joint_hardware_date() -> NDArray[uint32]`
+  *获取缓存的手指所有关节硬件生产日期*
+
+#### 2.2.3 关节控制（支持单个值或 4 元素数组）
+
+##### 使能控制
+- `write_joint_enabled(value, timeout=0.5) -> None`
+  *同步设置手指所有关节使能状态*
+- `write_joint_enabled(value_array, timeout=0.5) -> None`
+  *同步批量设置手指各关节使能状态*
+- `write_joint_enabled_async(value, timeout=0.5) -> Awaitable[None]`
+  *异步设置手指所有关节使能状态*
+- `write_joint_enabled_async(value_array, timeout=0.5) -> Awaitable[None]`
+  *异步批量设置手指各关节使能状态*
+- `write_joint_enabled_unchecked(value, timeout=0.5) -> None`
+  *非阻塞设置手指所有关节使能状态*
+- `write_joint_enabled_unchecked(value_array, timeout=0.5) -> None`
+  *非阻塞批量设置手指各关节使能状态*
+
+##### 位置控制
+- `write_joint_target_position(value, timeout=0.5) -> None`
+  *同步设置手指所有关节目标位置（弧度）*
+- `write_joint_target_position(value_array, timeout=0.5) -> None`
+  *同步批量设置手指各关节目标位置*
+- `write_joint_target_position_async(value, timeout=0.5) -> Awaitable[None]`
+  *异步设置手指所有关节目标位置*
+- `write_joint_target_position_async(value_array, timeout=0.5) -> Awaitable[None]`
+  *异步批量设置手指各关节目标位置*
+- `write_joint_target_position_unchecked(value, timeout=0.5) -> None`
+  *非阻塞设置手指所有关节目标位置*
+- `write_joint_target_position_unchecked(value_array, timeout=0.5) -> None`
+  *非阻塞批量设置手指各关节目标位置*
+
+##### 模式控制
+- `write_joint_control_mode(value, timeout=0.5) -> None`
+  *同步设置手指所有关节控制模式*
+- `write_joint_control_mode(value_array, timeout=0.5) -> None`
+  *同步批量设置手指各关节控制模式*
+- `write_joint_control_mode_async(value, timeout=0.5) -> Awaitable[None]`
+  *异步设置手指所有关节控制模式*
+- `write_joint_control_mode_async(value_array, timeout=0.5) -> Awaitable[None]`
+  *异步批量设置手指各关节控制模式*
+- `write_joint_control_mode_unchecked(value, timeout=0.5) -> None`
+  *非阻塞设置手指所有关节控制模式*
+- `write_joint_control_mode_unchecked(value_array, timeout=0.5) -> None`
+  *非阻塞批量设置手指各关节控制模式*
+
+##### Effort 限制 配置
+
+<Callout type="error">
+**警告**：修改 effort limit 可能导致设备损坏，详见字段说明。
+</Callout>
+
+- `write_joint_effort_limit(value, timeout=0.5) -> None`
+  *同步设置手指所有关节 effort limit（安培）*
+- `write_joint_effort_limit(value_array, timeout=0.5) -> None`
+  *同步批量设置手指各关节 effort limit*
+- `write_joint_effort_limit_async(value, timeout=0.5) -> Awaitable[None]`
+  *异步设置手指所有关节 effort limit*
+- `write_joint_effort_limit_async(value_array, timeout=0.5) -> Awaitable[None]`
+  *异步批量设置手指各关节 effort limit*
+- `write_joint_effort_limit_unchecked(value, timeout=0.5) -> None`
+  *非阻塞设置手指所有关节 effort limit*
+- `write_joint_effort_limit_unchecked(value_array, timeout=0.5) -> None`
+  *非阻塞批量设置手指各关节 effort limit*
+
+##### 其他参数配置
+
+- `write_joint_sin_level(value, timeout=0.5) -> None`
+  *同步设置手指所有关节正弦波激励档位*
+- `write_joint_sin_level(value_array, timeout=0.5) -> None`
+  *同步批量设置手指各关节正弦波激励档位*
+- `write_joint_sin_level_async(value, timeout=0.5) -> Awaitable[None]`
+  *异步设置手指所有关节正弦波激励档位*
+- `write_joint_sin_level_async(value_array, timeout=0.5) -> Awaitable[None]`
+  *异步批量设置手指各关节正弦波激励档位*
+- `write_joint_sin_level_unchecked(value, timeout=0.5) -> None`
+  *非阻塞设置手指所有关节正弦波激励档位*
+- `write_joint_sin_level_unchecked(value_array, timeout=0.5) -> None`
+  *非阻塞批量设置手指各关节正弦波激励档位*
+
+- `write_joint_reset_error(value, timeout=0.5) -> None`
+  *同步重置手指所有关节错误*
+- `write_joint_reset_error(value_array, timeout=0.5) -> None`
+  *同步批量重置手指各关节错误*
+- `write_joint_reset_error_async(value, timeout=0.5) -> Awaitable[None]`
+  *异步重置手指所有关节错误*
+- `write_joint_reset_error_async(value_array, timeout=0.5) -> Awaitable[None]`
+  *异步批量重置手指各关节错误*
+- `write_joint_reset_error_unchecked(value, timeout=0.5) -> None`
+  *非阻塞重置手指所有关节错误*
+- `write_joint_reset_error_unchecked(value_array, timeout=0.5) -> None`
+  *非阻塞批量重置手指各关节错误*
+
+### 2.3 Joint 类
+
+#### 2.3.1 关节数据（返回单个值）
+
+##### 位置数据
+- `read_joint_actual_position(timeout=0.5) -> float64`
+  *同步读取关节实际位置（弧度）*
+- `read_joint_actual_position_async(timeout=0.5) -> Awaitable[float64]`
+  *异步读取关节实际位置*
+- `read_joint_actual_position_unchecked(timeout=0.5) -> None`
+  *非阻塞读取关节实际位置*
+- `get_joint_actual_position() -> float64`
+  *获取缓存的关节实际位置*
+
+- `read_joint_upper_limit(timeout=0.5) -> float64`
+  *同步读取关节上限位置（弧度）*
+- `read_joint_upper_limit_async(timeout=0.5) -> Awaitable[float64]`
+  *异步读取关节上限位置*
+- `read_joint_upper_limit_unchecked(timeout=0.5) -> None`
+  *非阻塞读取关节上限位置*
+- `get_joint_upper_limit() -> float64`
+  *获取缓存的关节上限位置*
+
+- `read_joint_lower_limit(timeout=0.5) -> float64`
+  *同步读取关节下限位置（弧度）*
+- `read_joint_lower_limit_async(timeout=0.5) -> Awaitable[float64]`
+  *异步读取关节下限位置*
+- `read_joint_lower_limit_unchecked(timeout=0.5) -> None`
+  *非阻塞读取关节下限位置*
+- `get_joint_lower_limit() -> float64`
+  *获取缓存的关节下限位置*
+
+##### 状态监控
+- `read_joint_bus_voltage(timeout=0.5) -> float32`
+  *同步读取关节母线电压（伏特）*
+- `read_joint_bus_voltage_async(timeout=0.5) -> Awaitable[float32]`
+  *异步读取关节母线电压*
+- `read_joint_bus_voltage_unchecked(timeout=0.5) -> None`
+  *非阻塞读取关节母线电压*
+- `get_joint_bus_voltage() -> float32`
+  *获取缓存的关节母线电压*
+
+- `read_joint_temperature(timeout=0.5) -> float32`
+  *同步读取关节温度（摄氏度）*
+- `read_joint_temperature_async(timeout=0.5) -> Awaitable[float32]`
+  *异步读取关节温度*
+- `read_joint_temperature_unchecked(timeout=0.5) -> None`
+  *非阻塞读取关节温度*
+- `get_joint_temperature() -> float32`
+  *获取缓存的关节温度*
+
+- `read_joint_error_code(timeout=0.5) -> uint32`
+  *同步读取关节错误码*
+- `read_joint_error_code_async(timeout=0.5) -> Awaitable[uint32]`
+  *异步读取关节错误码*
+- `read_joint_error_code_unchecked(timeout=0.5) -> None`
+  *非阻塞读取关节错误码*
+- `get_joint_error_code() -> uint32`
+  *获取缓存的关节错误码*
+
+##### Effort 限制 数据
+- `read_joint_effort_limit(timeout=0.5) -> float64`
+  *同步读取关节 effort limit（安培）*
+- `read_joint_effort_limit_async(timeout=0.5) -> Awaitable[float64]`
+  *异步读取关节 effort limit*
+- `read_joint_effort_limit_unchecked(timeout=0.5) -> None`
+  *非阻塞读取关节 effort limit*
+- `get_joint_effort_limit() -> float64`
+  *获取缓存的关节 effort limit*
+
+##### 硬件信息
+- `read_joint_hardware_version(timeout=0.5) -> uint32`
+  *同步读取关节硬件版本*
+- `read_joint_hardware_version_async(timeout=0.5) -> Awaitable[uint32]`
+  *异步读取关节硬件版本*
+- `read_joint_hardware_version_unchecked(timeout=0.5) -> None`
+  *非阻塞读取关节硬件版本*
+- `get_joint_hardware_version() -> uint32`
+  *获取缓存的关节硬件版本*
+
+- `read_joint_hardware_date(timeout=0.5) -> uint32`
+  *同步读取关节硬件生产日期*
+- `read_joint_hardware_date_async(timeout=0.5) -> Awaitable[uint32]`
+  *异步读取关节硬件生产日期*
+- `read_joint_hardware_date_unchecked(timeout=0.5) -> None`
+  *非阻塞读取关节硬件生产日期*
+- `get_joint_hardware_date() -> uint32`
+  *获取缓存的关节硬件生产日期*
+
+#### 2.3.2 关节控制（单个值）
+
+##### 使能控制
+- `write_joint_enabled(value, timeout=0.5) -> None`
+  *同步设置关节使能状态*
+- `write_joint_enabled_async(value, timeout=0.5) -> Awaitable[None]`
+  *异步设置关节使能状态*
+- `write_joint_enabled_unchecked(value, timeout=0.5) -> None`
+  *非阻塞设置关节使能状态*
+
+##### 位置控制
+- `write_joint_target_position(value, timeout=0.5) -> None`
+  *同步设置关节目标位置（弧度）*
+- `write_joint_target_position_async(value, timeout=0.5) -> Awaitable[None]`
+  *异步设置关节目标位置*
+- `write_joint_target_position_unchecked(value, timeout=0.5) -> None`
+  *非阻塞设置关节目标位置*
+
+##### 模式控制
+- `write_joint_control_mode(value, timeout=0.5) -> None`
+  *同步设置关节控制模式*
+- `write_joint_control_mode_async(value, timeout=0.5) -> Awaitable[None]`
+  *异步设置关节控制模式*
+- `write_joint_control_mode_unchecked(value, timeout=0.5) -> None`
+  *非阻塞设置关节控制模式*
+
+##### Effort 限制 配置
+
+<Callout type="error">
+**警告**：修改 effort limit 可能导致设备损坏，详见字段说明。
+</Callout>
+
+- `write_joint_effort_limit(value, timeout=0.5) -> None`
+  *同步设置关节 effort limit（安培）*
+- `write_joint_effort_limit_async(value, timeout=0.5) -> Awaitable[None]`
+  *异步设置关节 effort limit*
+- `write_joint_effort_limit_unchecked(value, timeout=0.5) -> None`
+  *非阻塞设置关节 effort limit*
+
+##### 其他参数配置
+
+- `write_joint_sin_level(value, timeout=0.5) -> None`
+  *同步设置关节正弦波激励档位*
+- `write_joint_sin_level_async(value, timeout=0.5) -> Awaitable[None]`
+  *异步设置关节正弦波激励档位*
+- `write_joint_sin_level_unchecked(value, timeout=0.5) -> None`
+  *非阻塞设置关节正弦波激励档位*
+
+- `write_joint_reset_error(value, timeout=0.5) -> None`
+  *同步重置关节错误*
+- `write_joint_reset_error_async(value, timeout=0.5) -> Awaitable[None]`
+  *异步重置关节错误*
+- `write_joint_reset_error_unchecked(value, timeout=0.5) -> None`
+  *非阻塞重置关节错误*
+
+### 2.4 IController 接口
+
+#### 2.4.1 上下文管理
+- `__enter__() -> IController`
+  *支持 with 语句的上下文管理器入口*
+- `__exit__(arg0, arg1, arg2) -> None`
+  *支持 with 语句的上下文管理器出口*
+- `close() -> None`
+  *手动关闭实时控制器*
+
+#### 2.4.2 实时数据获取
+- `get_joint_actual_position() -> NDArray[float64]`
+  *实时获取所有关节实际位置（高频读取，返回 {5,4} 数组）*
+- `get_joint_actual_effort() -> NDArray[float64]`
+  *实时获取所有关节 effort（高频读取，返回 {5,4} 数组，单位：安培）*
+
+<Callout type="info">
+**Effort 实时反馈**
+
+`get_joint_actual_effort()` 返回电流空间的执行器作用量 (actuation effort in current space)，经过滤波处理。
+- 仅在实时控制器模式下可用
+- 适用于碰撞检测和负载监控
+- 可通过 `effort / effort_limit` 计算输出百分比
+</Callout>
+
+#### 2.4.3 实时数据设置
+- `set_joint_target_position(value_array) -> None`
+  *实时设置所有关节目标位置（高频写入，参数为 {5,4} 数组）*
+
+---
+
+### 2.5 数组形状说明
+
+- **Hand 类批量操作**：返回/接收形状为 `{5, 4}` 的数组（5个手指 × 4个关节）
+- **Finger 类批量操作**：返回/接收形状为 `{4}` 的数组（4个关节）
+- **Joint 类操作**：返回/接收标量值（单个关节）
+- **IController 操作**：处理形状为 `{5, 4}` 的数组，用于高频实时控制
+
+### 2.6 操作模式说明
+
+- **同步操作** (`read_*`, `write_*`)：阻塞操作，确保读/写成功
+- **异步操作** (`*_async`)：返回 Awaitable 对象，支持 await 语法
+- **非阻塞操作** (`*_unchecked`)：立即返回，不保证操作成功，适用于高频率场景
+- **缓存获取** (`get_*`)：获取最近一次读取的数据，不阻塞

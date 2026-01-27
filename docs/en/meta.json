@@ -1,0 +1,10 @@
+{
+  "title": "Wuji Hand SDK User Guide",
+  "description": "Wuji Hand SDK User Guide",
+  "pages": [
+
+    "introduction",
+    "tutorial",
+    "api-reference"
+  ]
+}
