@@ -481,5 +481,42 @@ with hand.realtime_controller(
         t.join()
 ```
 
-### 6.4 Advanced Examples
+### 6.4 Expected Output
+
+After running the example, the terminal will display output similar to the following:
+
+```
+Thread safety check disabled, multi-threaded access enabled
+[Reader] Position:
+[[ 0.012  0.003 -0.005  0.008]
+ [ 0.015  0.002  0.007  0.011]
+ [ 0.009 -0.001  0.004  0.006]
+ [ 0.018  0.005  0.012  0.009]
+ [ 0.011  0.004  0.008  0.013]]
+[Writer] Target: 0.0000 rad
+[Reader] Position:
+[[ 0.012  0.003 -0.005  0.008]
+ [ 0.016  0.002  0.008  0.012]
+ [ 0.010 -0.001  0.005  0.007]
+ [ 0.019  0.005  0.013  0.010]
+ [ 0.012  0.004  0.009  0.014]]
+[Writer] Target: 0.0004 rad
+[Writer] Target: 0.0016 rad
+[Reader] Position:
+[[ 0.012  0.003 -0.005  0.008]
+ [ 0.018  0.002  0.010  0.014]
+ [ 0.012 -0.001  0.007  0.009]
+ [ 0.021  0.005  0.015  0.012]
+ [ 0.014  0.004  0.011  0.016]]
+...
+```
+
+- The first line indicates that the thread safety check has been disabled
+- `[Reader]` prints the current joint position matrix (5×4, corresponding to 4 joints for each of 5 fingers)
+- `[Writer]` prints the current target position (cosine wave, starting from 0 and gradually increasing)
+- The two threads output alternately, and the order may be interleaved (this is normal behavior for multi-threading)
+- F1 (thumb) remains stationary, while F2 (index), F3 (middle), F4 (ring), and F5 (pinky) perform periodic flexion-extension movements
+- Press `Ctrl+C` to terminate the program
+
+### 6.5 Advanced Examples
 - [example/5.multithread.py](https://github.com/wuji-technology/wujihandpy/blob/main/example/5.multithread.py)
