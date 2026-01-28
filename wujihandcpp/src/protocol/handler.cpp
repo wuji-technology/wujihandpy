@@ -406,7 +406,6 @@ private:
         { 4,         "Encoder1 noise detected",                         kDefaultRemedy,      logging::Level::ERR},
         { 5,                 "Bus overvoltage",                         kDefaultRemedy,      logging::Level::ERR},
         { 6,                "Bus undervoltage",                         kDefaultRemedy,      logging::Level::ERR},
-        { 7,      "Transmission slip detected",                         kDefaultRemedy, logging::Level::CRITICAL},
         { 8,               "Phase overcurrent",                         kDefaultRemedy,      logging::Level::ERR},
         {13,                 "Overtemperature", "Try improve cooling and reduce load.",      logging::Level::ERR},
         {14,              "Board info invalid",                         kDefaultRemedy, logging::Level::CRITICAL},
@@ -417,6 +416,7 @@ private:
         {20,               "Flash write error",                         kDefaultRemedy,     logging::Level::WARN},
         {21, "User config verification failed",                         kDefaultRemedy,     logging::Level::WARN},
         {22, "Flash write count limit reached",                         kDefaultRemedy,     logging::Level::WARN},
+        {23,      "Transmission slip detected",                         kDefaultRemedy,     logging::Level::WARN},
     };
 
     void operation_thread_check() const {
