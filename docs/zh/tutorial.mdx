@@ -396,3 +396,127 @@ asyncio.run(main())
 
 ### 5.3 进阶示例
 - [example/4.async.py](https://github.com/wuji-technology/wujihandpy/blob/main/example/4.async.py)
+
+
+## 6. 多线程操作
+本节介绍在 wujihandpy 中进行多线程操作的方法。
+
+### 6.1 接口概述
+默认情况下，wujihandpy 会对 `Hand` 对象进行线程安全检查，以防止多线程并发访问导致的数据竞争问题。若需在多线程环境中使用同一个 `Hand` 对象，需先调用 `Hand.disable_thread_safe_check()` 禁用该检查。
+
+```python
+class Hand:
+    def disable_thread_safe_check(self) -> None:
+        ...
+```
+
+### 6.2 多线程安全注意事项
+
+<Callout type="warning">
+**重要**：禁用线程安全检查后，用户需要自行保证线程安全。
+</Callout>
+
+- 必须在多线程操作 `Hand` 对象**之前**调用 `disable_thread_safe_check()`
+- 用户需要自行使用互斥锁（`threading.Lock`）等同步机制保护对 `Hand` 对象的并发访问
+- 建议使用 `with lock:` 语句块包裹所有对 `Hand` 对象及其派生对象（如 `IController`）的操作
+
+### 6.3 示例
+以下示例展示了如何在多线程环境中使用实时控制器：
+```python
+import threading
+import time
+import wujihandpy
+import numpy as np
+import math
+
+hand = wujihandpy.Hand()
+
+# 禁用线程安全检查，允许多线程访问
+hand.disable_thread_safe_check()
+print("Thread safety check disabled, multi-threaded access enabled")
+
+# 创建互斥锁确保线程安全
+lock = threading.Lock()
+
+def reader_thread(ctrl):
+    """周期性读取关节位置"""
+    while True:
+        with lock:
+            position = ctrl.get_joint_actual_position()
+        print(f"[Reader] Position:\n{position}")
+        time.sleep(0.01)
+
+def writer_thread(ctrl):
+    """周期性写入目标位置（余弦波运动）"""
+    x = 0
+    while True:
+        y = (1 - math.cos(x)) * 0.8
+        target = np.array(
+            [
+                [0, 0, 0, 0],  # F1
+                [y, 0, y, y],  # F2
+                [y, 0, y, y],  # F3
+                [y, 0, y, y],  # F4
+                [y, 0, y, y],  # F5
+            ],
+            dtype=np.float64,
+        )
+        with lock:
+            ctrl.set_joint_target_position(target)
+        print(f"[Writer] Target: {y:.4f} rad")
+        x += math.pi / 100.0
+        time.sleep(0.01)
+
+hand.write_joint_enabled(True)
+with hand.realtime_controller(
+    enable_upstream=True,
+    filter=wujihandpy.filter.LowPass(cutoff_freq=5.0)
+) as ctrl:
+    threads = [
+        threading.Thread(target=reader_thread, args=(ctrl,)),
+        threading.Thread(target=writer_thread, args=(ctrl,)),
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+```
+
+### 6.4 预期效果
+
+运行示例后，终端将输出类似以下内容：
+
+```
+Thread safety check disabled, multi-threaded access enabled
+[Reader] Position:
+[[ 0.012  0.003 -0.005  0.008]
+ [ 0.015  0.002  0.007  0.011]
+ [ 0.009 -0.001  0.004  0.006]
+ [ 0.018  0.005  0.012  0.009]
+ [ 0.011  0.004  0.008  0.013]]
+[Writer] Target: 0.0000 rad
+[Reader] Position:
+[[ 0.012  0.003 -0.005  0.008]
+ [ 0.016  0.002  0.008  0.012]
+ [ 0.010 -0.001  0.005  0.007]
+ [ 0.019  0.005  0.013  0.010]
+ [ 0.012  0.004  0.009  0.014]]
+[Writer] Target: 0.0004 rad
+[Writer] Target: 0.0016 rad
+[Reader] Position:
+[[ 0.012  0.003 -0.005  0.008]
+ [ 0.018  0.002  0.010  0.014]
+ [ 0.012 -0.001  0.007  0.009]
+ [ 0.021  0.005  0.015  0.012]
+ [ 0.014  0.004  0.011  0.016]]
+...
+```
+
+- 首行显示线程安全检查已禁用
+- `[Reader]` 打印当前关节位置矩阵（5×4，对应 5 个手指各 4 个关节）
+- `[Writer]` 打印当前目标位置（余弦波，从 0 逐渐增大）
+- 两个线程交替输出，顺序可能交错，这是多线程的正常现象
+- F1（拇指）保持不动，F2（食指）、F3（中指）、F4（无名指）、F5（小指）会做周期性弯曲-伸展动作
+
+### 6.5 进阶示例
+- [example/5.multithread.py](https://github.com/wuji-technology/wujihandpy/blob/main/example/5.multithread.py)

@@ -397,3 +397,127 @@ asyncio.run(main())
 
 ### 5.3 Advanced Examples
 - [example/4.async.py](https://github.com/wuji-technology/wujihandpy/blob/main/example/4.async.py)
+
+
+## 6. Multi-threaded Operations
+This section describes how to perform multi-threaded operations in wujihandpy.
+
+### 6.1 Interface Overview
+By default, wujihandpy performs thread safety checks on the `Hand` object to prevent data race conditions from concurrent multi-threaded access. If you need to use the same `Hand` object in a multi-threaded environment, you must first call `Hand.disable_thread_safe_check()` to disable this check.
+
+```python
+class Hand:
+    def disable_thread_safe_check(self) -> None:
+        ...
+```
+
+### 6.2 Multi-threading Safety Considerations
+
+<Callout type="warning">
+**Important**: After disabling the thread safety check, you are responsible for ensuring thread safety.
+</Callout>
+
+- You must call `disable_thread_safe_check()` **before** performing multi-threaded operations on the `Hand` object
+- You must use synchronization mechanisms such as `threading.Lock` to protect concurrent access to the `Hand` object
+- It is recommended to wrap all operations on the `Hand` object and its derived objects (such as `IController`) with `with lock:` blocks
+
+### 6.3 Example
+The following example demonstrates how to use the real-time controller in a multi-threaded environment:
+```python
+import threading
+import time
+import wujihandpy
+import numpy as np
+import math
+
+hand = wujihandpy.Hand()
+
+# Disable thread safety check to allow multi-threaded access
+hand.disable_thread_safe_check()
+print("Thread safety check disabled, multi-threaded access enabled")
+
+# Create mutex lock to ensure thread safety
+lock = threading.Lock()
+
+def reader_thread(ctrl):
+    """Periodically read joint positions"""
+    while True:
+        with lock:
+            position = ctrl.get_joint_actual_position()
+        print(f"[Reader] Position:\n{position}")
+        time.sleep(0.01)
+
+def writer_thread(ctrl):
+    """Periodically write target positions (cosine wave motion)"""
+    x = 0
+    while True:
+        y = (1 - math.cos(x)) * 0.8
+        target = np.array(
+            [
+                [0, 0, 0, 0],  # F1
+                [y, 0, y, y],  # F2
+                [y, 0, y, y],  # F3
+                [y, 0, y, y],  # F4
+                [y, 0, y, y],  # F5
+            ],
+            dtype=np.float64,
+        )
+        with lock:
+            ctrl.set_joint_target_position(target)
+        print(f"[Writer] Target: {y:.4f} rad")
+        x += math.pi / 100.0
+        time.sleep(0.01)
+
+hand.write_joint_enabled(True)
+with hand.realtime_controller(
+    enable_upstream=True,
+    filter=wujihandpy.filter.LowPass(cutoff_freq=5.0)
+) as ctrl:
+    threads = [
+        threading.Thread(target=reader_thread, args=(ctrl,)),
+        threading.Thread(target=writer_thread, args=(ctrl,)),
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+```
+
+### 6.4 Expected Output
+
+After running the example, the terminal will display output similar to the following:
+
+```
+Thread safety check disabled, multi-threaded access enabled
+[Reader] Position:
+[[ 0.012  0.003 -0.005  0.008]
+ [ 0.015  0.002  0.007  0.011]
+ [ 0.009 -0.001  0.004  0.006]
+ [ 0.018  0.005  0.012  0.009]
+ [ 0.011  0.004  0.008  0.013]]
+[Writer] Target: 0.0000 rad
+[Reader] Position:
+[[ 0.012  0.003 -0.005  0.008]
+ [ 0.016  0.002  0.008  0.012]
+ [ 0.010 -0.001  0.005  0.007]
+ [ 0.019  0.005  0.013  0.010]
+ [ 0.012  0.004  0.009  0.014]]
+[Writer] Target: 0.0004 rad
+[Writer] Target: 0.0016 rad
+[Reader] Position:
+[[ 0.012  0.003 -0.005  0.008]
+ [ 0.018  0.002  0.010  0.014]
+ [ 0.012 -0.001  0.007  0.009]
+ [ 0.021  0.005  0.015  0.012]
+ [ 0.014  0.004  0.011  0.016]]
+...
+```
+
+- The first line indicates that the thread safety check has been disabled
+- `[Reader]` prints the current joint position matrix (5×4, corresponding to 4 joints for each of 5 fingers)
+- `[Writer]` prints the current target position (cosine wave, starting from 0 and gradually increasing)
+- The two threads output alternately, and the order may be interleaved (this is normal behavior for multi-threading)
+- F1 (thumb) remains stationary, while F2 (index), F3 (middle), F4 (ring), and F5 (pinky) perform periodic flexion-extension movements
+
+### 6.5 Advanced Examples
+- [example/5.multithread.py](https://github.com/wuji-technology/wujihandpy/blob/main/example/5.multithread.py)

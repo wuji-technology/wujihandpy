@@ -189,7 +189,15 @@ This field records the lower position limit of the joint.
 - `finger(index) -> Finger`
   *Get the finger object at the specified index, index range 0-4*
 
-#### 2.1.3 System Information
+#### 2.1.3 Thread Safety Control
+- `disable_thread_safe_check() -> None`
+  *Disable thread safety check to allow concurrent multi-threaded access to the Hand object*
+
+<Callout type="warning">
+**Note**: After disabling the thread safety check, you must use synchronization mechanisms such as `threading.Lock` to ensure thread-safe operations.
+</Callout>
+
+#### 2.1.4 System Information
 
 ##### Firmware Information
 - `read_firmware_version(timeout=0.5) -> uint32`
@@ -247,7 +255,7 @@ This field records the lower position limit of the joint.
 - `get_input_voltage() -> float32`
   *Get cached input voltage*
 
-#### 2.1.4 Joint Data (Batch Read, Returns {5,4} Array)
+#### 2.1.5 Joint Data (Batch Read, Returns {5,4} Array)
 
 ##### Position Data
 - `read_joint_actual_position(timeout=0.5) -> NDArray[float64]`
@@ -334,7 +342,7 @@ This field records the lower position limit of the joint.
 - `get_joint_hardware_date() -> NDArray[uint32]`
   *Get cached all joint hardware production dates*
 
-#### 2.1.5 Joint Control (Supports Single Value or {5,4} Array)
+#### 2.1.6 Joint Control (Supports Single Value or {5,4} Array)
 
 ##### Enable Control
 - `write_joint_enabled(value, timeout=0.5) -> None`
@@ -425,7 +433,7 @@ This field records the lower position limit of the joint.
 - `write_joint_reset_error_unchecked(value_array, timeout=0.5) -> None`
   *Non-blocking batch reset each joint error*
 
-#### 2.1.6 Real-time Controller
+#### 2.1.7 Real-time Controller
 - `realtime_controller(enable_upstream, filter) -> IController`
   *Create a real-time controller for high-frequency control scenarios*
 

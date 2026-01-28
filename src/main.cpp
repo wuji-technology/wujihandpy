@@ -75,6 +75,12 @@ PYBIND11_MODULE(_core, m) {
     hand.def("start_latency_test", &Hand::start_latency_test);
     hand.def("stop_latency_test", &Hand::stop_latency_test);
 
+    // Thread safety check control
+    hand.def(
+        "disable_thread_safe_check", &Hand::disable_thread_safe_check,
+        "Disable thread safety check to allow multi-threaded usage. "
+        "When disabled, user must ensure thread-safe access using external mutex.");
+
     // Raw SDO operations for debugging
     hand.def(
         "raw_sdo_read", &Hand::raw_sdo_read, py::arg("finger_id"), py::arg("joint_id"),

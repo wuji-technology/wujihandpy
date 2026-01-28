@@ -189,7 +189,15 @@ URDF 文件中的关节范围是理论设计值，经过保守缩放以考虑加
 - `finger(index) -> Finger`
   *获取指定索引的手指对象，索引范围 0-4*
 
-#### 2.1.3 系统信息
+#### 2.1.3 线程安全控制
+- `disable_thread_safe_check() -> None`
+  *禁用线程安全检查，允许在多线程环境中并发访问 Hand 对象*
+
+<Callout type="warning">
+**注意**：禁用线程安全检查后，用户需要自行使用互斥锁（`threading.Lock`）确保多线程操作的正确性。
+</Callout>
+
+#### 2.1.4 系统信息
 
 ##### 固件信息
 - `read_firmware_version(timeout=0.5) -> uint32`
@@ -247,7 +255,7 @@ URDF 文件中的关节范围是理论设计值，经过保守缩放以考虑加
 - `get_input_voltage() -> float32`
   *获取缓存的输入电压*
 
-#### 2.1.4 关节数据（批量读取，返回 {5,4} 数组）
+#### 2.1.5 关节数据（批量读取，返回 {5,4} 数组）
 
 ##### 位置数据
 - `read_joint_actual_position(timeout=0.5) -> NDArray[float64]`
@@ -334,7 +342,7 @@ URDF 文件中的关节范围是理论设计值，经过保守缩放以考虑加
 - `get_joint_hardware_date() -> NDArray[uint32]`
   *获取缓存的所有关节硬件生产日期*
 
-#### 2.1.5 关节控制（支持单个值或 {5,4} 数组）
+#### 2.1.6 关节控制（支持单个值或 {5,4} 数组）
 
 ##### 使能控制
 - `write_joint_enabled(value, timeout=0.5) -> None`
@@ -425,7 +433,7 @@ URDF 文件中的关节范围是理论设计值，经过保守缩放以考虑加
 - `write_joint_reset_error_unchecked(value_array, timeout=0.5) -> None`
   *非阻塞批量重置各关节错误*
 
-#### 2.1.6 实时控制器
+#### 2.1.7 实时控制器
 - `realtime_controller(enable_upstream, filter) -> IController`
   *创建实时控制器，用于高频控制场景*
 
