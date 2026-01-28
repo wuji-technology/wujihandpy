@@ -434,6 +434,7 @@ hand = wujihandpy.Hand()
 
 # Disable thread safety check to allow multi-threaded access
 hand.disable_thread_safe_check()
+print("Thread safety check disabled, multi-threaded access enabled")
 
 # Create mutex lock to ensure thread safety
 lock = threading.Lock()
@@ -443,7 +444,7 @@ def reader_thread(ctrl):
     while True:
         with lock:
             position = ctrl.get_joint_actual_position()
-        print(f"[Reader] Position: {position[1, :]}")
+        print(f"[Reader] Position:\n{position}")
         time.sleep(0.01)
 
 def writer_thread(ctrl):
@@ -463,6 +464,7 @@ def writer_thread(ctrl):
         )
         with lock:
             ctrl.set_joint_target_position(target)
+        print(f"[Writer] Target: {y:.4f} rad")
         x += math.pi / 100.0
         time.sleep(0.01)
 
