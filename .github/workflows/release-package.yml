@@ -3,7 +3,6 @@ name: Release Package CI
 on:
   push:
     tags: ["v*"]
-  workflow_dispatch:
 
 jobs:
   build:
@@ -97,13 +96,11 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
-      - name: Extract git tag & generate change log
-        run: |
-          GIT_TAG="$(git describe --tags --abbrev=0)"
-          echo "GIT_TAG=$GIT_TAG" >> "$GITHUB_ENV"
-          echo "Using git tag: $GIT_TAG"
-          docker run -v "$PWD":/workdir quay.io/git-chglog/git-chglog $GIT_TAG > changelog.md
-          cat changelog.md
+      - name: Auto Release
+        id: changelog
+        uses: wuji-technology/.github/actions/auto-release@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download wujihandcpp builds
         uses: actions/download-artifact@v5
@@ -125,14 +122,7 @@ jobs:
         with:
           packages-dir: build/wujihandpy
 
-      - name: Create Release
-        id: create_release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          name: ${{ github.ref_name }}
-          body_path: changelog.md
-          draft: false
-          prerelease: true
-          make_latest: false
-          files: build/wujihandcpp/*
+      - name: Upload Release Assets
+        run: gh release upload ${{ github.ref_name }} build/wujihandcpp/* build/wujihandpy/*.whl --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
