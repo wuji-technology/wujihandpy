@@ -26,6 +26,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           token: ${{ steps.app-token.outputs.token }}
+          fetch-tags: true
 
       - name: Extract version and create tag
         env:
@@ -38,7 +39,7 @@ jobs:
             exit 1
           fi
 
-          if git rev-parse "$VERSION" >/dev/null 2>&1; then
+          if git rev-parse "refs/tags/$VERSION" >/dev/null 2>&1; then
             echo "::error::Tag $VERSION already exists"
             exit 1
           fi
