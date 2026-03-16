@@ -102,11 +102,16 @@ def main():
     sn = find_hand(session, args.sn)
     zid = acquire_control(session, sn)
 
-    # Subscribe to position feedback
+    # Subscribe to position and effort feedback
     latest_pos = [None]
-    sub = session.declare_subscriber(
+    latest_effort = [None]
+    sub_pos = session.declare_subscriber(
         f"wuji/{sn}/joint/actual_position",
         lambda sample: latest_pos.__setitem__(0, json.loads(bytes(sample.payload))),
+    )
+    sub_effort = session.declare_subscriber(
+        f"wuji/{sn}/joint/actual_effort",
+        lambda sample: latest_effort.__setitem__(0, json.loads(bytes(sample.payload))),
     )
 
     try:
@@ -145,7 +150,13 @@ def main():
             if latest_pos[0] is not None:
                 actual = latest_pos[0]
                 error_j1 = target[1][0] - actual[1][0]
-                print(f"\r  y={y:.2f}  actual_F2_J1={actual[1][0]:.2f}  error={error_j1:.3f}", end="", flush=True)
+                effort_str = ""
+                if latest_effort[0] is not None:
+                    effort_f2 = latest_effort[0][1]
+                    effort_limit_f2 = effort_limit[1]
+                    effort_pct = [e / l * 100 if l != 0 else 0 for e, l in zip(effort_f2, effort_limit_f2)]
+                    effort_str = f"  effort%=[{effort_pct[0]:.0f},{effort_pct[2]:.0f},{effort_pct[3]:.0f}]"
+                print(f"\r  y={y:.2f}  actual={actual[1][0]:.2f}  err={error_j1:.3f}{effort_str}", end="", flush=True)
 
             x += math.pi / args.rate
             time.sleep(period)
@@ -161,7 +172,8 @@ def main():
         print("Disabling joints...")
         set_resource(session, sn, "joint/enabled", [[False] * 4 for _ in range(5)])
 
-        sub.undeclare()
+        sub_pos.undeclare()
+        sub_effort.undeclare()
         release_control(session, sn, zid)
         session.close()
         print("Done.")

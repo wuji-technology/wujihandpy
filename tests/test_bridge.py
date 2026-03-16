@@ -43,6 +43,8 @@ def test_capability_has_all_resources():
 
     assert "input_voltage" in paths
     assert "joint/actual_position" in paths
+    assert "joint/actual_effort" in paths
+    assert "joint/control_mode" in paths
     assert "joint/enabled" in paths
     assert "joint/target_position" in paths
     assert "joint/effort_limit" in paths
@@ -69,6 +71,14 @@ def test_capability_access_flags():
     # joint/effort_limit: GET + SET
     assert by_path["joint/effort_limit"]["can_get"] is True
     assert by_path["joint/effort_limit"]["can_set"] is True
+
+    # joint/actual_effort: GET + SUB
+    assert by_path["joint/actual_effort"]["can_get"] is True
+    assert by_path["joint/actual_effort"]["can_sub"] is True
+
+    # joint/control_mode: SET only
+    assert by_path["joint/control_mode"]["can_get"] is False
+    assert by_path["joint/control_mode"]["can_set"] is True
 
 
 def test_read_resource_scalar():
@@ -110,9 +120,34 @@ def test_write_resource_target_position():
     hand = MagicMock()
     bridge = HandBridge(hand, "TEST")
     bridge._write_resource("joint/target_position", [[0.5] * 4] * 5)
-    hand.write_joint_target_position.assert_called_once()
-    arg = hand.write_joint_target_position.call_args[0][0]
-    assert arg.dtype == np.float64
+    # target_position now updates _rt_target atomically (realtime controller path)
+    # instead of calling hand.write_joint_target_position via SDO
+    hand.write_joint_target_position.assert_not_called()
+    np.testing.assert_array_almost_equal(bridge._rt_target, np.full((5, 4), 0.5))
+
+
+def test_write_resource_control_mode():
+    hand = MagicMock()
+    bridge = HandBridge(hand, "TEST")
+    bridge._write_resource("joint/control_mode", [[1] * 4] * 5)
+    hand.write_joint_control_mode.assert_called_once()
+    arg = hand.write_joint_control_mode.call_args[0][0]
+    assert arg.dtype == np.int32
+    assert arg.shape == (5, 4)
+
+
+def test_read_resource_actual_effort_from_controller():
+    hand = MagicMock()
+    bridge = HandBridge(hand, "TEST")
+    # Simulate realtime controller being active
+    mock_ctrl = MagicMock()
+    mock_ctrl.get_joint_actual_effort.return_value = np.ones((5, 4)) * 0.5
+    bridge._controller = mock_ctrl
+    val = bridge._read_resource("joint/actual_effort")
+    assert isinstance(val, list)
+    assert len(val) == 5
+    assert val[0][0] == 0.5
+    mock_ctrl.get_joint_actual_effort.assert_called_once()
 
 
 def test_write_resource_effort_limit():
@@ -151,4 +186,4 @@ def test_key_generation():
 
 
 def test_resource_defs_count():
-    assert len(RESOURCE_DEFS) == 12
+    assert len(RESOURCE_DEFS) == 14

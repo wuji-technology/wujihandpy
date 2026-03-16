@@ -1,4 +1,8 @@
-"""Wuji Hand Zenoh Bridge - exposes wujihandpy via Zenoh for wuji-sdk."""
+"""Wuji Hand Zenoh Bridge - exposes wujihandpy via Zenoh for wuji-sdk.
+
+Uses realtime_controller internally for smooth motion control (PDO 1kHz)
+instead of SDO request/response for target_position writes.
+"""
 
 import json
 import time
@@ -96,7 +100,27 @@ RESOURCE_DEFS = [
             "items": {"type": "array", "items": {"type": "number"}},
         },
     },
+    {
+        "path": "joint/actual_effort",
+        "can_get": True, "can_set": False, "can_sub": True,
+        "json_schema": {
+            "title": "JointActualEffort",
+            "type": "array",
+            "description": "5x4 joint actual effort (requires firmware >= 1.2.0)",
+            "items": {"type": "array", "items": {"type": "number"}},
+        },
+    },
     # SET-only resources (require control)
+    {
+        "path": "joint/control_mode",
+        "can_get": False, "can_set": True, "can_sub": False,
+        "json_schema": {
+            "title": "JointControlMode",
+            "type": "array",
+            "description": "5x4 joint control modes",
+            "items": {"type": "array", "items": {"type": "integer"}},
+        },
+    },
     {
         "path": "joint/enabled",
         "can_get": False, "can_set": True, "can_sub": False,
@@ -149,7 +173,11 @@ def build_capability(serial_number: str) -> str:
 
 
 class HandBridge:
-    """Bridge between wujihandpy and Zenoh network."""
+    """Bridge between wujihandpy and Zenoh network.
+
+    Uses realtime_controller for target_position writes (PDO 1kHz with
+    LowPass interpolation) instead of SDO for smooth motion control.
+    """
 
     def __init__(self, hand, serial_number: str, pub_rate: float = 50.0):
         self.hand = hand
@@ -164,11 +192,70 @@ class HandBridge:
         self._queryables = []
         self._publishers = {}
         self._hand_lock = threading.Lock()
+        # Realtime controller state
+        self._controller = None
+        self._rt_target = np.zeros((5, 4), dtype=np.float64)
+        self._rt_lock = threading.Lock()
         # Allow multi-thread access (we protect with our own lock)
         hand.disable_thread_safe_check()
 
     def _key(self, suffix: str) -> str:
         return f"wuji/{self.sanitized_sn}/{suffix}"
+
+    def _start_realtime_controller(self):
+        """Enable joints and start realtime controller with LowPass filter."""
+        import wujihandpy
+
+        logger.info("Enabling all joints...")
+        self.hand.write_joint_enabled(True)
+        time.sleep(0.3)
+
+        # Read initial position as starting target
+        initial_pos = self.hand.read_joint_actual_position()
+        with self._rt_lock:
+            self._rt_target = initial_pos.copy()
+
+        logger.info("Starting realtime controller (LowPass 5Hz, upstream enabled)...")
+        self._controller = self.hand.realtime_controller(
+            enable_upstream=True,
+            filter=wujihandpy.filter.LowPass(cutoff_freq=5.0),
+        )
+        self._controller.__enter__()
+
+        # Start the realtime feed loop (100Hz -> 1kHz via controller interpolation)
+        t = threading.Thread(target=self._realtime_loop, daemon=True)
+        t.start()
+        self._threads.append(t)
+        logger.info("Realtime controller started")
+
+    def _stop_realtime_controller(self):
+        """Stop realtime controller and disable joints."""
+        if self._controller is not None:
+            logger.info("Stopping realtime controller...")
+            # Set target to zero before stopping
+            with self._rt_lock:
+                self._rt_target = np.zeros((5, 4), dtype=np.float64)
+            self._controller.set_joint_target_position(self._rt_target)
+            time.sleep(1.0)
+
+            self._controller.__exit__(None, None, None)
+            self._controller = None
+            logger.info("Realtime controller stopped")
+
+        logger.info("Disabling all joints...")
+        self.hand.write_joint_enabled(False)
+
+    def _realtime_loop(self):
+        """Feed target position to realtime controller at 100Hz."""
+        period = 1.0 / 100.0
+        while self._running and self._controller is not None:
+            try:
+                with self._rt_lock:
+                    target = self._rt_target.copy()
+                self._controller.set_joint_target_position(target)
+            except Exception as e:
+                logger.error(f"Realtime loop error: {e}")
+            time.sleep(period)
 
     def start(self):
         """Open Zenoh session, declare liveliness, publish status, start queryables."""
@@ -218,6 +305,9 @@ class HandBridge:
                 pub = self.session.declare_publisher(self._key(r["path"]))
                 self._publishers[r["path"]] = pub
 
+        # 7. Start realtime controller for smooth motion
+        self._start_realtime_controller()
+
         if self._publishers:
             t = threading.Thread(target=self._publish_loop, daemon=True)
             t.start()
@@ -232,6 +322,9 @@ class HandBridge:
         self._running = False
         for t in self._threads:
             t.join(timeout=2.0)
+
+        # Stop realtime controller
+        self._stop_realtime_controller()
 
         if self.session:
             self.session.put(self._key("@status"), b"offline")
@@ -281,8 +374,7 @@ class HandBridge:
                 query.reply_err(b"GET not supported")
                 return
             try:
-                with self._hand_lock:
-                    value = self._read_resource(resource_def["path"])
+                value = self._read_resource(resource_def["path"])
                 data = json.dumps(value).encode("utf-8")
                 query.reply(key, data)
             except Exception as e:
@@ -298,59 +390,82 @@ class HandBridge:
                 return
             try:
                 value = json.loads(payload.decode("utf-8"))
-                with self._hand_lock:
-                    self._write_resource(resource_def["path"], value)
+                self._write_resource(resource_def["path"], value)
                 query.reply(key, b'"ok"')
             except Exception as e:
                 logger.error(f"SET {resource_def['path']} failed: {e}")
                 query.reply_err(str(e).encode())
 
     def _read_resource(self, path: str):
-        """Read a resource from the hand, return JSON-serializable value."""
-        if path == "input_voltage":
-            return float(self.hand.read_input_voltage())
-        elif path == "temperature":
-            return float(self.hand.read_temperature())
-        elif path == "handedness":
-            return int(self.hand.read_handedness())
-        elif path == "firmware_version":
-            return int(self.hand.read_firmware_version())
-        elif path == "joint/actual_position":
-            return self.hand.read_joint_actual_position().tolist()
-        elif path == "joint/temperature":
-            return self.hand.read_joint_temperature().tolist()
-        elif path == "joint/error_code":
-            return self.hand.read_joint_error_code().tolist()
-        elif path == "joint/effort_limit":
-            return self.hand.read_joint_effort_limit().tolist()
-        elif path == "joint/upper_limit":
-            return self.hand.read_joint_upper_limit().tolist()
-        elif path == "joint/lower_limit":
-            return self.hand.read_joint_lower_limit().tolist()
-        else:
-            raise ValueError(f"Unknown GET resource: {path}")
+        """Read a resource from the hand, return JSON-serializable value.
+
+        For actual_position, reads from realtime controller cache (non-blocking)
+        when available. Other resources use SDO with hand_lock.
+        """
+        if path == "joint/actual_position" and self._controller is not None:
+            # Zero-copy from controller cache, no SDO needed
+            return self._controller.get_joint_actual_position().tolist()
+
+        if path == "joint/actual_effort" and self._controller is not None:
+            return self._controller.get_joint_actual_effort().tolist()
+
+        # All other reads need SDO access via hand_lock
+        with self._hand_lock:
+            if path == "input_voltage":
+                return float(self.hand.read_input_voltage())
+            elif path == "temperature":
+                return float(self.hand.read_temperature())
+            elif path == "handedness":
+                return int(self.hand.read_handedness())
+            elif path == "firmware_version":
+                return int(self.hand.read_firmware_version())
+            elif path == "joint/actual_position":
+                return self.hand.read_joint_actual_position().tolist()
+            elif path == "joint/temperature":
+                return self.hand.read_joint_temperature().tolist()
+            elif path == "joint/error_code":
+                return self.hand.read_joint_error_code().tolist()
+            elif path == "joint/effort_limit":
+                return self.hand.read_joint_effort_limit().tolist()
+            elif path == "joint/upper_limit":
+                return self.hand.read_joint_upper_limit().tolist()
+            elif path == "joint/lower_limit":
+                return self.hand.read_joint_lower_limit().tolist()
+            else:
+                raise ValueError(f"Unknown GET resource: {path}")
 
     def _write_resource(self, path: str, value):
-        """Write a resource to the hand."""
-        if path == "joint/enabled":
-            self.hand.write_joint_enabled(np.array(value, dtype=bool))
-        elif path == "joint/target_position":
-            self.hand.write_joint_target_position(np.array(value, dtype=np.float64))
-        elif path == "joint/effort_limit":
-            self.hand.write_joint_effort_limit(np.array(value, dtype=np.float64))
-        else:
-            raise ValueError(f"Unknown SET resource: {path}")
+        """Write a resource to the hand.
+
+        For target_position, updates the realtime controller target atomically
+        (non-blocking). Other writes use SDO with hand_lock.
+        """
+        if path == "joint/target_position":
+            # Atomically update realtime target - no SDO, no blocking
+            with self._rt_lock:
+                self._rt_target = np.array(value, dtype=np.float64)
+            return
+
+        # Other writes need SDO access
+        with self._hand_lock:
+            if path == "joint/control_mode":
+                self.hand.write_joint_control_mode(np.array(value, dtype=np.int32))
+            elif path == "joint/enabled":
+                self.hand.write_joint_enabled(np.array(value, dtype=bool))
+            elif path == "joint/effort_limit":
+                self.hand.write_joint_effort_limit(np.array(value, dtype=np.float64))
+            else:
+                raise ValueError(f"Unknown SET resource: {path}")
 
     def _publish_loop(self):
         """Continuously publish SUB resources at configured rate."""
         period = 1.0 / self.pub_rate
         while self._running:
             try:
-                with self._hand_lock:
-                    for path, pub in self._publishers.items():
-                        value = self._read_resource(path)
-                        data = json.dumps(value).encode("utf-8")
-                        pub.put(data)
+                for path, pub in self._publishers.items():
+                    value = self._read_resource(path)
+                    data = json.dumps(value).encode("utf-8")
+                    pub.put(data)
             except Exception as e:
                 logger.error(f"Publish loop error: {e}")
             time.sleep(period)
@@ -391,8 +506,7 @@ def main():
         pass
     finally:
         bridge.stop()
-        hand.write_joint_enabled(False)
-        logger.info("Hand disabled, exiting.")
+        logger.info("Exiting.")
 
 
 if __name__ == "__main__":
