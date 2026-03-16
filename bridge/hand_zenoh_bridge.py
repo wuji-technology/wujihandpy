@@ -163,6 +163,9 @@ class HandBridge:
         self._threads = []
         self._queryables = []
         self._publishers = {}
+        self._hand_lock = threading.Lock()
+        # Allow multi-thread access (we protect with our own lock)
+        hand.disable_thread_safe_check()
 
     def _key(self, suffix: str) -> str:
         return f"wuji/{self.sanitized_sn}/{suffix}"
@@ -278,7 +281,8 @@ class HandBridge:
                 query.reply_err(b"GET not supported")
                 return
             try:
-                value = self._read_resource(resource_def["path"])
+                with self._hand_lock:
+                    value = self._read_resource(resource_def["path"])
                 data = json.dumps(value).encode("utf-8")
                 query.reply(key, data)
             except Exception as e:
@@ -294,7 +298,8 @@ class HandBridge:
                 return
             try:
                 value = json.loads(payload.decode("utf-8"))
-                self._write_resource(resource_def["path"], value)
+                with self._hand_lock:
+                    self._write_resource(resource_def["path"], value)
                 query.reply(key, b'"ok"')
             except Exception as e:
                 logger.error(f"SET {resource_def['path']} failed: {e}")
@@ -341,10 +346,11 @@ class HandBridge:
         period = 1.0 / self.pub_rate
         while self._running:
             try:
-                for path, pub in self._publishers.items():
-                    value = self._read_resource(path)
-                    data = json.dumps(value).encode("utf-8")
-                    pub.put(data)
+                with self._hand_lock:
+                    for path, pub in self._publishers.items():
+                        value = self._read_resource(path)
+                        data = json.dumps(value).encode("utf-8")
+                        pub.put(data)
             except Exception as e:
                 logger.error(f"Publish loop error: {e}")
             time.sleep(period)
@@ -367,7 +373,11 @@ def main():
     logger.info("Connecting to hand...")
     hand = wujihandpy.Hand(serial_number=args.sn)
 
-    sn = hand.get_product_sn() or f"WUJIHAND_{id(hand):08X}"
+    try:
+        sn = hand.get_product_sn() or f"WUJIHAND_{id(hand):08X}"
+    except Exception:
+        sn = f"WUJIHAND_{id(hand):08X}"
+        logger.warning(f"Could not read product SN (firmware too old?), using: {sn}")
     logger.info(f"Hand connected, SN: {sn}")
 
     bridge = HandBridge(hand, serial_number=sn, pub_rate=args.pub_rate)
