@@ -52,10 +52,10 @@ private:
     static const std::vector<ResourceDef>& resource_defs();
 
     // Control protocol handler
-    void handle_control(const zenoh::Query& query);
+    void handle_control(zenoh::Query& query);
 
     // Resource queryable handler
-    void handle_resource_query(const zenoh::Query& query, const ResourceDef& res);
+    void handle_resource_query(zenoh::Query& query, const ResourceDef& res);
 
     // Read a resource, return JSON value
     nlohmann::json read_resource(const std::string& path);

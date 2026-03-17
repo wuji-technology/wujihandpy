@@ -175,11 +175,11 @@ void HandBridge::start() {
     log_info("Zenoh session opened");
 
     // 1. Liveliness token
-    alive_token_.emplace(session_->liveliness().declare_token(zenoh::KeyExpr(key("@alive"))));
+    alive_token_.emplace(session_->liveliness_declare_token(zenoh::KeyExpr(key("@alive"))));
     log_info("Liveliness token declared: " + key("@alive"));
 
     // 2. Status: online
-    session_->put(zenoh::KeyExpr(key("@status")), zenoh::Bytes::serialize(std::string("online")));
+    session_->put(zenoh::KeyExpr(key("@status")), zenoh::Bytes("online"));
     log_info("Status: online");
 
     // 3. Start realtime controller (before queryables so reads work)
@@ -189,18 +189,20 @@ void HandBridge::start() {
     auto cap_str = build_capability();
     queryables_.push_back(session_->declare_queryable(
         zenoh::KeyExpr(key("@capability")),
-        [this, cap_str](const zenoh::Query& query) {
+        [this, cap_str](zenoh::Query& query) {
             query.reply(zenoh::KeyExpr(key("@capability")),
-                        zenoh::Bytes::serialize(cap_str));
-        }));
+                        zenoh::Bytes(cap_str));
+        },
+        []() {}));
     log_info("@capability queryable declared");
 
     // 5. Control queryable
     queryables_.push_back(session_->declare_queryable(
         zenoh::KeyExpr(key("@control")),
-        [this](const zenoh::Query& query) {
+        [this](zenoh::Query& query) {
             handle_control(query);
-        }));
+        },
+        []() {}));
     log_info("@control queryable declared");
 
     // 6. Resource queryables + publishers for SUB resources
@@ -208,9 +210,10 @@ void HandBridge::start() {
         if (r.can_get || r.can_set) {
             queryables_.push_back(session_->declare_queryable(
                 zenoh::KeyExpr(key(r.path)),
-                [this, &r](const zenoh::Query& query) {
+                [this, &r](zenoh::Query& query) {
                     handle_resource_query(query, r);
-                }));
+                },
+                []() {}));
             log_info("Resource queryable: " + r.path);
         }
         if (r.can_sub) {
@@ -248,7 +251,7 @@ void HandBridge::stop() {
     if (session_.has_value()) {
         session_->put(
             zenoh::KeyExpr(key("@status")),
-            zenoh::Bytes::serialize(std::string("offline")));
+            zenoh::Bytes("offline"));
         log_info("Status: offline");
     }
 
@@ -302,13 +305,13 @@ void HandBridge::stop_realtime_controller() {
 // ---------------------------------------------------------------------------
 // handle_control
 // ---------------------------------------------------------------------------
-void HandBridge::handle_control(const zenoh::Query& query) {
+void HandBridge::handle_control(zenoh::Query& query) {
     auto key_str = key("@control");
 
     std::string payload_str;
     auto payload_opt = query.get_payload();
     if (payload_opt.has_value()) {
-        payload_str = payload_opt->get().deserialize<std::string>();
+        payload_str = payload_opt->get().as_string();
     }
 
     if (payload_str.starts_with("acquire:")) {
@@ -317,11 +320,11 @@ void HandBridge::handle_control(const zenoh::Query& query) {
         if (control_owner_.empty() || control_owner_ == requester) {
             control_owner_ = requester;
             query.reply(zenoh::KeyExpr(key_str),
-                        zenoh::Bytes::serialize(std::string("granted")));
+                        zenoh::Bytes("granted"));
             log_info("Control granted to " + requester);
         } else {
             query.reply(zenoh::KeyExpr(key_str),
-                        zenoh::Bytes::serialize("denied:" + control_owner_));
+                        zenoh::Bytes("denied:" + control_owner_));
             log_info("Control denied to " + requester + ", owner: " + control_owner_);
         }
     } else if (payload_str.starts_with("release:")) {
@@ -330,59 +333,58 @@ void HandBridge::handle_control(const zenoh::Query& query) {
         if (control_owner_ == requester) {
             control_owner_.clear();
             query.reply(zenoh::KeyExpr(key_str),
-                        zenoh::Bytes::serialize(std::string("released")));
+                        zenoh::Bytes("released"));
             log_info("Control released by " + requester);
         } else {
             query.reply(zenoh::KeyExpr(key_str),
-                        zenoh::Bytes::serialize(std::string("not_owner")));
+                        zenoh::Bytes("not_owner"));
         }
     } else {
         std::lock_guard lock(control_mutex_);
         auto owner = control_owner_.empty() ? std::string("none") : control_owner_;
         query.reply(zenoh::KeyExpr(key_str),
-                    zenoh::Bytes::serialize(owner));
+                    zenoh::Bytes(owner));
     }
 }
 
 // ---------------------------------------------------------------------------
 // handle_resource_query
 // ---------------------------------------------------------------------------
-void HandBridge::handle_resource_query(const zenoh::Query& query, const ResourceDef& res) {
+void HandBridge::handle_resource_query(zenoh::Query& query, const ResourceDef& res) {
     auto key_str = key(res.path);
     auto payload_opt = query.get_payload();
 
     bool has_payload = false;
     std::string payload_str;
     if (payload_opt.has_value()) {
-        payload_str = payload_opt->get().deserialize<std::string>();
+        payload_str = payload_opt->get().as_string();
         has_payload = !payload_str.empty();
     }
 
     if (!has_payload) {
         // GET
         if (!res.can_get) {
-            query.reply_err(zenoh::Bytes::serialize(std::string("GET not supported")));
+            query.reply_err(zenoh::Bytes("GET not supported"));
             return;
         }
         try {
             auto value = read_resource(res.path);
             query.reply(zenoh::KeyExpr(key_str),
-                        zenoh::Bytes::serialize(value.dump()));
+                        zenoh::Bytes(value.dump()));
         } catch (const std::exception& e) {
             log_error("GET " + res.path + " failed: " + e.what());
-            query.reply_err(zenoh::Bytes::serialize(std::string(e.what())));
+            query.reply_err(zenoh::Bytes(std::string(e.what())));
         }
     } else {
         // SET
         if (!res.can_set) {
-            query.reply_err(zenoh::Bytes::serialize(std::string("SET not supported")));
+            query.reply_err(zenoh::Bytes("SET not supported"));
             return;
         }
         {
             std::lock_guard lock(control_mutex_);
             if (control_owner_.empty()) {
-                query.reply_err(
-                    zenoh::Bytes::serialize(std::string("no control owner")));
+                query.reply_err(zenoh::Bytes("no control owner"));
                 return;
             }
         }
@@ -390,10 +392,10 @@ void HandBridge::handle_resource_query(const zenoh::Query& query, const Resource
             auto value = json::parse(payload_str);
             write_resource(res.path, value);
             query.reply(zenoh::KeyExpr(key_str),
-                        zenoh::Bytes::serialize(std::string("\"ok\"")));
+                        zenoh::Bytes("\"ok\""));
         } catch (const std::exception& e) {
             log_error("SET " + res.path + " failed: " + e.what());
-            query.reply_err(zenoh::Bytes::serialize(std::string(e.what())));
+            query.reply_err(zenoh::Bytes(std::string(e.what())));
         }
     }
 }
@@ -594,7 +596,7 @@ void HandBridge::publish_loop(std::stop_token stop_token) {
         for (size_t idx = 0; idx < pub_paths_.size(); idx++) {
             try {
                 auto value = read_resource(pub_paths_[idx]);
-                publishers_[idx].put(zenoh::Bytes::serialize(value.dump()));
+                publishers_[idx].put(zenoh::Bytes(value.dump()));
             } catch (const std::exception& e) {
                 log_error("Publish error for " + pub_paths_[idx] + ": " + e.what());
             }
