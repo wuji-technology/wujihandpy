@@ -20,10 +20,33 @@ if(NOT MSVC)
     add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
-# --- wujihandcpp (static) ---
-set(BUILD_STATIC_WUJIHANDCPP ON CACHE BOOL "" FORCE)
-set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
-add_subdirectory(../../wujihandcpp ${CMAKE_CURRENT_BINARY_DIR}/wujihandcpp)
+# --- wujihandcpp ---
+# Prefer system-installed wujihandcpp (apt package) to avoid GCC <format> issues.
+# Fall back to add_subdirectory for source builds with GCC 13+.
+find_library(WUJIHANDCPP_LIB wujihandcpp)
+find_path(WUJIHANDCPP_INCLUDE wujihandcpp/device/hand.hpp)
+if(WUJIHANDCPP_LIB AND WUJIHANDCPP_INCLUDE)
+    message(STATUS "Using system wujihandcpp: ${WUJIHANDCPP_LIB}")
+    add_library(wujihandcpp SHARED IMPORTED)
+    set_target_properties(wujihandcpp PROPERTIES
+        IMPORTED_LOCATION "${WUJIHANDCPP_LIB}"
+        INTERFACE_INCLUDE_DIRECTORIES "${WUJIHANDCPP_INCLUDE}"
+    )
+    # wujihandcpp depends on spdlog, libusb, threads
+    find_package(Threads REQUIRED)
+    find_package(spdlog QUIET)
+    if(spdlog_FOUND)
+        target_link_libraries(wujihandcpp INTERFACE spdlog::spdlog Threads::Threads usb-1.0)
+    else()
+        # spdlog bundled in system lib, just link transitive deps
+        target_link_libraries(wujihandcpp INTERFACE Threads::Threads usb-1.0)
+    endif()
+else()
+    message(STATUS "System wujihandcpp not found, building from source")
+    set(BUILD_STATIC_WUJIHANDCPP ON CACHE BOOL "" FORCE)
+    set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+    add_subdirectory(../../wujihandcpp ${CMAKE_CURRENT_BINARY_DIR}/wujihandcpp)
+endif()
 
 # --- FetchContent dependencies ---
 include(FetchContent)
