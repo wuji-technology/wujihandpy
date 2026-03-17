@@ -81,16 +81,23 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(zenohc zenohcxx nlohmann_json)
 
-# --- Sources ---
-file(GLOB PROJECT_SOURCES CONFIGURE_DEPENDS
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp
+# --- Common link libraries ---
+set(COMMON_LIBS
+    wujihandcpp
+    zenohcxx::zenohc
+    nlohmann_json::nlohmann_json
 )
 
-# --- Target ---
-add_executable(${PROJECT_NAME} ${PROJECT_SOURCES})
+# --- Bridge executable ---
+add_executable(${PROJECT_NAME}
+    src/main.cpp
+    src/hand_bridge.cpp
+)
+target_link_libraries(${PROJECT_NAME} PRIVATE ${COMMON_LIBS})
 
-target_link_libraries(${PROJECT_NAME} PRIVATE
-    wujihandcpp
+# --- Demo executable (Zenoh client only, no wujihandcpp needed) ---
+add_executable(zenoh_demo src/zenoh_demo.cpp)
+target_link_libraries(zenoh_demo PRIVATE
     zenohcxx::zenohc
     nlohmann_json::nlohmann_json
 )
