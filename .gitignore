@@ -18,6 +18,8 @@ compile_commands.json
 
 src/wujihandpy/_version.py
 
+docs/plans/
+
 # Claude-mem generated files (keep root CLAUDE.md)
 **/CLAUDE.md
 !/CLAUDE.md

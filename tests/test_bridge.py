@@ -4,7 +4,7 @@ import json
 import numpy as np
 from unittest.mock import MagicMock
 
-from bridge.hand_zenoh_bridge import (
+from bridge.python.hand_zenoh_bridge import (
     build_capability,
     sanitize_sn,
     HandBridge,
@@ -186,4 +186,4 @@ def test_key_generation():
 
 
 def test_resource_defs_count():
-    assert len(RESOURCE_DEFS) == 14
+    assert len(RESOURCE_DEFS) == 16
