@@ -95,9 +95,9 @@ add_executable(${PROJECT_NAME}
 )
 target_link_libraries(${PROJECT_NAME} PRIVATE ${COMMON_LIBS})
 
-# --- Demo executable (Zenoh client only, no wujihandcpp needed) ---
-add_executable(zenoh_demo src/zenoh_demo.cpp)
-target_link_libraries(zenoh_demo PRIVATE
+# --- Realtime sine example (Zenoh client only, no wujihandcpp needed) ---
+add_executable(zenoh_realtime src/zenoh_realtime.cpp)
+target_link_libraries(zenoh_realtime PRIVATE
     zenohcxx::zenohc
     nlohmann_json::nlohmann_json
 )
