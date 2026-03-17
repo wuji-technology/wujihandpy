@@ -81,23 +81,13 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(zenohc zenohcxx nlohmann_json)
 
-# --- Common link libraries ---
-set(COMMON_LIBS
-    wujihandcpp
-    zenohcxx::zenohc
-    nlohmann_json::nlohmann_json
-)
-
 # --- Bridge executable ---
 add_executable(${PROJECT_NAME}
     src/main.cpp
     src/hand_bridge.cpp
 )
-target_link_libraries(${PROJECT_NAME} PRIVATE ${COMMON_LIBS})
-
-# --- Realtime sine example (Zenoh client only, no wujihandcpp needed) ---
-add_executable(zenoh_realtime src/zenoh_realtime.cpp)
-target_link_libraries(zenoh_realtime PRIVATE
+target_link_libraries(${PROJECT_NAME} PRIVATE
+    wujihandcpp
     zenohcxx::zenohc
     nlohmann_json::nlohmann_json
 )

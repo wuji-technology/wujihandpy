@@ -223,7 +223,24 @@ void HandBridge::start() {
         }
     }
 
-    // 7. Start publisher jthread
+    // 7. Subscribe to target_position for fire-and-forget writes (low latency)
+    subscribers_.push_back(session_->declare_subscriber(
+        zenoh::KeyExpr(key("joint/target_position")),
+        [this](zenoh::Sample& sample) {
+            try {
+                auto value = json::parse(sample.get_payload().as_string());
+                double pos[5][4];
+                json_to_array(value, pos);
+                if (controller_)
+                    controller_->set_joint_target_position(pos);
+            } catch (const std::exception& e) {
+                log_error(std::string("target_position subscriber error: ") + e.what());
+            }
+        },
+        []() {}));
+    log_info("target_position subscriber declared (fire-and-forget path)");
+
+    // 8. Start publisher jthread
     if (!publishers_.empty()) {
         pub_thread_ = std::jthread([this](std::stop_token st) {
             publish_loop(std::move(st));
@@ -256,6 +273,7 @@ void HandBridge::stop() {
     }
 
     // 4. Clear Zenoh resources (RAII)
+    subscribers_.clear();
     queryables_.clear();
     publishers_.clear();
     pub_paths_.clear();

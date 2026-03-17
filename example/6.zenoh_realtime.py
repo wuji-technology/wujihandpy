@@ -6,7 +6,7 @@ on fingers F2-F5, similar to wujihandpy's 3.realtime.py example.
 
 Prerequisites:
   1. Hand connected via USB
-  2. Bridge running: PYTHONPATH=. python -m bridge.hand_zenoh_bridge --pub-rate 50
+  2. Bridge running: PYTHONPATH=. python -m bridge.python.hand_zenoh_bridge --pub-rate 50
 
 Usage:
   python example/zenoh_realtime.py [--sn WUJIHAND_001] [--duration 10] [--rate 50]
@@ -144,7 +144,9 @@ def main():
                 [y, 0, y, y],       # F5 (pinky)
             ]
 
-            set_resource(session, sn, "joint/target_position", target)
+            # Fire-and-forget PUT for low-latency target updates
+            session.put(f"wuji/{sn}/joint/target_position",
+                        json.dumps(target).encode("utf-8"))
 
             # Print feedback
             if latest_pos[0] is not None:
@@ -166,7 +168,8 @@ def main():
     finally:
         # Return to zero and disable
         print("Returning to zero position...")
-        set_resource(session, sn, "joint/target_position", [[0] * 4 for _ in range(5)])
+        session.put(f"wuji/{sn}/joint/target_position",
+                    json.dumps([[0] * 4 for _ in range(5)]).encode("utf-8"))
         time.sleep(1.0)
 
         print("Disabling joints...")

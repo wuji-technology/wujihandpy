@@ -101,6 +101,16 @@ RESOURCE_DEFS = [
         },
     },
     {
+        "path": "joint/bus_voltage",
+        "can_get": True, "can_set": False, "can_sub": False,
+        "json_schema": {
+            "title": "JointBusVoltage",
+            "type": "array",
+            "description": "5x4 joint bus voltages",
+            "items": {"type": "array", "items": {"type": "number"}},
+        },
+    },
+    {
         "path": "joint/actual_effort",
         "can_get": True, "can_set": False, "can_sub": True,
         "json_schema": {
@@ -110,7 +120,17 @@ RESOURCE_DEFS = [
             "items": {"type": "array", "items": {"type": "number"}},
         },
     },
-    # SET-only resources (require control)
+    # SET resources (require control)
+    {
+        "path": "joint/reset_error",
+        "can_get": False, "can_set": True, "can_sub": False,
+        "json_schema": {
+            "title": "JointResetError",
+            "type": "array",
+            "description": "5x4 joint error reset (write non-zero to reset)",
+            "items": {"type": "array", "items": {"type": "integer"}},
+        },
+    },
     {
         "path": "joint/control_mode",
         "can_get": False, "can_set": True, "can_sub": False,
@@ -203,8 +223,14 @@ class HandBridge:
         return f"wuji/{self.sanitized_sn}/{suffix}"
 
     def _start_realtime_controller(self):
-        """Enable joints and start realtime controller with LowPass filter."""
+        """Enable joints and start realtime controller (raw passthrough)."""
         import wujihandpy
+
+        # Set control mode to RT_FCL (9) for force-closed-loop, matching HMI behavior
+        RT_FCL_MODE = 9
+        logger.info("Setting control mode to RT_FCL (%d)...", RT_FCL_MODE)
+        self.hand.write_joint_control_mode(np.full((5, 4), RT_FCL_MODE, dtype=np.int32))
+        time.sleep(0.5)
 
         logger.info("Enabling all joints...")
         self.hand.write_joint_enabled(True)
@@ -215,10 +241,12 @@ class HandBridge:
         with self._rt_lock:
             self._rt_target = initial_pos.copy()
 
-        logger.info("Starting realtime controller (LowPass 5Hz, upstream enabled)...")
+        # Use an extremely high cutoff so the filter is effectively a passthrough.
+        # realtime_controller() requires an IFilter; there is no identity filter.
+        logger.info("Starting realtime controller (no filtering, upstream enabled)...")
         self._controller = self.hand.realtime_controller(
             enable_upstream=True,
-            filter=wujihandpy.filter.LowPass(cutoff_freq=5.0),
+            filter=wujihandpy.filter.LowPass(cutoff_freq=10000.0),
         )
         self._controller.__enter__()
 
@@ -431,6 +459,8 @@ class HandBridge:
                 return self.hand.read_joint_upper_limit().tolist()
             elif path == "joint/lower_limit":
                 return self.hand.read_joint_lower_limit().tolist()
+            elif path == "joint/bus_voltage":
+                return self.hand.read_joint_bus_voltage().tolist()
             else:
                 raise ValueError(f"Unknown GET resource: {path}")
 
@@ -454,6 +484,8 @@ class HandBridge:
                 self.hand.write_joint_enabled(np.array(value, dtype=bool))
             elif path == "joint/effort_limit":
                 self.hand.write_joint_effort_limit(np.array(value, dtype=np.float64))
+            elif path == "joint/reset_error":
+                self.hand.write_joint_reset_error(np.array(value, dtype=np.uint16))
             else:
                 raise ValueError(f"Unknown SET resource: {path}")
 

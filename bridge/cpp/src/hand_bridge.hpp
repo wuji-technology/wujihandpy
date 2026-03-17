@@ -75,12 +75,13 @@ private:
     std::string sn_;
     std::string sanitized_sn_;
     double pub_rate_;
-    double cutoff_freq_ = 10000.0; // Effectively passthrough
+    double cutoff_freq_ = 5.0; // LowPass filter for smooth interpolation
 
     // Zenoh resources
     std::optional<zenoh::Session> session_;
     std::optional<zenoh::LivelinessToken> alive_token_;
     std::vector<zenoh::Queryable<void>> queryables_;
+    std::vector<zenoh::Subscriber<void>> subscribers_; // for fire-and-forget writes
     std::vector<zenoh::Publisher> publishers_; // indexed same as sub resources
     std::vector<std::string> pub_paths_;       // paths for sub resources
 
