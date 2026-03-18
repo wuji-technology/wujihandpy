@@ -13,6 +13,29 @@ import argparse
 import zenoh
 import numpy as np
 
+# ---------------------------------------------------------------------------
+# Timestamp utility
+# ---------------------------------------------------------------------------
+
+def get_timestamp_us() -> int:
+    """Return current UTC time as microseconds since Unix epoch."""
+    return time.time_ns() // 1000
+
+
+def wrap_with_timestamp(value, timestamp_us: int = None) -> dict:
+    """Wrap a data value with a host-side timestamp.
+
+    Output format:
+        {"timestamp_us": <int>, "data": <value>}
+
+    This aligns wujihandpy bridge output with wuji-sdk's timestamped data model,
+    using host-side UTC timestamps (since the CANopen PDO protocol has no device
+    timestamps).
+    """
+    if timestamp_us is None:
+        timestamp_us = get_timestamp_us()
+    return {"timestamp_us": timestamp_us, "data": value}
+
 logger = logging.getLogger("hand_bridge")
 
 
@@ -180,6 +203,21 @@ def build_capability(serial_number: str) -> str:
             "serde_format": "json",
             "json_schema": r["json_schema"],
         })
+
+    # Wrap SUB resource schemas with timestamp envelope
+    for res in resources:
+        if res["can_sub"] and res.get("json_schema"):
+            original_schema = res["json_schema"]
+            res["json_schema"] = {
+                "title": original_schema.get("title", "") + "Timestamped",
+                "type": "object",
+                "description": "Host-timestamped envelope: {timestamp_us, data}",
+                "properties": {
+                    "timestamp_us": {"type": "integer", "description": "UTC microseconds since epoch"},
+                    "data": original_schema,
+                },
+                "required": ["timestamp_us", "data"],
+            }
 
     capability = {
         "device_id": 0,
@@ -397,13 +435,14 @@ class HandBridge:
         payload = bytes(query.payload) if query.payload else b""
 
         if len(payload) == 0:
-            # GET
+            # GET — response includes host-side timestamp
             if not resource_def["can_get"]:
                 query.reply_err(b"GET not supported")
                 return
             try:
                 value = self._read_resource(resource_def["path"])
-                data = json.dumps(value).encode("utf-8")
+                envelope = wrap_with_timestamp(value)
+                data = json.dumps(envelope).encode("utf-8")
                 query.reply(key, data)
             except Exception as e:
                 logger.error(f"GET {resource_def['path']} failed: {e}")
@@ -490,13 +529,19 @@ class HandBridge:
                 raise ValueError(f"Unknown SET resource: {path}")
 
     def _publish_loop(self):
-        """Continuously publish SUB resources at configured rate."""
+        """Continuously publish SUB resources at configured rate.
+
+        Each published message is wrapped with a host-side timestamp:
+            {"timestamp_us": <UTC microseconds>, "data": <value>}
+        """
         period = 1.0 / self.pub_rate
         while self._running:
             try:
+                timestamp_us = get_timestamp_us()
                 for path, pub in self._publishers.items():
                     value = self._read_resource(path)
-                    data = json.dumps(value).encode("utf-8")
+                    envelope = wrap_with_timestamp(value, timestamp_us)
+                    data = json.dumps(envelope).encode("utf-8")
                     pub.put(data)
             except Exception as e:
                 logger.error(f"Publish loop error: {e}")

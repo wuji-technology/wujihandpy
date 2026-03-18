@@ -20,6 +20,27 @@ using namespace wujihandcpp;
 using json = nlohmann::json;
 
 // ---------------------------------------------------------------------------
+// Timestamp utility
+// ---------------------------------------------------------------------------
+
+/// Return current UTC time as microseconds since Unix epoch.
+static int64_t get_timestamp_us() {
+    auto now = std::chrono::system_clock::now();
+    auto us = std::chrono::duration_cast<std::chrono::microseconds>(
+        now.time_since_epoch());
+    return us.count();
+}
+
+/// Wrap a JSON data value with a host-side timestamp.
+/// Output: {"timestamp_us": <int64>, "data": <value>}
+static json wrap_with_timestamp(const json& value, int64_t timestamp_us = 0) {
+    if (timestamp_us == 0) {
+        timestamp_us = get_timestamp_us();
+    }
+    return json{{"timestamp_us", timestamp_us}, {"data", value}};
+}
+
+// ---------------------------------------------------------------------------
 // Logging helper
 // ---------------------------------------------------------------------------
 static void log_info(const std::string& msg) {
@@ -387,8 +408,9 @@ void HandBridge::handle_resource_query(zenoh::Query& query, const ResourceDef& r
         }
         try {
             auto value = read_resource(res.path);
+            auto envelope = wrap_with_timestamp(value);
             query.reply(zenoh::KeyExpr(key_str),
-                        zenoh::Bytes(value.dump()));
+                        zenoh::Bytes(envelope.dump()));
         } catch (const std::exception& e) {
             log_error("GET " + res.path + " failed: " + e.what());
             query.reply_err(zenoh::Bytes(std::string(e.what())));
@@ -611,10 +633,14 @@ void HandBridge::publish_loop(std::stop_token stop_token) {
     while (!stop_token.stop_requested()) {
         next_tick += period;
 
+        // Capture a single timestamp for all resources in this cycle
+        auto timestamp_us = get_timestamp_us();
+
         for (size_t idx = 0; idx < pub_paths_.size(); idx++) {
             try {
                 auto value = read_resource(pub_paths_[idx]);
-                publishers_[idx].put(zenoh::Bytes(value.dump()));
+                auto envelope = wrap_with_timestamp(value, timestamp_us);
+                publishers_[idx].put(zenoh::Bytes(envelope.dump()));
             } catch (const std::exception& e) {
                 log_error("Publish error for " + pub_paths_[idx] + ": " + e.what());
             }

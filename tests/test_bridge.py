@@ -1,12 +1,15 @@
 """Tests for Hand Zenoh Bridge."""
 
 import json
+import time
 import numpy as np
 from unittest.mock import MagicMock
 
 from bridge.python.hand_zenoh_bridge import (
     build_capability,
     sanitize_sn,
+    get_timestamp_us,
+    wrap_with_timestamp,
     HandBridge,
     RESOURCE_DEFS,
 )
@@ -187,3 +190,62 @@ def test_key_generation():
 
 def test_resource_defs_count():
     assert len(RESOURCE_DEFS) == 16
+
+
+# ---------------------------------------------------------------------------
+# Timestamp tests
+# ---------------------------------------------------------------------------
+
+def test_get_timestamp_us_returns_microseconds():
+    ts = get_timestamp_us()
+    # Should be in microseconds (roughly current epoch in us)
+    assert ts > 1_700_000_000_000_000  # after 2023
+    assert ts < 2_000_000_000_000_000  # before 2033
+    # Should be monotonically increasing
+    ts2 = get_timestamp_us()
+    assert ts2 >= ts
+
+
+def test_wrap_with_timestamp_structure():
+    value = [[1.0, 2.0], [3.0, 4.0]]
+    envelope = wrap_with_timestamp(value)
+    assert "timestamp_us" in envelope
+    assert "data" in envelope
+    assert envelope["data"] == value
+    assert isinstance(envelope["timestamp_us"], int)
+    assert envelope["timestamp_us"] > 0
+
+
+def test_wrap_with_timestamp_custom_ts():
+    value = 42
+    envelope = wrap_with_timestamp(value, timestamp_us=1234567890)
+    assert envelope["timestamp_us"] == 1234567890
+    assert envelope["data"] == 42
+
+
+def test_wrap_with_timestamp_json_serializable():
+    value = [[1.0, 2.0, 3.0, 4.0]] * 5
+    envelope = wrap_with_timestamp(value)
+    serialized = json.dumps(envelope)
+    deserialized = json.loads(serialized)
+    assert deserialized["timestamp_us"] == envelope["timestamp_us"]
+    assert deserialized["data"] == value
+
+
+def test_capability_sub_resources_have_timestamp_schema():
+    cap = json.loads(build_capability("TEST"))
+    by_path = {r["path"]: r for r in cap["resources"]}
+
+    # SUB resources should have timestamped envelope schema
+    pos = by_path["joint/actual_position"]
+    assert pos["can_sub"] is True
+    schema = pos["json_schema"]
+    assert schema["type"] == "object"
+    assert "timestamp_us" in schema["properties"]
+    assert "data" in schema["properties"]
+    assert schema["properties"]["timestamp_us"]["type"] == "integer"
+
+    # Non-SUB resources should NOT have envelope schema
+    temp = by_path["joint/temperature"]
+    assert temp["can_sub"] is False
+    assert temp["json_schema"]["type"] == "array"  # original schema unchanged
