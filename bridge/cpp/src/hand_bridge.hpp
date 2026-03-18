@@ -27,7 +27,7 @@ struct ResourceDef {
 class HandBridge {
 public:
     HandBridge(
-        wujihandcpp::device::Hand& hand, std::string serial_number, double pub_rate = 50.0);
+        wujihandcpp::device::Hand& hand, std::string serial_number, double pub_rate);
 
     ~HandBridge();
 

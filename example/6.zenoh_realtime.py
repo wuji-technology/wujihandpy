@@ -6,7 +6,7 @@ on fingers F2-F5, similar to wujihandpy's 3.realtime.py example.
 
 Prerequisites:
   1. Hand connected via USB
-  2. Bridge running: PYTHONPATH=. python -m bridge.python.hand_zenoh_bridge --pub-rate 50
+  2. Bridge running: PYTHONPATH=. python -m bridge.python.hand_zenoh_bridge --pub-rate 1000
 
 Usage:
   python example/zenoh_realtime.py [--sn WUJIHAND_001] [--duration 10] [--rate 50]
@@ -95,7 +95,7 @@ def main():
     parser = argparse.ArgumentParser(description="Zenoh Bridge Realtime Control Test")
     parser.add_argument("--sn", type=str, default=None, help="Hand sanitized SN (e.g. WUJIHAND_001)")
     parser.add_argument("--duration", type=float, default=10.0, help="Test duration (seconds)")
-    parser.add_argument("--rate", type=float, default=50.0, help="Control loop rate (Hz)")
+    parser.add_argument("--rate", type=float, default=1000.0, help="Control loop rate (Hz)")
     args = parser.parse_args()
 
     session = zenoh.open(zenoh.Config())

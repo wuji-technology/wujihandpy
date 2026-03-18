@@ -237,7 +237,7 @@ class HandBridge:
     LowPass interpolation) instead of SDO for smooth motion control.
     """
 
-    def __init__(self, hand, serial_number: str, pub_rate: float = 50.0):
+    def __init__(self, hand, serial_number: str, pub_rate: float):
         self.hand = hand
         self.sn = serial_number
         self.sanitized_sn = sanitize_sn(serial_number)
@@ -604,7 +604,7 @@ class HandBridge:
 def main():
     parser = argparse.ArgumentParser(description="Wuji Hand Zenoh Bridge")
     parser.add_argument("--sn", type=str, default=None, help="Hand serial number filter")
-    parser.add_argument("--pub-rate", type=float, default=50.0, help="Position publish rate (Hz)")
+    parser.add_argument("--pub-rate", type=float, required=True, help="Position publish rate in Hz (e.g. 1000)")
     parser.add_argument("--log-level", type=str, default="INFO", help="Log level")
     args = parser.parse_args()
 

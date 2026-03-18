@@ -21,7 +21,7 @@ static void print_usage(const char* prog) {
     std::cerr << "Usage: " << prog << " [options]\n"
               << "Options:\n"
               << "  --sn <serial>     Hand serial number filter\n"
-              << "  --pub-rate <hz>   Position publish rate (default: 50)\n"
+              << "  --pub-rate <hz>   Position publish rate in Hz (required, e.g. 1000)\n"
               << "  --log-level <lvl> Log level: trace/debug/info/warn/err/off (default: info)\n"
               << "  --help            Show this help\n";
 }
@@ -39,7 +39,7 @@ static wujihandcpp::logging::Level parse_log_level(const std::string& s) {
 int main(int argc, char* argv[]) {
     // Parse arguments
     const char* sn_filter = nullptr;
-    double pub_rate = 50.0;
+    double pub_rate = 0.0;
     std::string log_level_str = "info";
 
     for (int i = 1; i < argc; i++) {
@@ -57,6 +57,12 @@ int main(int argc, char* argv[]) {
             print_usage(argv[0]);
             return 1;
         }
+    }
+
+    if (pub_rate <= 0.0) {
+        std::cerr << "Error: --pub-rate is required (e.g. --pub-rate 1000)\n";
+        print_usage(argv[0]);
+        return 1;
     }
 
     // Configure logging

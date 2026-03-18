@@ -34,7 +34,7 @@ PYTHONPATH=. python -m bridge.python.hand_zenoh_bridge
 # 可选参数
 PYTHONPATH=. python -m bridge.python.hand_zenoh_bridge \
     --sn "DEVICE_SN" \
-    --pub-rate 50 \
+    --pub-rate 1000 \
     --log-level DEBUG
 ```
 
@@ -49,7 +49,7 @@ cmake .. && cmake --build . -j$(nproc)
 ./wujihand_zenoh_bridge --log-level info
 
 # 可选参数
-./wujihand_zenoh_bridge --sn "DEVICE_SN" --pub-rate 50 --log-level debug
+./wujihand_zenoh_bridge --sn "DEVICE_SN" --pub-rate 1000 --log-level debug
 ```
 
 ## 客户端使用
