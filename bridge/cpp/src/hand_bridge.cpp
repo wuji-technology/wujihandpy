@@ -161,6 +161,22 @@ std::string HandBridge::key(const std::string& suffix) const {
 std::string HandBridge::build_capability() const {
     json resources = json::array();
     for (const auto& r : resource_defs()) {
+        json schema = r.json_schema;
+
+        // Wrap SUB resource schemas with timestamp envelope (matches Python bridge)
+        if (r.can_sub) {
+            schema = {
+                {"title", r.json_schema.value("title", "") + "Timestamped"},
+                {"type", "object"},
+                {"description", "Host-timestamped envelope: {timestamp_us, data}"},
+                {"properties", {
+                    {"timestamp_us", {{"type", "integer"}, {"description", "UTC microseconds since epoch"}}},
+                    {"data", r.json_schema},
+                }},
+                {"required", json::array({"timestamp_us", "data"})},
+            };
+        }
+
         resources.push_back({
             {"path", r.path},
             {"schema_id", 0},
@@ -171,7 +187,7 @@ std::string HandBridge::build_capability() const {
             {"can_exec", false},
             {"internal", false},
             {"serde_format", "json"},
-            {"json_schema", r.json_schema},
+            {"json_schema", schema},
         });
     }
 
@@ -294,6 +310,7 @@ void HandBridge::stop() {
     }
 
     // 4. Clear Zenoh resources (RAII)
+    stop_owner_watcher();
     subscribers_.clear();
     queryables_.clear();
     publishers_.clear();
@@ -342,6 +359,43 @@ void HandBridge::stop_realtime_controller() {
 }
 
 // ---------------------------------------------------------------------------
+// Liveliness-based control TTL
+// ---------------------------------------------------------------------------
+std::string HandBridge::control_owner_key(const std::string& owner_zid) const {
+    return key("@control_owner/" + owner_zid);
+}
+
+void HandBridge::start_owner_watcher(const std::string& owner_zid) {
+    stop_owner_watcher();
+
+    auto owner_key = control_owner_key(owner_zid);
+    try {
+        control_owner_watcher_.emplace(session_->liveliness_declare_subscriber(
+            zenoh::KeyExpr(owner_key),
+            [this, owner_zid](zenoh::Sample& sample) {
+                // SampleKind::Z_SAMPLE_KIND_DELETE means liveliness token dropped (owner crashed)
+                if (sample.get_kind() == Z_SAMPLE_KIND_DELETE) {
+                    std::lock_guard lock(control_mutex_);
+                    if (control_owner_ == owner_zid) {
+                        log_info("Control owner " + owner_zid + " crashed, auto-releasing");
+                        control_owner_.clear();
+                    }
+                    stop_owner_watcher();
+                }
+            },
+            []() {}));
+        log_info("Owner watcher started for " + owner_zid);
+    } catch (const std::exception& e) {
+        log_error("Failed to start owner watcher: " + std::string(e.what()));
+        control_owner_watcher_.reset();
+    }
+}
+
+void HandBridge::stop_owner_watcher() {
+    control_owner_watcher_.reset();
+}
+
+// ---------------------------------------------------------------------------
 // handle_control
 // ---------------------------------------------------------------------------
 void HandBridge::handle_control(zenoh::Query& query) {
@@ -361,6 +415,8 @@ void HandBridge::handle_control(zenoh::Query& query) {
             query.reply(zenoh::KeyExpr(key_str),
                         zenoh::Bytes("granted"));
             log_info("Control granted to " + requester);
+            // Start liveliness watcher for auto-release on crash
+            start_owner_watcher(requester);
         } else {
             query.reply(zenoh::KeyExpr(key_str),
                         zenoh::Bytes("denied:" + control_owner_));
@@ -371,6 +427,7 @@ void HandBridge::handle_control(zenoh::Query& query) {
         std::lock_guard lock(control_mutex_);
         if (control_owner_ == requester) {
             control_owner_.clear();
+            stop_owner_watcher();
             query.reply(zenoh::KeyExpr(key_str),
                         zenoh::Bytes("released"));
             log_info("Control released by " + requester);

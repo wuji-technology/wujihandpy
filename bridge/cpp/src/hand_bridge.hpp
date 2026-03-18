@@ -93,6 +93,12 @@ private:
     std::mutex control_mutex_; // Protects control_owner_
     std::string control_owner_;
 
+    // Liveliness-based control TTL
+    std::optional<zenoh::Subscriber<void>> control_owner_watcher_;
+    void start_owner_watcher(const std::string& owner_zid);
+    void stop_owner_watcher();
+    std::string control_owner_key(const std::string& owner_zid) const;
+
     // Publisher thread
     std::jthread pub_thread_;
 };
