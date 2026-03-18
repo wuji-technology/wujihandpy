@@ -246,10 +246,12 @@ class HandBridge:
         self._alive_token = None
         self._running = False
         self._control_owner = None
+        self._control_owner_watcher = None  # liveliness subscriber for owner TTL
         self._threads = []
         self._queryables = []
         self._publishers = {}
         self._hand_lock = threading.Lock()
+        self._control_lock = threading.Lock()
         # Realtime controller state
         self._controller = None
         self._rt_target = np.zeros((5, 4), dtype=np.float64)
@@ -259,6 +261,41 @@ class HandBridge:
 
     def _key(self, suffix: str) -> str:
         return f"wuji/{self.sanitized_sn}/{suffix}"
+
+    def _control_owner_key(self, owner_zid: str) -> str:
+        """Liveliness key for tracking a control owner's presence."""
+        return f"wuji/{self.sanitized_sn}/@control_owner/{owner_zid}"
+
+    def _start_owner_watcher(self, owner_zid: str):
+        """Start watching owner's liveliness. Auto-release control if owner crashes."""
+        self._stop_owner_watcher()
+
+        owner_key = self._control_owner_key(owner_zid)
+        try:
+            def on_sample(sample):
+                # SampleKind.DELETE means the liveliness token was dropped (owner crashed)
+                if hasattr(sample, 'kind') and str(sample.kind).endswith('Delete'):
+                    with self._control_lock:
+                        logger.warning(f"Control owner {owner_zid} crashed, auto-releasing")
+                        self._control_owner = None
+                    self._stop_owner_watcher()
+
+            self._control_owner_watcher = self.session.liveliness().declare_subscriber(
+                owner_key, on_sample
+            )
+            logger.debug(f"Owner watcher started for {owner_zid}")
+        except Exception as e:
+            logger.warning(f"Failed to start owner watcher: {e}")
+            self._control_owner_watcher = None
+
+    def _stop_owner_watcher(self):
+        """Stop watching the current owner's liveliness."""
+        if self._control_owner_watcher is not None:
+            try:
+                self._control_owner_watcher.undeclare()
+            except Exception:
+                pass
+            self._control_owner_watcher = None
 
     def _start_realtime_controller(self):
         """Enable joints and start realtime controller (raw passthrough)."""
@@ -392,6 +429,9 @@ class HandBridge:
         # Stop realtime controller
         self._stop_realtime_controller()
 
+        # Stop owner watcher
+        self._stop_owner_watcher()
+
         if self.session:
             self.session.put(self._key("@status"), b"offline")
             logger.info("Status: offline")
@@ -403,30 +443,41 @@ class HandBridge:
         logger.info("Bridge stopped")
 
     def _handle_control(self, query):
-        """Handle @control acquire/release protocol."""
+        """Handle @control acquire/release protocol with liveliness-based TTL.
+
+        When control is acquired, a liveliness subscriber watches the owner's
+        presence. If the owner process crashes (liveliness token dropped),
+        control is automatically released.
+        """
         key = self._key("@control")
         payload = bytes(query.payload) if query.payload else b""
         payload_str = payload.decode("utf-8", errors="replace")
 
         if payload_str.startswith("acquire:"):
             requester = payload_str[len("acquire:"):]
-            if self._control_owner is None or self._control_owner == requester:
-                self._control_owner = requester
-                query.reply(key, b"granted")
-                logger.info(f"Control granted to {requester}")
-            else:
-                query.reply(key, f"denied:{self._control_owner}".encode())
-                logger.info(f"Control denied to {requester}, owner: {self._control_owner}")
+            with self._control_lock:
+                if self._control_owner is None or self._control_owner == requester:
+                    self._control_owner = requester
+                    query.reply(key, b"granted")
+                    logger.info(f"Control granted to {requester}")
+                    # Start liveliness watcher for auto-release on crash
+                    self._start_owner_watcher(requester)
+                else:
+                    query.reply(key, f"denied:{self._control_owner}".encode())
+                    logger.info(f"Control denied to {requester}, owner: {self._control_owner}")
         elif payload_str.startswith("release:"):
             requester = payload_str[len("release:"):]
-            if self._control_owner == requester:
-                self._control_owner = None
-                query.reply(key, b"released")
-                logger.info(f"Control released by {requester}")
-            else:
-                query.reply(key, b"not_owner")
+            with self._control_lock:
+                if self._control_owner == requester:
+                    self._control_owner = None
+                    self._stop_owner_watcher()
+                    query.reply(key, b"released")
+                    logger.info(f"Control released by {requester}")
+                else:
+                    query.reply(key, b"not_owner")
         else:
-            owner = self._control_owner or "none"
+            with self._control_lock:
+                owner = self._control_owner or "none"
             query.reply(key, owner.encode())
 
     def _handle_resource_query(self, query, resource_def):
@@ -452,7 +503,9 @@ class HandBridge:
             if not resource_def["can_set"]:
                 query.reply_err(b"SET not supported")
                 return
-            if self._control_owner is None:
+            with self._control_lock:
+                has_owner = self._control_owner is not None
+            if not has_owner:
                 query.reply_err(b"no control owner")
                 return
             try:

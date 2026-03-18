@@ -1,9 +1,14 @@
 """Tests for Hand Zenoh Bridge."""
 
 import json
+import sys
 import time
 import numpy as np
 from unittest.mock import MagicMock
+
+# Mock zenoh if not available (e.g., CI without Rust toolchain)
+if "zenoh" not in sys.modules:
+    sys.modules["zenoh"] = MagicMock()
 
 from bridge.python.hand_zenoh_bridge import (
     build_capability,
@@ -249,3 +254,59 @@ def test_capability_sub_resources_have_timestamp_schema():
     temp = by_path["joint/temperature"]
     assert temp["can_sub"] is False
     assert temp["json_schema"]["type"] == "array"  # original schema unchanged
+
+
+# ---------------------------------------------------------------------------
+# Control TTL tests
+# ---------------------------------------------------------------------------
+
+def test_control_acquire_sets_owner():
+    hand = MagicMock()
+    bridge = HandBridge(hand, "TEST")
+    bridge.session = MagicMock()
+    # Simulate acquire
+    with bridge._control_lock:
+        bridge._control_owner = "zid_123"
+    assert bridge._control_owner == "zid_123"
+
+
+def test_control_release_clears_owner():
+    hand = MagicMock()
+    bridge = HandBridge(hand, "TEST")
+    bridge.session = MagicMock()
+    bridge._control_owner = "zid_123"
+    with bridge._control_lock:
+        bridge._control_owner = None
+    assert bridge._control_owner is None
+
+
+def test_control_owner_watcher_key():
+    hand = MagicMock()
+    bridge = HandBridge(hand, "TEST")
+    key = bridge._control_owner_key("zid_abc123")
+    assert key == "wuji/TEST/@control_owner/zid_abc123"
+
+
+def test_stop_owner_watcher_cleans_up():
+    hand = MagicMock()
+    bridge = HandBridge(hand, "TEST")
+    mock_watcher = MagicMock()
+    bridge._control_owner_watcher = mock_watcher
+    bridge._stop_owner_watcher()
+    mock_watcher.undeclare.assert_called_once()
+    assert bridge._control_owner_watcher is None
+
+
+def test_stop_owner_watcher_noop_when_none():
+    hand = MagicMock()
+    bridge = HandBridge(hand, "TEST")
+    bridge._control_owner_watcher = None
+    bridge._stop_owner_watcher()  # should not raise
+    assert bridge._control_owner_watcher is None
+
+
+def test_bridge_has_control_lock():
+    hand = MagicMock()
+    bridge = HandBridge(hand, "TEST")
+    assert hasattr(bridge, '_control_lock')
+    assert hasattr(bridge, '_control_owner_watcher')
