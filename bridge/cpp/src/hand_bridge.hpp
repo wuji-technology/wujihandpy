@@ -34,6 +34,8 @@ public:
     // Non-copyable, non-movable
     HandBridge(const HandBridge&) = delete;
     HandBridge& operator=(const HandBridge&) = delete;
+    HandBridge(HandBridge&&) = delete;
+    HandBridge& operator=(HandBridge&&) = delete;
 
     /// Open Zenoh session, declare resources, start controller and publisher.
     void start();

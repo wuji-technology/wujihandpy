@@ -372,11 +372,15 @@ class HandBridge:
         self._alive_token = self.session.liveliness().declare_token(self._key("@alive"))
         logger.info(f"Liveliness token declared: {self._key('@alive')}")
 
-        # 2. Status: online
+        # 2. Start realtime controller BEFORE exposing queryables
+        self._running = True
+        self._start_realtime_controller()
+
+        # 3. Status: online (after controller is ready)
         self.session.put(self._key("@status"), b"online")
         logger.info("Status: online")
 
-        # 3. Capability queryable
+        # 4. Capability queryable
         cap_bytes = build_capability(self.sn).encode("utf-8")
         self._queryables.append(self.session.declare_queryable(
             self._key("@capability"),
@@ -384,14 +388,14 @@ class HandBridge:
         ))
         logger.info("@capability queryable declared")
 
-        # 4. Control queryable
+        # 5. Control queryable
         self._queryables.append(self.session.declare_queryable(
             self._key("@control"),
             self._handle_control,
         ))
         logger.info("@control queryable declared")
 
-        # 5. Resource queryables (GET/SET)
+        # 6. Resource queryables (GET/SET)
         for r in RESOURCE_DEFS:
             if r["can_get"] or r["can_set"]:
                 q = self.session.declare_queryable(
@@ -401,15 +405,11 @@ class HandBridge:
                 self._queryables.append(q)
                 logger.info(f"Resource queryable: {r['path']}")
 
-        # 6. SUB publishers (continuous streams)
-        self._running = True
+        # 7. SUB publishers (continuous streams)
         for r in RESOURCE_DEFS:
             if r["can_sub"]:
                 pub = self.session.declare_publisher(self._key(r["path"]))
                 self._publishers[r["path"]] = pub
-
-        # 7. Start realtime controller for smooth motion
-        self._start_realtime_controller()
 
         if self._publishers:
             t = threading.Thread(target=self._publish_loop, daemon=True)
@@ -563,9 +563,14 @@ class HandBridge:
         (non-blocking). Other writes use SDO with hand_lock.
         """
         if path == "joint/target_position":
+            arr = np.asarray(value, dtype=np.float64)
+            if arr.shape != (5, 4):
+                raise ValueError(f"target_position must be 5x4 array, got shape {arr.shape}")
+            if not np.isfinite(arr).all():
+                raise ValueError("target_position contains non-finite values")
             # Atomically update realtime target - no SDO, no blocking
             with self._rt_lock:
-                self._rt_target = np.array(value, dtype=np.float64)
+                self._rt_target = arr
             return
 
         # Other writes need SDO access

@@ -245,10 +245,11 @@ void HandBridge::start() {
     // 6. Resource queryables + publishers for SUB resources
     for (const auto& r : resource_defs()) {
         if (r.can_get || r.can_set) {
+            auto r_copy = r;  // capture by value to avoid dangling reference
             queryables_.push_back(session_->declare_queryable(
                 zenoh::KeyExpr(key(r.path)),
-                [this, &r](zenoh::Query& query) {
-                    handle_resource_query(query, r);
+                [this, r_copy](zenoh::Query& query) {
+                    handle_resource_query(query, r_copy);
                 },
                 []() {}));
             log_info("Resource queryable: " + r.path);
@@ -375,12 +376,15 @@ void HandBridge::start_owner_watcher(const std::string& owner_zid) {
             [this, owner_zid](zenoh::Sample& sample) {
                 // SampleKind::Z_SAMPLE_KIND_DELETE means liveliness token dropped (owner crashed)
                 if (sample.get_kind() == Z_SAMPLE_KIND_DELETE) {
-                    std::lock_guard lock(control_mutex_);
-                    if (control_owner_ == owner_zid) {
-                        log_info("Control owner " + owner_zid + " crashed, auto-releasing");
-                        control_owner_.clear();
+                    {
+                        std::lock_guard lock(control_mutex_);
+                        if (control_owner_ == owner_zid) {
+                            log_info("Control owner " + owner_zid + " crashed, auto-releasing");
+                            control_owner_.clear();
+                        }
                     }
-                    stop_owner_watcher();
+                    // Defer watcher cleanup to avoid destroying subscriber during its own callback
+                    std::thread([this]() { stop_owner_watcher(); }).detach();
                 }
             },
             []() {}));

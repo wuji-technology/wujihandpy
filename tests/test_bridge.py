@@ -92,7 +92,7 @@ def test_capability_access_flags():
 def test_read_resource_scalar():
     hand = MagicMock()
     hand.read_input_voltage.return_value = 12.5
-    bridge = HandBridge(hand, "TEST")
+    bridge = HandBridge(hand, "TEST", pub_rate=100.0)
     assert bridge._read_resource("input_voltage") == 12.5
     hand.read_input_voltage.assert_called_once()
 
@@ -100,14 +100,14 @@ def test_read_resource_scalar():
 def test_read_resource_temperature():
     hand = MagicMock()
     hand.read_temperature.return_value = 45.3
-    bridge = HandBridge(hand, "TEST")
+    bridge = HandBridge(hand, "TEST", pub_rate=100.0)
     assert bridge._read_resource("temperature") == 45.3
 
 
 def test_read_resource_array():
     hand = MagicMock()
     hand.read_joint_actual_position.return_value = np.zeros((5, 4))
-    bridge = HandBridge(hand, "TEST")
+    bridge = HandBridge(hand, "TEST", pub_rate=100.0)
     val = bridge._read_resource("joint/actual_position")
     assert isinstance(val, list)
     assert len(val) == 5
@@ -116,7 +116,7 @@ def test_read_resource_array():
 
 def test_write_resource_enabled():
     hand = MagicMock()
-    bridge = HandBridge(hand, "TEST")
+    bridge = HandBridge(hand, "TEST", pub_rate=100.0)
     bridge._write_resource("joint/enabled", [[True] * 4] * 5)
     hand.write_joint_enabled.assert_called_once()
     arg = hand.write_joint_enabled.call_args[0][0]
@@ -126,7 +126,7 @@ def test_write_resource_enabled():
 
 def test_write_resource_target_position():
     hand = MagicMock()
-    bridge = HandBridge(hand, "TEST")
+    bridge = HandBridge(hand, "TEST", pub_rate=100.0)
     bridge._write_resource("joint/target_position", [[0.5] * 4] * 5)
     # target_position now updates _rt_target atomically (realtime controller path)
     # instead of calling hand.write_joint_target_position via SDO
@@ -136,7 +136,7 @@ def test_write_resource_target_position():
 
 def test_write_resource_control_mode():
     hand = MagicMock()
-    bridge = HandBridge(hand, "TEST")
+    bridge = HandBridge(hand, "TEST", pub_rate=100.0)
     bridge._write_resource("joint/control_mode", [[1] * 4] * 5)
     hand.write_joint_control_mode.assert_called_once()
     arg = hand.write_joint_control_mode.call_args[0][0]
@@ -146,7 +146,7 @@ def test_write_resource_control_mode():
 
 def test_read_resource_actual_effort_from_controller():
     hand = MagicMock()
-    bridge = HandBridge(hand, "TEST")
+    bridge = HandBridge(hand, "TEST", pub_rate=100.0)
     # Simulate realtime controller being active
     mock_ctrl = MagicMock()
     mock_ctrl.get_joint_actual_effort.return_value = np.ones((5, 4)) * 0.5
@@ -160,14 +160,14 @@ def test_read_resource_actual_effort_from_controller():
 
 def test_write_resource_effort_limit():
     hand = MagicMock()
-    bridge = HandBridge(hand, "TEST")
+    bridge = HandBridge(hand, "TEST", pub_rate=100.0)
     bridge._write_resource("joint/effort_limit", [[1.0] * 4] * 5)
     hand.write_joint_effort_limit.assert_called_once()
 
 
 def test_read_unknown_resource_raises():
     hand = MagicMock()
-    bridge = HandBridge(hand, "TEST")
+    bridge = HandBridge(hand, "TEST", pub_rate=100.0)
     try:
         bridge._read_resource("nonexistent")
         assert False, "Should have raised ValueError"
@@ -177,7 +177,7 @@ def test_read_unknown_resource_raises():
 
 def test_write_unknown_resource_raises():
     hand = MagicMock()
-    bridge = HandBridge(hand, "TEST")
+    bridge = HandBridge(hand, "TEST", pub_rate=100.0)
     try:
         bridge._write_resource("nonexistent", 42)
         assert False, "Should have raised ValueError"
@@ -187,7 +187,7 @@ def test_write_unknown_resource_raises():
 
 def test_key_generation():
     hand = MagicMock()
-    bridge = HandBridge(hand, "HAND.001")
+    bridge = HandBridge(hand, "HAND.001", pub_rate=100.0)
     assert bridge._key("@alive") == "wuji/HAND_001/@alive"
     assert bridge._key("@capability") == "wuji/HAND_001/@capability"
     assert bridge._key("joint/actual_position") == "wuji/HAND_001/joint/actual_position"
@@ -262,7 +262,7 @@ def test_capability_sub_resources_have_timestamp_schema():
 
 def test_control_acquire_sets_owner():
     hand = MagicMock()
-    bridge = HandBridge(hand, "TEST")
+    bridge = HandBridge(hand, "TEST", pub_rate=100.0)
     bridge.session = MagicMock()
     # Simulate acquire
     with bridge._control_lock:
@@ -272,7 +272,7 @@ def test_control_acquire_sets_owner():
 
 def test_control_release_clears_owner():
     hand = MagicMock()
-    bridge = HandBridge(hand, "TEST")
+    bridge = HandBridge(hand, "TEST", pub_rate=100.0)
     bridge.session = MagicMock()
     bridge._control_owner = "zid_123"
     with bridge._control_lock:
@@ -282,14 +282,14 @@ def test_control_release_clears_owner():
 
 def test_control_owner_watcher_key():
     hand = MagicMock()
-    bridge = HandBridge(hand, "TEST")
+    bridge = HandBridge(hand, "TEST", pub_rate=100.0)
     key = bridge._control_owner_key("zid_abc123")
     assert key == "wuji/TEST/@control_owner/zid_abc123"
 
 
 def test_stop_owner_watcher_cleans_up():
     hand = MagicMock()
-    bridge = HandBridge(hand, "TEST")
+    bridge = HandBridge(hand, "TEST", pub_rate=100.0)
     mock_watcher = MagicMock()
     bridge._control_owner_watcher = mock_watcher
     bridge._stop_owner_watcher()
@@ -299,7 +299,7 @@ def test_stop_owner_watcher_cleans_up():
 
 def test_stop_owner_watcher_noop_when_none():
     hand = MagicMock()
-    bridge = HandBridge(hand, "TEST")
+    bridge = HandBridge(hand, "TEST", pub_rate=100.0)
     bridge._control_owner_watcher = None
     bridge._stop_owner_watcher()  # should not raise
     assert bridge._control_owner_watcher is None
@@ -307,6 +307,6 @@ def test_stop_owner_watcher_noop_when_none():
 
 def test_bridge_has_control_lock():
     hand = MagicMock()
-    bridge = HandBridge(hand, "TEST")
+    bridge = HandBridge(hand, "TEST", pub_rate=100.0)
     assert hasattr(bridge, '_control_lock')
     assert hasattr(bridge, '_control_owner_watcher')
