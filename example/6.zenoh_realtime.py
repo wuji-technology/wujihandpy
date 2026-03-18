@@ -99,6 +99,7 @@ def get_resource(session: zenoh.Session, sn: str, path: str):
 
 
 def main():
+    """Run a sine wave control test through the Zenoh bridge."""
     parser = argparse.ArgumentParser(description="Zenoh Bridge Realtime Control Test")
     parser.add_argument("--sn", type=str, default=None, help="Hand sanitized SN (e.g. WUJIHAND_001)")
     parser.add_argument("--duration", type=float, default=10.0, help="Test duration (seconds)")

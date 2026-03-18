@@ -238,6 +238,13 @@ class HandBridge:
     """
 
     def __init__(self, hand, serial_number: str, pub_rate: float):
+        """Initialize the Hand Zenoh Bridge.
+
+        Args:
+            hand: A wujihandpy.Hand instance (USB-connected).
+            serial_number: Device serial number for Zenoh key registration.
+            pub_rate: SUB resource publish rate in Hz (e.g. 1000).
+        """
         self.hand = hand
         self.sn = serial_number
         self.sanitized_sn = sanitize_sn(serial_number)
@@ -260,6 +267,7 @@ class HandBridge:
         hand.disable_thread_safe_check()
 
     def _key(self, suffix: str) -> str:
+        """Build a Zenoh key expression: wuji/{sanitized_sn}/{suffix}."""
         return f"wuji/{self.sanitized_sn}/{suffix}"
 
     def _control_owner_key(self, owner_zid: str) -> str:
@@ -273,6 +281,7 @@ class HandBridge:
         owner_key = self._control_owner_key(owner_zid)
         try:
             def on_sample(sample):
+                """Handle liveliness change; auto-release control on owner crash."""
                 # SampleKind.DELETE means the liveliness token was dropped (owner crashed)
                 if hasattr(sample, 'kind') and str(sample.kind).endswith('Delete'):
                     with self._control_lock:
@@ -607,6 +616,7 @@ class HandBridge:
 
 
 def main():
+    """Entry point: parse args, connect to hand, start Zenoh bridge."""
     parser = argparse.ArgumentParser(description="Wuji Hand Zenoh Bridge")
     parser.add_argument("--sn", type=str, default=None, help="Hand serial number filter")
     parser.add_argument("--pub-rate", type=float, required=True, help="Position publish rate in Hz (e.g. 1000)")
