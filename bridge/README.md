@@ -28,10 +28,10 @@ cd wujihandpy
 source .venv/bin/activate
 pip install eclipse-zenoh numpy
 
-# 启动（手必须 USB 连接）
-PYTHONPATH=. python -m bridge.python.hand_zenoh_bridge
+# 启动（手必须 USB 连接，--pub-rate 必填）
+PYTHONPATH=. python -m bridge.python.hand_zenoh_bridge --pub-rate 1000
 
-# 可选参数
+# 完整参数
 PYTHONPATH=. python -m bridge.python.hand_zenoh_bridge \
     --sn "DEVICE_SN" \
     --pub-rate 1000 \
@@ -45,10 +45,10 @@ cd bridge/cpp
 mkdir -p build && cd build
 cmake .. && cmake --build . -j$(nproc)
 
-# 启动
-./wujihand_zenoh_bridge --log-level info
+# 启动（--pub-rate 必填）
+./wujihand_zenoh_bridge --pub-rate 1000 --log-level info
 
-# 可选参数
+# 完整参数
 ./wujihand_zenoh_bridge --sn "DEVICE_SN" --pub-rate 1000 --log-level debug
 ```
 

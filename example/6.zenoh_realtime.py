@@ -83,11 +83,18 @@ def set_resource(session: zenoh.Session, sn: str, path: str, value):
             raise RuntimeError(f"SET {path} failed: {result}")
 
 
+def unwrap_envelope(payload):
+    """Unwrap timestamp envelope if present, return raw data."""
+    if isinstance(payload, dict) and "data" in payload:
+        return payload["data"]
+    return payload
+
+
 def get_resource(session: zenoh.Session, sn: str, path: str):
     """GET a resource via Zenoh queryable."""
     replies = session.get(f"wuji/{sn}/{path}", timeout=5.0)
     for reply in replies:
-        return json.loads(bytes(reply.ok.payload))
+        return unwrap_envelope(json.loads(bytes(reply.ok.payload)))
     raise RuntimeError(f"GET {path}: no reply")
 
 
@@ -107,11 +114,11 @@ def main():
     latest_effort = [None]
     sub_pos = session.declare_subscriber(
         f"wuji/{sn}/joint/actual_position",
-        lambda sample: latest_pos.__setitem__(0, json.loads(bytes(sample.payload))),
+        lambda sample: latest_pos.__setitem__(0, unwrap_envelope(json.loads(bytes(sample.payload)))),
     )
     sub_effort = session.declare_subscriber(
         f"wuji/{sn}/joint/actual_effort",
-        lambda sample: latest_effort.__setitem__(0, json.loads(bytes(sample.payload))),
+        lambda sample: latest_effort.__setitem__(0, unwrap_envelope(json.loads(bytes(sample.payload)))),
     )
 
     try:
