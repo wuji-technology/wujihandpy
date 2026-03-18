@@ -243,8 +243,13 @@ class HandBridge:
         Args:
             hand: A wujihandpy.Hand instance (USB-connected).
             serial_number: Device serial number for Zenoh key registration.
-            pub_rate: SUB resource publish rate in Hz (e.g. 1000).
+            pub_rate: SUB resource publish rate in Hz (e.g. 1000). Must be positive.
+
+        Raises:
+            ValueError: If pub_rate is not positive.
         """
+        if pub_rate <= 0:
+            raise ValueError(f"pub_rate must be positive, got {pub_rate}")
         self.hand = hand
         self.sn = serial_number
         self.sanitized_sn = sanitize_sn(serial_number)

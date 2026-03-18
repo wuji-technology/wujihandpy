@@ -4,6 +4,7 @@ import json
 import sys
 import time
 import numpy as np
+import pytest
 from unittest.mock import MagicMock
 
 # Mock zenoh if not available (e.g., CI without Rust toolchain)
@@ -168,21 +169,15 @@ def test_write_resource_effort_limit():
 def test_read_unknown_resource_raises():
     hand = MagicMock()
     bridge = HandBridge(hand, "TEST", pub_rate=100.0)
-    try:
+    with pytest.raises(ValueError, match="nonexistent"):
         bridge._read_resource("nonexistent")
-        assert False, "Should have raised ValueError"
-    except ValueError as e:
-        assert "nonexistent" in str(e)
 
 
 def test_write_unknown_resource_raises():
     hand = MagicMock()
     bridge = HandBridge(hand, "TEST", pub_rate=100.0)
-    try:
+    with pytest.raises(ValueError, match="nonexistent"):
         bridge._write_resource("nonexistent", 42)
-        assert False, "Should have raised ValueError"
-    except ValueError as e:
-        assert "nonexistent" in str(e)
 
 
 def test_key_generation():

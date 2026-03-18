@@ -9,7 +9,7 @@ Prerequisites:
   2. Bridge running: PYTHONPATH=. python -m bridge.python.hand_zenoh_bridge --pub-rate 1000
 
 Usage:
-  python example/zenoh_realtime.py [--sn WUJIHAND_001] [--duration 10] [--rate 50]
+  python example/6.zenoh_realtime.py [--sn WUJIHAND_001] [--duration 10] [--rate 1000]
 """
 
 import json
