@@ -1,5 +1,7 @@
 # Changelog
 
+This file mirrors the repository root `CHANGELOG.md` for public-facing release tooling.
+
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
@@ -11,12 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Zenoh Bridge (Python)**: standalone bridge process exposing WujiHand via Zenoh network protocol (`bridge/python/hand_zenoh_bridge.py`)
 - **Zenoh Bridge (C++)**: native C++ bridge with lower latency for production deployment (`bridge/cpp/`)
-- 16 Zenoh resources: 12 GET (scalar + 5×4 joint arrays), 5 SET (target_position, control_mode, enabled, effort_limit, reset_error)
+- 16 Zenoh resources: 12 GET (scalar + 5x4 joint arrays), 5 SET (target_position, control_mode, enabled, effort_limit, reset_error)
 - 2 SUB publishers (actual_position + actual_effort) with configurable `--pub-rate` (no default, must be explicitly set)
 - Host-side UTC microsecond timestamps in `{timestamp_us, data}` envelope format for all SUB data
 - `@capability` queryable with full JSON schema (SUB resources include timestamp envelope schema)
 - `@control` acquire/release protocol with liveliness-based TTL for automatic crash recovery
-- Realtime controller integration: target_position writes via atomic update → PDO 1kHz
+- Realtime controller integration: target_position writes via atomic update -> PDO 1kHz
 - Python/C++ fire-and-forget target_position subscriber for low-latency PUT writes
 - Zenoh realtime control example (`example/6.zenoh_realtime.py`)
 - 37 unit tests for bridge protocol, resources, timestamps, and control ownership
@@ -74,7 +76,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Unified version naming: `hardware_version/date` → `firmware_version/date`
+- Unified version naming: `hardware_version/date` -> `firmware_version/date`
 - C++ `Hand::realtime_controller` now returns `std::unique_ptr<IController>` with filter support
 
 ### Removed
@@ -95,9 +97,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Restores Point-to-Point mode on exit
   - Enables stable 1kHz control with low-frequency (~20-100 Hz) input
 - Optimized joint data naming:
-  - `joint_control_word` → `joint_enabled`
-  - `joint_position` → `joint_actual_position`
-  - `joint_control_position` → `joint_target_position`
+  - `joint_control_word` -> `joint_enabled`
+  - `joint_position` -> `joint_actual_position`
+  - `joint_control_position` -> `joint_target_position`
 - Removed mandatory NumPy type requirement for input parameters
 
 ### Deprecated

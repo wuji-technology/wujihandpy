@@ -286,10 +286,11 @@ class HandBridge:
         self._stop_owner_watcher()
 
         owner_key = self._control_owner_key(owner_zid)
+
         def on_sample(sample):
             """Handle liveliness change; auto-release control on owner crash."""
             # SampleKind.DELETE means the liveliness token was dropped (owner crashed)
-            if hasattr(sample, 'kind') and str(sample.kind).endswith('Delete'):
+            if hasattr(sample, "kind") and sample.kind == zenoh.SampleKind.DELETE:
                 with self._control_lock:
                     if self._control_owner == owner_zid:
                         logger.warning(f"Control owner {owner_zid} crashed, auto-releasing")
@@ -372,15 +373,17 @@ class HandBridge:
 
     def _stop_realtime_controller(self):
         """Stop realtime controller and disable joints."""
-        if self._controller is not None:
+        controller = self._controller
+        if controller is not None:
             logger.info("Stopping realtime controller...")
             # Set target to zero before stopping
             with self._rt_lock:
                 self._rt_target = np.zeros((5, 4), dtype=np.float64)
-            self._controller.set_joint_target_position(self._rt_target)
+                target = self._rt_target.copy()
+            controller.set_joint_target_position(target)
             time.sleep(1.0)
 
-            self._controller.__exit__(None, None, None)
+            controller.__exit__(None, None, None)
             self._controller = None
             logger.info("Realtime controller stopped")
 
@@ -625,12 +628,18 @@ class HandBridge:
         For actual_position, reads from realtime controller cache (non-blocking)
         when available. Other resources use SDO with hand_lock.
         """
-        if path == "joint/actual_position" and self._controller is not None:
-            # Zero-copy from controller cache, no SDO needed
-            return self._controller.get_joint_actual_position().tolist()
+        controller = self._controller
 
-        if path == "joint/actual_effort" and self._controller is not None:
-            return self._controller.get_joint_actual_effort().tolist()
+        if path == "joint/actual_position" and controller is not None:
+            # Zero-copy from controller cache, no SDO needed
+            return controller.get_joint_actual_position().tolist()
+
+        if path == "joint/actual_effort":
+            if controller is not None:
+                return controller.get_joint_actual_effort().tolist()
+            # actual_effort is only exposed from the realtime controller cache;
+            # during shutdown races, return a zeroed snapshot instead of failing.
+            return np.zeros((5, 4), dtype=np.float64).tolist()
 
         # All other reads need SDO access via hand_lock
         with self._hand_lock:
@@ -735,9 +744,8 @@ def main():
     logger.info(f"Hand connected, SN: {sn}")
 
     bridge = HandBridge(hand, serial_number=sn, pub_rate=args.pub_rate)
-    bridge.start()
-
     try:
+        bridge.start()
         logger.info("Bridge running. Press Ctrl+C to stop.")
         while True:
             time.sleep(1.0)

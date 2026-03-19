@@ -160,6 +160,15 @@ def test_read_resource_actual_effort_from_controller():
     mock_ctrl.get_joint_actual_effort.assert_called_once()
 
 
+def test_read_resource_actual_effort_without_controller_returns_zero_snapshot():
+    hand = MagicMock()
+    bridge = HandBridge(hand, "TEST", pub_rate=100.0)
+
+    val = bridge._read_resource("joint/actual_effort")
+
+    assert val == [[0.0] * 4 for _ in range(5)]
+
+
 def test_write_resource_effort_limit():
     hand = MagicMock()
     bridge = HandBridge(hand, "TEST", pub_rate=100.0)
@@ -324,6 +333,33 @@ def test_start_owner_watcher_raises_when_subscriber_creation_returns_none():
     with pytest.raises(RuntimeError, match="declare_subscriber returned None"):
         bridge._start_owner_watcher("zid_123")
 
+    assert bridge._control_owner_watcher is None
+
+
+def test_start_owner_watcher_releases_owner_on_delete_sample(monkeypatch):
+    hand = MagicMock()
+    bridge = HandBridge(hand, "TEST", pub_rate=100.0)
+    bridge.session = MagicMock()
+    delete_kind = object()
+    monkeypatch.setattr(hand_zenoh_bridge_module.zenoh, "SampleKind", MagicMock(DELETE=delete_kind))
+
+    captured = {}
+    watcher = MagicMock()
+
+    def declare_subscriber(_key, callback):
+        captured["callback"] = callback
+        return watcher
+
+    bridge.session.liveliness.return_value.declare_subscriber.side_effect = declare_subscriber
+    bridge._control_owner = "zid_123"
+    bridge._start_owner_watcher("zid_123")
+
+    sample = MagicMock()
+    sample.kind = delete_kind
+    captured["callback"](sample)
+
+    assert bridge._control_owner is None
+    watcher.undeclare.assert_called_once()
     assert bridge._control_owner_watcher is None
 
 
