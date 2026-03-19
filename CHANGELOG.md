@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `@capability` queryable with full JSON schema (SUB resources include timestamp envelope schema)
 - `@control` acquire/release protocol with liveliness-based TTL for automatic crash recovery
 - Realtime controller integration: target_position writes via atomic update → PDO 1kHz
-- C++ fire-and-forget target_position subscriber for low-latency PUT writes
+- Python/C++ fire-and-forget target_position subscriber for low-latency PUT writes
 - Zenoh realtime control example (`example/6.zenoh_realtime.py`)
 - 28 unit tests for bridge protocol, resources, timestamps, and control ownership
 - `bridge/README.md` with architecture, usage, and resource documentation

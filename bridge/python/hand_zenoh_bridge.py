@@ -9,6 +9,7 @@ import time
 import threading
 import logging
 import argparse
+from typing import Optional
 
 import zenoh
 import numpy as np
@@ -22,7 +23,7 @@ def get_timestamp_us() -> int:
     return time.time_ns() // 1000
 
 
-def wrap_with_timestamp(value, timestamp_us: int = None) -> dict:
+def wrap_with_timestamp(value, timestamp_us: Optional[int] = None) -> dict:
     """Wrap a data value with a host-side timestamp.
 
     Output format:
@@ -261,6 +262,7 @@ class HandBridge:
         self._control_owner_watcher = None  # liveliness subscriber for owner TTL
         self._threads = []
         self._queryables = []
+        self._subscribers = []
         self._publishers = {}
         self._hand_lock = threading.Lock()
         self._control_lock = threading.Lock()
@@ -307,8 +309,8 @@ class HandBridge:
         if self._control_owner_watcher is not None:
             try:
                 self._control_owner_watcher.undeclare()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Failed to undeclare owner watcher: {e}")
             self._control_owner_watcher = None
 
     def _start_realtime_controller(self):
@@ -419,7 +421,15 @@ class HandBridge:
                 self._queryables.append(q)
                 logger.info(f"Resource queryable: {r['path']}")
 
-        # 7. SUB publishers (continuous streams)
+        # 7. Subscribe to target_position for fire-and-forget writes (low latency)
+        target_pos_sub = self.session.declare_subscriber(
+            self._key("joint/target_position"),
+            self._handle_target_position_put,
+        )
+        self._subscribers.append(target_pos_sub)
+        logger.info("target_position subscriber declared (fire-and-forget path)")
+
+        # 8. SUB publishers (continuous streams)
         for r in RESOURCE_DEFS:
             if r["can_sub"]:
                 pub = self.session.declare_publisher(self._key(r["path"]))
@@ -451,6 +461,7 @@ class HandBridge:
             logger.info("Status: offline")
 
         self._queryables.clear()
+        self._subscribers.clear()
         self._publishers.clear()
         self._alive_token = None
         self.session = None
@@ -529,6 +540,16 @@ class HandBridge:
             except Exception as e:
                 logger.error(f"SET {resource_def['path']} failed: {e}")
                 query.reply_err(str(e).encode())
+
+    def _handle_target_position_put(self, sample):
+        """Handle fire-and-forget PUT for target_position (low-latency path)."""
+        try:
+            value = json.loads(bytes(sample.payload).decode("utf-8"))
+            self._write_resource("joint/target_position", value)
+        except ValueError as e:
+            logger.warning(f"Invalid target_position PUT ignored: {e}")
+        except Exception as e:
+            logger.error(f"target_position subscriber error: {e}")
 
     def _read_resource(self, path: str):
         """Read a resource from the hand, return JSON-serializable value.

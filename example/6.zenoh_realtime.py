@@ -164,7 +164,10 @@ def main():
                 if latest_effort[0] is not None:
                     effort_f2 = latest_effort[0][1]
                     effort_limit_f2 = effort_limit[1]
-                    effort_pct = [e / l * 100 if l != 0 else 0 for e, l in zip(effort_f2, effort_limit_f2)]
+                    effort_pct = [
+                        effort / limit * 100 if limit != 0 else 0
+                        for effort, limit in zip(effort_f2, effort_limit_f2)
+                    ]
                     effort_str = f"  effort%=[{effort_pct[0]:.0f},{effort_pct[2]:.0f},{effort_pct[3]:.0f}]"
                 print(f"\r  y={y:.2f}  actual={actual[1][0]:.2f}  err={error_j1:.3f}{effort_str}", end="", flush=True)
 

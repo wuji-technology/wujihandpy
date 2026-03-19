@@ -74,7 +74,7 @@ replies = session.get(f"wuji/{sn}/joint/actual_position", timeout=5.0)
 # 5. 写入目标位置（低延迟 fire-and-forget）
 session.put(f"wuji/{sn}/joint/target_position", json.dumps(target).encode())
 
-# 6. 订阅实时数据流（50Hz）
+# 6. 订阅实时数据流（频率由 --pub-rate 配置）
 session.declare_subscriber(f"wuji/{sn}/joint/actual_position", callback)
 
 # 7. 释放控制权
@@ -91,8 +91,8 @@ session.get(f"wuji/{sn}/@control", payload=f"release:{zid}".encode())
 | `temperature` | number | 设备温度 |
 | `handedness` | integer | 左/右手 |
 | `firmware_version` | integer | 固件版本号 |
-| `joint/actual_position` | 5×4 float | 关节实际位置 (SUB 50Hz) |
-| `joint/actual_effort` | 5×4 float | 关节实际力矩 (SUB 50Hz) |
+| `joint/actual_position` | 5×4 float | 关节实际位置（SUB 频率由 `--pub-rate` 配置） |
+| `joint/actual_effort` | 5×4 float | 关节实际力矩（SUB 频率由 `--pub-rate` 配置） |
 | `joint/temperature` | 5×4 float | 关节温度 |
 | `joint/error_code` | 5×4 int | 关节错误码 |
 | `joint/effort_limit` | 5×4 float | 力矩限制（可读可写）|

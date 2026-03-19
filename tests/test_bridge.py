@@ -300,6 +300,43 @@ def test_stop_owner_watcher_noop_when_none():
     assert bridge._control_owner_watcher is None
 
 
+def test_stop_owner_watcher_logs_debug_on_undeclare_error(caplog):
+    hand = MagicMock()
+    bridge = HandBridge(hand, "TEST", pub_rate=100.0)
+    mock_watcher = MagicMock()
+    mock_watcher.undeclare.side_effect = RuntimeError("boom")
+    bridge._control_owner_watcher = mock_watcher
+
+    with caplog.at_level("DEBUG", logger="hand_bridge"):
+        bridge._stop_owner_watcher()
+
+    assert "Failed to undeclare owner watcher: boom" in caplog.text
+    assert bridge._control_owner_watcher is None
+
+
+def test_handle_target_position_put_updates_rt_target():
+    hand = MagicMock()
+    bridge = HandBridge(hand, "TEST", pub_rate=100.0)
+    sample = MagicMock()
+    sample.payload = json.dumps([[0.25] * 4 for _ in range(5)]).encode("utf-8")
+
+    bridge._handle_target_position_put(sample)
+
+    np.testing.assert_array_almost_equal(bridge._rt_target, np.full((5, 4), 0.25))
+
+
+def test_handle_target_position_put_logs_warning_for_invalid_shape(caplog):
+    hand = MagicMock()
+    bridge = HandBridge(hand, "TEST", pub_rate=100.0)
+    sample = MagicMock()
+    sample.payload = json.dumps([[1.0] * 4]).encode("utf-8")
+
+    with caplog.at_level("WARNING", logger="hand_bridge"):
+        bridge._handle_target_position_put(sample)
+
+    assert "Invalid target_position PUT ignored" in caplog.text
+
+
 def test_bridge_has_control_lock():
     hand = MagicMock()
     bridge = HandBridge(hand, "TEST", pub_rate=100.0)
