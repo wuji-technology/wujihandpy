@@ -11,6 +11,7 @@ from unittest.mock import MagicMock
 if "zenoh" not in sys.modules:
     sys.modules["zenoh"] = MagicMock()
 
+import bridge.python.hand_zenoh_bridge as hand_zenoh_bridge_module
 from bridge.python.hand_zenoh_bridge import (
     build_capability,
     sanitize_sn,
@@ -314,9 +315,36 @@ def test_stop_owner_watcher_logs_debug_on_undeclare_error(caplog):
     assert bridge._control_owner_watcher is None
 
 
+def test_start_owner_watcher_raises_when_subscriber_creation_returns_none():
+    hand = MagicMock()
+    bridge = HandBridge(hand, "TEST", pub_rate=100.0)
+    bridge.session = MagicMock()
+    bridge.session.liveliness.return_value.declare_subscriber.return_value = None
+
+    with pytest.raises(RuntimeError, match="declare_subscriber returned None"):
+        bridge._start_owner_watcher("zid_123")
+
+    assert bridge._control_owner_watcher is None
+
+
+def test_handle_control_acquire_rolls_back_when_watcher_start_fails():
+    hand = MagicMock()
+    bridge = HandBridge(hand, "TEST", pub_rate=100.0)
+    bridge._start_owner_watcher = MagicMock(side_effect=RuntimeError("boom"))
+    query = MagicMock()
+    query.payload = b"acquire:zid_123"
+
+    bridge._handle_control(query)
+
+    assert bridge._control_owner is None
+    query.reply.assert_not_called()
+    query.reply_err.assert_called_once_with(b"boom")
+
+
 def test_handle_target_position_put_updates_rt_target():
     hand = MagicMock()
     bridge = HandBridge(hand, "TEST", pub_rate=100.0)
+    bridge._control_owner = "zid_123"
     sample = MagicMock()
     sample.payload = json.dumps([[0.25] * 4 for _ in range(5)]).encode("utf-8")
 
@@ -325,9 +353,23 @@ def test_handle_target_position_put_updates_rt_target():
     np.testing.assert_array_almost_equal(bridge._rt_target, np.full((5, 4), 0.25))
 
 
+def test_handle_target_position_put_ignores_without_control_owner(caplog):
+    hand = MagicMock()
+    bridge = HandBridge(hand, "TEST", pub_rate=100.0)
+    sample = MagicMock()
+    sample.payload = json.dumps([[0.25] * 4 for _ in range(5)]).encode("utf-8")
+
+    with caplog.at_level("WARNING", logger="hand_bridge"):
+        bridge._handle_target_position_put(sample)
+
+    np.testing.assert_array_almost_equal(bridge._rt_target, np.zeros((5, 4)))
+    assert "Ignoring target_position PUT without control owner" in caplog.text
+
+
 def test_handle_target_position_put_logs_warning_for_invalid_shape(caplog):
     hand = MagicMock()
     bridge = HandBridge(hand, "TEST", pub_rate=100.0)
+    bridge._control_owner = "zid_123"
     sample = MagicMock()
     sample.payload = json.dumps([[1.0] * 4]).encode("utf-8")
 
@@ -342,3 +384,46 @@ def test_bridge_has_control_lock():
     bridge = HandBridge(hand, "TEST", pub_rate=100.0)
     assert hasattr(bridge, '_control_lock')
     assert hasattr(bridge, '_control_owner_watcher')
+
+
+def test_start_cleans_up_partial_state_on_failure(monkeypatch):
+    hand = MagicMock()
+    bridge = HandBridge(hand, "TEST", pub_rate=100.0)
+    mock_session = MagicMock()
+    mock_session.zid.return_value = "zid_123"
+    mock_token = MagicMock()
+    mock_capability_queryable = MagicMock()
+    mock_session.liveliness.return_value.declare_token.return_value = mock_token
+    mock_session.declare_queryable.side_effect = [
+        mock_capability_queryable,
+        RuntimeError("boom"),
+    ]
+
+    monkeypatch.setattr(
+        hand_zenoh_bridge_module.zenoh,
+        "Config",
+        MagicMock(return_value=MagicMock()),
+    )
+    monkeypatch.setattr(
+        hand_zenoh_bridge_module.zenoh,
+        "open",
+        MagicMock(return_value=mock_session),
+    )
+
+    bridge._start_realtime_controller = MagicMock()
+    bridge._stop_realtime_controller = MagicMock()
+
+    with pytest.raises(RuntimeError, match="boom"):
+        bridge.start()
+
+    bridge._stop_realtime_controller.assert_called_once()
+    mock_capability_queryable.undeclare.assert_called_once()
+    mock_token.undeclare.assert_called_once()
+    mock_session.close.assert_called_once()
+    assert bridge._running is False
+    assert bridge.session is None
+    assert bridge._alive_token is None
+    assert bridge._queryables == []
+    assert bridge._subscribers == []
+    assert bridge._publishers == {}
+    assert bridge._threads == []

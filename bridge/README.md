@@ -4,7 +4,7 @@
 
 ## 架构
 
-```
+```text
 wuji-sdk 客户端 ←→ Zenoh 网络 ←→ Hand Bridge ←→ USB ←→ 灵巧手硬件
 ```
 
@@ -57,28 +57,42 @@ cmake .. && cmake --build . -j$(nproc)
 ```python
 import zenoh, json
 
+sn = "WUJIHAND_001"
+
+def callback(sample):
+    payload = json.loads(bytes(sample.payload).decode("utf-8"))
+    print("actual_position:", payload)
+
 session = zenoh.open(zenoh.Config())
+zid = str(session.zid())
+target = [[0.1, 0.0, 0.1, 0.1] for _ in range(5)]
+sub = None
+owner_token = session.liveliness().declare_token(f"wuji/{sn}/@control_owner/{zid}")
 
-# 1. 发现设备（通过 liveliness）
-replies = session.liveliness().get("wuji/**")
+try:
+    # 1. 发现设备（通过 liveliness）
+    replies = session.liveliness().get("wuji/**")
 
-# 2. 查询能力
-replies = session.get(f"wuji/{sn}/@capability", timeout=5.0)
+    # 2. 查询能力
+    replies = session.get(f"wuji/{sn}/@capability", timeout=5.0)
 
-# 3. 获取控制权
-session.get(f"wuji/{sn}/@control", payload=f"acquire:{zid}".encode())
+    # 3. 获取控制权（先声明 control-owner liveliness token）
+    session.get(f"wuji/{sn}/@control", payload=f"acquire:{zid}".encode(), timeout=5.0)
 
-# 4. 读取数据（GET）
-replies = session.get(f"wuji/{sn}/joint/actual_position", timeout=5.0)
+    # 4. 读取数据（GET）
+    replies = session.get(f"wuji/{sn}/joint/actual_position", timeout=5.0)
 
-# 5. 写入目标位置（低延迟 fire-and-forget）
-session.put(f"wuji/{sn}/joint/target_position", json.dumps(target).encode())
+    # 5. 写入目标位置（低延迟 fire-and-forget）
+    session.put(f"wuji/{sn}/joint/target_position", json.dumps(target).encode())
 
-# 6. 订阅实时数据流（频率由 --pub-rate 配置）
-session.declare_subscriber(f"wuji/{sn}/joint/actual_position", callback)
-
-# 7. 释放控制权
-session.get(f"wuji/{sn}/@control", payload=f"release:{zid}".encode())
+    # 6. 订阅实时数据流（频率由 --pub-rate 配置）
+    sub = session.declare_subscriber(f"wuji/{sn}/joint/actual_position", callback)
+finally:
+    session.get(f"wuji/{sn}/@control", payload=f"release:{zid}".encode(), timeout=5.0)
+    owner_token.undeclare()
+    if sub is not None:
+        sub.undeclare()
+    session.close()
 ```
 
 ## 资源列表

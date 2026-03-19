@@ -286,23 +286,25 @@ class HandBridge:
         self._stop_owner_watcher()
 
         owner_key = self._control_owner_key(owner_zid)
-        try:
-            def on_sample(sample):
-                """Handle liveliness change; auto-release control on owner crash."""
-                # SampleKind.DELETE means the liveliness token was dropped (owner crashed)
-                if hasattr(sample, 'kind') and str(sample.kind).endswith('Delete'):
-                    with self._control_lock:
+        def on_sample(sample):
+            """Handle liveliness change; auto-release control on owner crash."""
+            # SampleKind.DELETE means the liveliness token was dropped (owner crashed)
+            if hasattr(sample, 'kind') and str(sample.kind).endswith('Delete'):
+                with self._control_lock:
+                    if self._control_owner == owner_zid:
                         logger.warning(f"Control owner {owner_zid} crashed, auto-releasing")
                         self._control_owner = None
-                    self._stop_owner_watcher()
+                self._stop_owner_watcher()
 
-            self._control_owner_watcher = self.session.liveliness().declare_subscriber(
-                owner_key, on_sample
-            )
+        try:
+            watcher = self.session.liveliness().declare_subscriber(owner_key, on_sample)
+            if watcher is None:
+                raise RuntimeError(f"declare_subscriber returned None for {owner_key}")
+            self._control_owner_watcher = watcher
             logger.debug(f"Owner watcher started for {owner_zid}")
-        except Exception as e:
-            logger.warning(f"Failed to start owner watcher: {e}")
+        except Exception:
             self._control_owner_watcher = None
+            raise
 
     def _stop_owner_watcher(self):
         """Stop watching the current owner's liveliness."""
@@ -312,6 +314,27 @@ class HandBridge:
             except Exception as e:
                 logger.debug(f"Failed to undeclare owner watcher: {e}")
             self._control_owner_watcher = None
+
+    def _undeclare(self, entity, label: str):
+        """Best-effort undeclare for Zenoh entities during shutdown."""
+        if entity is None:
+            return
+        try:
+            entity.undeclare()
+        except Exception as e:
+            logger.debug(f"Failed to undeclare {label}: {e}")
+
+    def _close_session(self, session):
+        """Best-effort session close used by stop/startup rollback."""
+        if session is None:
+            return
+        close = getattr(session, "close", None)
+        if close is None:
+            return
+        try:
+            close()
+        except Exception as e:
+            logger.debug(f"Failed to close Zenoh session: {e}")
 
     def _start_realtime_controller(self):
         """Enable joints and start realtime controller (raw passthrough)."""
@@ -378,93 +401,119 @@ class HandBridge:
 
     def start(self):
         """Open Zenoh session, declare liveliness, publish status, start queryables."""
-        logger.info("Opening Zenoh session...")
-        config = zenoh.Config()
-        self.session = zenoh.open(config)
-        zid = str(self.session.zid())
-        logger.info(f"Zenoh session opened, ZID: {zid}")
+        try:
+            logger.info("Opening Zenoh session...")
+            config = zenoh.Config()
+            self.session = zenoh.open(config)
+            zid = str(self.session.zid())
+            logger.info(f"Zenoh session opened, ZID: {zid}")
 
-        # 1. Liveliness token
-        self._alive_token = self.session.liveliness().declare_token(self._key("@alive"))
-        logger.info(f"Liveliness token declared: {self._key('@alive')}")
+            # 1. Liveliness token
+            self._alive_token = self.session.liveliness().declare_token(self._key("@alive"))
+            logger.info(f"Liveliness token declared: {self._key('@alive')}")
 
-        # 2. Start realtime controller BEFORE exposing queryables
-        self._running = True
-        self._start_realtime_controller()
+            # 2. Start realtime controller BEFORE exposing queryables
+            self._running = True
+            self._start_realtime_controller()
 
-        # 3. Status: online (after controller is ready)
-        self.session.put(self._key("@status"), b"online")
-        logger.info("Status: online")
+            # 3. Status: online (after controller is ready)
+            self.session.put(self._key("@status"), b"online")
+            logger.info("Status: online")
 
-        # 4. Capability queryable
-        cap_bytes = build_capability(self.sn).encode("utf-8")
-        self._queryables.append(self.session.declare_queryable(
-            self._key("@capability"),
-            lambda query, data=cap_bytes: query.reply(self._key("@capability"), data),
-        ))
-        logger.info("@capability queryable declared")
+            # 4. Capability queryable
+            cap_bytes = build_capability(self.sn).encode("utf-8")
+            self._queryables.append(self.session.declare_queryable(
+                self._key("@capability"),
+                lambda query, data=cap_bytes: query.reply(self._key("@capability"), data),
+            ))
+            logger.info("@capability queryable declared")
 
-        # 5. Control queryable
-        self._queryables.append(self.session.declare_queryable(
-            self._key("@control"),
-            self._handle_control,
-        ))
-        logger.info("@control queryable declared")
+            # 5. Control queryable
+            self._queryables.append(self.session.declare_queryable(
+                self._key("@control"),
+                self._handle_control,
+            ))
+            logger.info("@control queryable declared")
 
-        # 6. Resource queryables (GET/SET)
-        for r in RESOURCE_DEFS:
-            if r["can_get"] or r["can_set"]:
-                q = self.session.declare_queryable(
-                    self._key(r["path"]),
-                    lambda query, res=r: self._handle_resource_query(query, res),
-                )
-                self._queryables.append(q)
-                logger.info(f"Resource queryable: {r['path']}")
+            # 6. Resource queryables (GET/SET)
+            for r in RESOURCE_DEFS:
+                if r["can_get"] or r["can_set"]:
+                    q = self.session.declare_queryable(
+                        self._key(r["path"]),
+                        lambda query, res=r: self._handle_resource_query(query, res),
+                    )
+                    self._queryables.append(q)
+                    logger.info(f"Resource queryable: {r['path']}")
 
-        # 7. Subscribe to target_position for fire-and-forget writes (low latency)
-        target_pos_sub = self.session.declare_subscriber(
-            self._key("joint/target_position"),
-            self._handle_target_position_put,
-        )
-        self._subscribers.append(target_pos_sub)
-        logger.info("target_position subscriber declared (fire-and-forget path)")
+            # 7. Subscribe to target_position for fire-and-forget writes (low latency)
+            target_pos_sub = self.session.declare_subscriber(
+                self._key("joint/target_position"),
+                self._handle_target_position_put,
+            )
+            self._subscribers.append(target_pos_sub)
+            logger.info("target_position subscriber declared (fire-and-forget path)")
 
-        # 8. SUB publishers (continuous streams)
-        for r in RESOURCE_DEFS:
-            if r["can_sub"]:
-                pub = self.session.declare_publisher(self._key(r["path"]))
-                self._publishers[r["path"]] = pub
+            # 8. SUB publishers (continuous streams)
+            for r in RESOURCE_DEFS:
+                if r["can_sub"]:
+                    pub = self.session.declare_publisher(self._key(r["path"]))
+                    self._publishers[r["path"]] = pub
 
-        if self._publishers:
-            t = threading.Thread(target=self._publish_loop, daemon=True)
-            t.start()
-            self._threads.append(t)
-            logger.info(f"Publisher loop started at {self.pub_rate} Hz")
+            if self._publishers:
+                t = threading.Thread(target=self._publish_loop, daemon=True)
+                t.start()
+                self._threads.append(t)
+                logger.info(f"Publisher loop started at {self.pub_rate} Hz")
 
-        logger.info("Hand Zenoh Bridge fully started")
+            logger.info("Hand Zenoh Bridge fully started")
+        except Exception:
+            logger.exception("Bridge startup failed, cleaning up partial state")
+            self.stop()
+            raise
 
     def stop(self):
         """Gracefully shutdown."""
         logger.info("Stopping bridge...")
         self._running = False
+
         for t in self._threads:
-            t.join(timeout=2.0)
+            try:
+                t.join(timeout=2.0)
+            except Exception as e:
+                logger.debug(f"Failed to join bridge thread: {e}")
+        self._threads.clear()
 
-        # Stop realtime controller
-        self._stop_realtime_controller()
+        try:
+            self._stop_realtime_controller()
+        except Exception as e:
+            logger.warning(f"Failed to stop realtime controller: {e}")
 
-        # Stop owner watcher
+        with self._control_lock:
+            self._control_owner = None
         self._stop_owner_watcher()
 
-        if self.session:
-            self.session.put(self._key("@status"), b"offline")
-            logger.info("Status: offline")
+        session = self.session
+        if session is not None:
+            try:
+                session.put(self._key("@status"), b"offline")
+                logger.info("Status: offline")
+            except Exception as e:
+                logger.debug(f"Failed to publish offline status: {e}")
+
+        for idx, queryable in enumerate(self._queryables):
+            self._undeclare(queryable, f"queryable[{idx}]")
+        for idx, subscriber in enumerate(self._subscribers):
+            self._undeclare(subscriber, f"subscriber[{idx}]")
+        for path, publisher in self._publishers.items():
+            self._undeclare(publisher, f"publisher[{path}]")
+        self._undeclare(self._alive_token, "alive token")
 
         self._queryables.clear()
         self._subscribers.clear()
         self._publishers.clear()
         self._alive_token = None
         self.session = None
+        self._close_session(session)
         logger.info("Bridge stopped")
 
     def _handle_control(self, query):
@@ -481,15 +530,29 @@ class HandBridge:
         if payload_str.startswith("acquire:"):
             requester = payload_str[len("acquire:"):]
             with self._control_lock:
-                if self._control_owner is None or self._control_owner == requester:
-                    self._control_owner = requester
-                    query.reply(key, b"granted")
-                    logger.info(f"Control granted to {requester}")
-                    # Start liveliness watcher for auto-release on crash
-                    self._start_owner_watcher(requester)
-                else:
-                    query.reply(key, f"denied:{self._control_owner}".encode())
-                    logger.info(f"Control denied to {requester}, owner: {self._control_owner}")
+                current_owner = self._control_owner
+                if current_owner is not None and current_owner != requester:
+                    query.reply(key, f"denied:{current_owner}".encode())
+                    logger.info(f"Control denied to {requester}, owner: {current_owner}")
+                    return
+                # Reserve control so competing acquire requests stay serialized while
+                # we establish the liveliness watcher.
+                self._control_owner = requester
+
+            try:
+                self._start_owner_watcher(requester)
+                with self._control_lock:
+                    if self._control_owner != requester:
+                        raise RuntimeError("control owner lost before acquire completed")
+                query.reply(key, b"granted")
+                logger.info(f"Control granted to {requester}")
+            except Exception as e:
+                with self._control_lock:
+                    if self._control_owner == requester:
+                        self._control_owner = None
+                self._stop_owner_watcher()
+                query.reply_err(str(e).encode())
+                logger.error(f"Control acquire failed for {requester}: {e}")
         elif payload_str.startswith("release:"):
             requester = payload_str[len("release:"):]
             with self._control_lock:
@@ -544,6 +607,11 @@ class HandBridge:
     def _handle_target_position_put(self, sample):
         """Handle fire-and-forget PUT for target_position (low-latency path)."""
         try:
+            with self._control_lock:
+                has_owner = self._control_owner is not None
+            if not has_owner:
+                logger.warning("Ignoring target_position PUT without control owner")
+                return
             value = json.loads(bytes(sample.payload).decode("utf-8"))
             self._write_resource("joint/target_position", value)
         except ValueError as e:
