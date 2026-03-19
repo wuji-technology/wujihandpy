@@ -393,11 +393,14 @@ class HandBridge:
     def _realtime_loop(self):
         """Feed target position to realtime controller at 100Hz."""
         period = 1.0 / 100.0
-        while self._running and self._controller is not None:
+        while self._running:
             try:
                 with self._rt_lock:
                     target = self._rt_target.copy()
-                self._controller.set_joint_target_position(target)
+                    controller = self._controller
+                if controller is None:
+                    break
+                controller.set_joint_target_position(target)
             except Exception as e:
                 logger.error(f"Realtime loop error: {e}")
             time.sleep(period)

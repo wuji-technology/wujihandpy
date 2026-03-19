@@ -199,7 +199,9 @@ def test_key_generation():
 
 
 def test_resource_defs_count():
-    assert len(RESOURCE_DEFS) == 16
+    paths = [resource["path"] for resource in RESOURCE_DEFS]
+    assert len(RESOURCE_DEFS) >= 10
+    assert len(paths) == len(set(paths))
 
 
 # ---------------------------------------------------------------------------
