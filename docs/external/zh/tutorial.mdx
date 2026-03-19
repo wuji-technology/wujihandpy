@@ -292,7 +292,7 @@ with hand.realtime_controller(
 
 ### 4.4 实时写入
 ```python
-def set_joint_target_position(self, value_array: np.NDArray[np.float64]) -> None
+def set_joint_target_position(self, value_array: np.NDArray[np.float64]) -> None: ...
 ```
 `set_joint_target_position()` 函数会非阻塞地将目标控制量尽可能快地发送至电机驱动板。
 
