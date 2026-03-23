@@ -5,7 +5,7 @@ import sys
 import time
 import numpy as np
 import pytest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 # Mock zenoh if not available (e.g., CI without Rust toolchain)
 if "zenoh" not in sys.modules:
@@ -312,17 +312,17 @@ def test_stop_owner_watcher_noop_when_none():
     assert bridge._control_owner_watcher is None
 
 
-def test_stop_owner_watcher_logs_debug_on_undeclare_error(caplog):
+def test_stop_owner_watcher_logs_debug_on_undeclare_error():
     hand = MagicMock()
     bridge = HandBridge(hand, "TEST", pub_rate=100.0)
     mock_watcher = MagicMock()
     mock_watcher.undeclare.side_effect = RuntimeError("boom")
     bridge._control_owner_watcher = mock_watcher
 
-    with caplog.at_level("DEBUG", logger="hand_bridge"):
+    with patch.object(hand_zenoh_bridge_module.logger, "debug") as debug_mock:
         bridge._stop_owner_watcher()
 
-    assert "Failed to undeclare owner watcher: boom" in caplog.text
+    debug_mock.assert_called_once_with("Failed to undeclare owner watcher: boom")
     assert bridge._control_owner_watcher is None
 
 
@@ -371,6 +371,7 @@ def test_handle_control_acquire_rolls_back_when_watcher_start_fails():
     bridge._start_owner_watcher = MagicMock(side_effect=RuntimeError("boom"))
     query = MagicMock()
     query.payload = b"acquire:zid_123"
+    query.attachment = b"zid_123"
 
     bridge._handle_control(query)
 
@@ -379,42 +380,128 @@ def test_handle_control_acquire_rolls_back_when_watcher_start_fails():
     query.reply_err.assert_called_once_with(b"boom")
 
 
+def test_handle_control_rejects_attachment_mismatch():
+    hand = MagicMock()
+    bridge = HandBridge(hand, "TEST", pub_rate=100.0)
+    query = MagicMock()
+    query.payload = b"acquire:zid_123"
+    query.attachment = b"zid_other"
+
+    bridge._handle_control(query)
+
+    assert bridge._control_owner is None
+    query.reply.assert_not_called()
+    query.reply_err.assert_called_once_with(b"identity_mismatch")
+
+
+def test_handle_resource_query_get_replies_with_raw_json():
+    hand = MagicMock()
+    hand.read_input_voltage.return_value = 12.5
+    bridge = HandBridge(hand, "TEST", pub_rate=100.0)
+    query = MagicMock()
+    query.payload = None
+    query.attachment = None
+    resource_def = {"path": "input_voltage", "can_get": True, "can_set": False}
+
+    bridge._handle_resource_query(query, resource_def)
+
+    reply_key, reply_payload = query.reply.call_args[0]
+    assert reply_key == "wuji/TEST/input_voltage"
+    assert json.loads(reply_payload.decode("utf-8")) == 12.5
+
+
+def test_handle_resource_query_set_requires_requester_attachment():
+    hand = MagicMock()
+    bridge = HandBridge(hand, "TEST", pub_rate=100.0)
+    bridge._control_owner = "zid_123"
+    query = MagicMock()
+    query.payload = json.dumps([[True] * 4 for _ in range(5)]).encode("utf-8")
+    query.attachment = None
+    resource_def = {"path": "joint/enabled", "can_get": False, "can_set": True}
+
+    bridge._handle_resource_query(query, resource_def)
+
+    hand.write_joint_enabled.assert_not_called()
+    query.reply.assert_not_called()
+    query.reply_err.assert_called_once_with(b"missing requester id")
+
+
+def test_handle_resource_query_set_rejects_non_owner_requester():
+    hand = MagicMock()
+    bridge = HandBridge(hand, "TEST", pub_rate=100.0)
+    bridge._control_owner = "zid_owner"
+    query = MagicMock()
+    query.payload = json.dumps([[True] * 4 for _ in range(5)]).encode("utf-8")
+    query.attachment = b"zid_other"
+    resource_def = {"path": "joint/enabled", "can_get": False, "can_set": True}
+
+    bridge._handle_resource_query(query, resource_def)
+
+    hand.write_joint_enabled.assert_not_called()
+    query.reply.assert_not_called()
+    query.reply_err.assert_called_once_with(b"not control owner")
+
+
 def test_handle_target_position_put_updates_rt_target():
     hand = MagicMock()
     bridge = HandBridge(hand, "TEST", pub_rate=100.0)
     bridge._control_owner = "zid_123"
     sample = MagicMock()
     sample.payload = json.dumps([[0.25] * 4 for _ in range(5)]).encode("utf-8")
+    sample.attachment = b"zid_123"
 
     bridge._handle_target_position_put(sample)
 
     np.testing.assert_array_almost_equal(bridge._rt_target, np.full((5, 4), 0.25))
 
 
-def test_handle_target_position_put_ignores_without_control_owner(caplog):
+def test_handle_target_position_put_ignores_without_control_owner():
     hand = MagicMock()
     bridge = HandBridge(hand, "TEST", pub_rate=100.0)
     sample = MagicMock()
     sample.payload = json.dumps([[0.25] * 4 for _ in range(5)]).encode("utf-8")
+    sample.attachment = b"zid_123"
 
-    with caplog.at_level("WARNING", logger="hand_bridge"):
+    with patch.object(hand_zenoh_bridge_module.logger, "warning") as warning_mock:
         bridge._handle_target_position_put(sample)
 
     np.testing.assert_array_almost_equal(bridge._rt_target, np.zeros((5, 4)))
-    assert "Ignoring target_position PUT without control owner" in caplog.text
+    warning_mock.assert_called_once_with("Ignoring target_position PUT without control owner")
 
 
-def test_handle_target_position_put_logs_warning_for_invalid_shape(caplog):
+def test_handle_target_position_put_logs_warning_for_invalid_shape():
     hand = MagicMock()
     bridge = HandBridge(hand, "TEST", pub_rate=100.0)
     bridge._control_owner = "zid_123"
     sample = MagicMock()
     sample.payload = json.dumps([[1.0] * 4]).encode("utf-8")
+    sample.attachment = b"zid_123"
 
-    with caplog.at_level("WARNING", logger="hand_bridge"):
+    with patch.object(hand_zenoh_bridge_module.logger, "warning") as warning_mock:
         bridge._handle_target_position_put(sample)
 
-    assert "Invalid target_position PUT ignored" in caplog.text
+    warning_mock.assert_called_once_with(
+        "Invalid target_position PUT ignored: target_position must be 5x4 array, got shape (1, 4)"
+    )
+
+
+def test_handle_target_position_put_rejects_non_owner_attachment():
+    hand = MagicMock()
+    bridge = HandBridge(hand, "TEST", pub_rate=100.0)
+    bridge._control_owner = "zid_owner"
+    sample = MagicMock()
+    sample.payload = json.dumps([[0.25] * 4 for _ in range(5)]).encode("utf-8")
+    sample.attachment = b"zid_other"
+
+    with patch.object(hand_zenoh_bridge_module.logger, "warning") as warning_mock:
+        bridge._handle_target_position_put(sample)
+
+    np.testing.assert_array_almost_equal(bridge._rt_target, np.zeros((5, 4)))
+    warning_mock.assert_called_once_with(
+        "Ignoring target_position PUT from non-owner requester %s (owner=%s)",
+        "zid_other",
+        "zid_owner",
+    )
 
 
 def test_bridge_has_control_lock():

@@ -77,18 +77,32 @@ try:
     replies = session.get(f"wuji/{sn}/@capability", timeout=5.0)
 
     # 3. 获取控制权（先声明 control-owner liveliness token）
-    session.get(f"wuji/{sn}/@control", payload=f"acquire:{zid}".encode(), timeout=5.0)
+    session.get(
+        f"wuji/{sn}/@control",
+        payload=f"acquire:{zid}".encode(),
+        attachment=zid.encode(),
+        timeout=5.0,
+    )
 
     # 4. 读取数据（GET）
     replies = session.get(f"wuji/{sn}/joint/actual_position", timeout=5.0)
 
     # 5. 写入目标位置（低延迟 fire-and-forget）
-    session.put(f"wuji/{sn}/joint/target_position", json.dumps(target).encode())
+    session.put(
+        f"wuji/{sn}/joint/target_position",
+        json.dumps(target).encode(),
+        attachment=zid.encode(),
+    )
 
     # 6. 订阅实时数据流（频率由 --pub-rate 配置）
     sub = session.declare_subscriber(f"wuji/{sn}/joint/actual_position", callback)
 finally:
-    session.get(f"wuji/{sn}/@control", payload=f"release:{zid}".encode(), timeout=5.0)
+    session.get(
+        f"wuji/{sn}/@control",
+        payload=f"release:{zid}".encode(),
+        attachment=zid.encode(),
+        timeout=5.0,
+    )
     owner_token.undeclare()
     if sub is not None:
         sub.undeclare()
@@ -123,6 +137,10 @@ finally:
 | `joint/enabled` | 5×4 bool | 关节使能 |
 | `joint/effort_limit` | 5×4 float | 力矩限制 |
 | `joint/reset_error` | 5×4 int | 错误复位 |
+
+### 数据格式
+
+GET/queryable 回复保持资源原始 schema；只有 SUB 数据流会带时间戳信封。
 
 ### SUB 数据流格式
 

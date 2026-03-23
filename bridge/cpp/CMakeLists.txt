@@ -58,17 +58,18 @@ set(ZENOHCXX_EXAMPLES_PROTOBUF OFF CACHE BOOL "" FORCE)
 # Disable nlohmann_json extras
 set(JSON_BuildTests OFF CACHE BOOL "" FORCE)
 
+# Pin released Zenoh versions so bridge builds stay reproducible.
 FetchContent_Declare(
     zenohc
     GIT_REPOSITORY https://github.com/eclipse-zenoh/zenoh-c.git
-    GIT_TAG main
+    GIT_TAG 1.8.0
     GIT_SHALLOW TRUE
 )
 
 FetchContent_Declare(
     zenohcxx
     GIT_REPOSITORY https://github.com/eclipse-zenoh/zenoh-cpp.git
-    GIT_TAG main
+    GIT_TAG 1.8.0
     GIT_SHALLOW TRUE
 )
 

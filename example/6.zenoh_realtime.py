@@ -16,7 +16,6 @@ import json
 import time
 import math
 import argparse
-import threading
 
 import zenoh
 
@@ -45,19 +44,19 @@ def find_hand(session: zenoh.Session, sn: str | None, timeout: float = 5.0) -> s
     raise RuntimeError("No hand found on Zenoh network")
 
 
-def acquire_control(session: zenoh.Session, sn: str) -> str:
-    """Acquire write control, return ZID."""
-    zid = str(session.zid())
+def acquire_control(session: zenoh.Session, sn: str, zid: str):
+    """Acquire write control for the current Zenoh session."""
     replies = session.get(
         f"wuji/{sn}/@control",
         payload=f"acquire:{zid}".encode(),
+        attachment=zid.encode(),
         timeout=5.0,
     )
     for reply in replies:
         result = bytes(reply.ok.payload).decode()
         if result == "granted":
             print(f"Control acquired (ZID: {zid[:8]}...)")
-            return zid
+            return
         raise RuntimeError(f"Control denied: {result}")
     raise RuntimeError("No reply from @control")
 
@@ -67,16 +66,22 @@ def release_control(session: zenoh.Session, sn: str, zid: str):
     replies = session.get(
         f"wuji/{sn}/@control",
         payload=f"release:{zid}".encode(),
+        attachment=zid.encode(),
         timeout=5.0,
     )
     for reply in replies:
         print(f"Control released: {bytes(reply.ok.payload).decode()}")
 
 
-def set_resource(session: zenoh.Session, sn: str, path: str, value):
+def set_resource(session: zenoh.Session, sn: str, requester_id: str, path: str, value):
     """SET a resource via Zenoh queryable."""
     data = json.dumps(value).encode("utf-8")
-    replies = session.get(f"wuji/{sn}/{path}", payload=data, timeout=5.0)
+    replies = session.get(
+        f"wuji/{sn}/{path}",
+        payload=data,
+        attachment=requester_id.encode(),
+        timeout=5.0,
+    )
     for reply in replies:
         result = bytes(reply.ok.payload).decode()
         if result != '"ok"':
@@ -108,7 +113,9 @@ def main():
 
     session = zenoh.open(zenoh.Config())
     sn = find_hand(session, args.sn)
-    zid = acquire_control(session, sn)
+    zid = str(session.zid())
+    owner_token = session.liveliness().declare_token(f"wuji/{sn}/@control_owner/{zid}")
+    acquire_control(session, sn, zid)
 
     # Subscribe to position and effort feedback
     latest_pos = [None]
@@ -125,7 +132,7 @@ def main():
     try:
         # Enable all joints
         print("Enabling all joints...")
-        set_resource(session, sn, "joint/enabled", [[True] * 4 for _ in range(5)])
+        set_resource(session, sn, zid, "joint/enabled", [[True] * 4 for _ in range(5)])
         time.sleep(0.5)
 
         # Read initial position
@@ -153,8 +160,11 @@ def main():
             ]
 
             # Fire-and-forget PUT for low-latency target updates
-            session.put(f"wuji/{sn}/joint/target_position",
-                        json.dumps(target).encode("utf-8"))
+            session.put(
+                f"wuji/{sn}/joint/target_position",
+                json.dumps(target).encode("utf-8"),
+                attachment=zid.encode(),
+            )
 
             # Print feedback
             if latest_pos[0] is not None:
@@ -179,16 +189,20 @@ def main():
     finally:
         # Return to zero and disable
         print("Returning to zero position...")
-        session.put(f"wuji/{sn}/joint/target_position",
-                    json.dumps([[0] * 4 for _ in range(5)]).encode("utf-8"))
+        session.put(
+            f"wuji/{sn}/joint/target_position",
+            json.dumps([[0] * 4 for _ in range(5)]).encode("utf-8"),
+            attachment=zid.encode(),
+        )
         time.sleep(1.0)
 
         print("Disabling joints...")
-        set_resource(session, sn, "joint/enabled", [[False] * 4 for _ in range(5)])
+        set_resource(session, sn, zid, "joint/enabled", [[False] * 4 for _ in range(5)])
 
         sub_pos.undeclare()
         sub_effort.undeclare()
         release_control(session, sn, zid)
+        owner_token.undeclare()
         session.close()
         print("Done.")
 

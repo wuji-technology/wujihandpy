@@ -37,6 +37,33 @@ def wrap_with_timestamp(value, timestamp_us: Optional[int] = None) -> dict:
         timestamp_us = get_timestamp_us()
     return {"timestamp_us": timestamp_us, "data": value}
 
+
+def decode_zenoh_text(value) -> Optional[str]:
+    """Best-effort decode for Zenoh payload/attachment text fields."""
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (bytes, bytearray)):
+        return bytes(value).decode("utf-8", errors="replace")
+
+    to_string = getattr(value, "to_string", None)
+    if callable(to_string):
+        decoded = to_string()
+        if isinstance(decoded, str):
+            return decoded
+
+    to_bytes = getattr(value, "to_bytes", None)
+    if callable(to_bytes):
+        decoded = to_bytes()
+        if isinstance(decoded, (bytes, bytearray)):
+            return bytes(decoded).decode("utf-8", errors="replace")
+
+    try:
+        return bytes(value).decode("utf-8", errors="replace")
+    except (TypeError, ValueError):
+        return None
+
 logger = logging.getLogger("hand_bridge")
 
 
@@ -337,6 +364,13 @@ class HandBridge:
         except Exception as e:
             logger.debug(f"Failed to close Zenoh session: {e}")
 
+    def _get_requester_id(self, message) -> Optional[str]:
+        """Extract requester ZID from a query/sample attachment."""
+        requester = decode_zenoh_text(getattr(message, "attachment", None))
+        if requester:
+            return requester
+        return None
+
     def _start_realtime_controller(self):
         """Enable joints and start realtime controller (raw passthrough)."""
         import wujihandpy
@@ -535,6 +569,15 @@ class HandBridge:
 
         if payload_str.startswith("acquire:"):
             requester = payload_str[len("acquire:"):]
+            attachment_requester = self._get_requester_id(query)
+            if attachment_requester != requester:
+                query.reply_err(b"identity_mismatch")
+                logger.warning(
+                    "Control acquire rejected: payload requester %r != attachment requester %r",
+                    requester,
+                    attachment_requester,
+                )
+                return
             with self._control_lock:
                 current_owner = self._control_owner
                 if current_owner is not None and current_owner != requester:
@@ -561,6 +604,15 @@ class HandBridge:
                 logger.error(f"Control acquire failed for {requester}: {e}")
         elif payload_str.startswith("release:"):
             requester = payload_str[len("release:"):]
+            attachment_requester = self._get_requester_id(query)
+            if attachment_requester != requester:
+                query.reply_err(b"identity_mismatch")
+                logger.warning(
+                    "Control release rejected: payload requester %r != attachment requester %r",
+                    requester,
+                    attachment_requester,
+                )
+                return
             with self._control_lock:
                 if self._control_owner == requester:
                     self._control_owner = None
@@ -580,15 +632,13 @@ class HandBridge:
         payload = bytes(query.payload) if query.payload else b""
 
         if len(payload) == 0:
-            # GET — response includes host-side timestamp
+            # GET replies keep the resource's original JSON schema.
             if not resource_def["can_get"]:
                 query.reply_err(b"GET not supported")
                 return
             try:
                 value = self._read_resource(resource_def["path"])
-                envelope = wrap_with_timestamp(value)
-                data = json.dumps(envelope).encode("utf-8")
-                query.reply(key, data)
+                query.reply(key, json.dumps(value).encode("utf-8"))
             except Exception as e:
                 logger.error(f"GET {resource_def['path']} failed: {e}")
                 query.reply_err(str(e).encode())
@@ -597,10 +647,24 @@ class HandBridge:
             if not resource_def["can_set"]:
                 query.reply_err(b"SET not supported")
                 return
+            requester = self._get_requester_id(query)
             with self._control_lock:
-                has_owner = self._control_owner is not None
-            if not has_owner:
+                owner = self._control_owner
+            if owner is None:
                 query.reply_err(b"no control owner")
+                return
+            if requester is None:
+                query.reply_err(b"missing requester id")
+                logger.warning(f"SET {resource_def['path']} rejected: missing requester attachment")
+                return
+            if requester != owner:
+                query.reply_err(b"not control owner")
+                logger.warning(
+                    "SET %s rejected: requester %s != owner %s",
+                    resource_def["path"],
+                    requester,
+                    owner,
+                )
                 return
             try:
                 value = json.loads(payload.decode("utf-8"))
@@ -613,10 +677,21 @@ class HandBridge:
     def _handle_target_position_put(self, sample):
         """Handle fire-and-forget PUT for target_position (low-latency path)."""
         try:
+            requester = self._get_requester_id(sample)
             with self._control_lock:
-                has_owner = self._control_owner is not None
-            if not has_owner:
+                owner = self._control_owner
+            if owner is None:
                 logger.warning("Ignoring target_position PUT without control owner")
+                return
+            if requester is None:
+                logger.warning("Ignoring target_position PUT without requester attachment")
+                return
+            if requester != owner:
+                logger.warning(
+                    "Ignoring target_position PUT from non-owner requester %s (owner=%s)",
+                    requester,
+                    owner,
+                )
                 return
             value = json.loads(bytes(sample.payload).decode("utf-8"))
             self._write_resource("joint/target_position", value)
