@@ -11,8 +11,10 @@ from unittest.mock import MagicMock, patch
 if "zenoh" not in sys.modules:
     sys.modules["zenoh"] = MagicMock()
 
-import bridge.python.hand_zenoh_bridge as hand_zenoh_bridge_module
-from bridge.python.hand_zenoh_bridge import (
+import wujihandpy.bridge as bridge_pkg
+from wujihandpy.bridge import cli
+import wujihandpy.bridge.hand_zenoh_bridge as hand_zenoh_bridge_module
+from wujihandpy.bridge.hand_zenoh_bridge import (
     build_capability,
     sanitize_sn,
     get_timestamp_us,
@@ -20,6 +22,14 @@ from bridge.python.hand_zenoh_bridge import (
     HandBridge,
     RESOURCE_DEFS,
 )
+
+
+def test_bridge_package_exports():
+    assert hasattr(bridge_pkg, "HandBridge")
+
+
+def test_bridge_cli_module_exports_main():
+    assert callable(cli.main)
 
 
 def test_sanitize_sn_with_dots():

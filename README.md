@@ -53,6 +53,16 @@ Wuji Hand SDK: C++ core with Python bindings, for controlling and communicating 
 pip install wujihandpy
 ```
 
+### Zenoh Bridge CLI
+
+The Python Zenoh Bridge is included in the main package. After installation,
+you can inspect the CLI or launch the bridge directly:
+
+```bash
+wujihandpy-bridge --help
+wujihandpy-bridge --sn HAND.001 --pub-rate 1000
+```
+
 Linux USB permission:
 
 ```bash

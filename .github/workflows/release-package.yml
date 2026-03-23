@@ -96,6 +96,11 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
       - name: Auto Release
         id: changelog
         uses: wuji-technology/.github/actions/auto-release@v1
@@ -115,6 +120,23 @@ jobs:
           path: build/wujihandpy
           pattern: build-wujihandpy-*
           merge-multiple: true
+
+      - name: Smoke test Linux wheel
+        run: |
+          python -m venv .venv-wheel-smoke
+          . .venv-wheel-smoke/bin/activate
+          python -m pip install --upgrade pip
+          WHEEL=$(python - <<'PY'
+          import glob
+          wheels = sorted(glob.glob("build/wujihandpy/*linux*x86_64.whl"))
+          if not wheels:
+              raise SystemExit("No x86_64 Linux wheel found in build/wujihandpy")
+          print(wheels[0])
+          PY
+          )
+          python -m pip install "$WHEEL"
+          python -c "import wujihandpy; import wujihandpy.bridge"
+          wujihandpy-bridge --help
 
       - name: Publish distribution to PyPI
         if: github.ref_type == 'tag'

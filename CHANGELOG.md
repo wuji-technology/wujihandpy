@@ -9,7 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Zenoh Bridge (Python)**: standalone bridge process exposing WujiHand via Zenoh network protocol (`bridge/python/hand_zenoh_bridge.py`)
+- **Zenoh Bridge (Python)**: packaged bridge module exposing WujiHand via Zenoh network protocol (`wujihandpy.bridge`)
+- **Zenoh Bridge CLI**: `pip install wujihandpy` now installs the `wujihandpy-bridge` command together with its `eclipse-zenoh` runtime dependency
 - **Zenoh Bridge (C++)**: native C++ bridge with lower latency for production deployment (`bridge/cpp/`)
 - 16 Zenoh resources: 12 GET (scalar + 5×4 joint arrays), 5 SET (target_position, control_mode, enabled, effort_limit, reset_error)
 - 2 SUB publishers (actual_position + actual_effort) with configurable `--pub-rate` (no default, must be explicitly set)
@@ -18,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `@control` acquire/release protocol with liveliness-based TTL for automatic crash recovery
 - Realtime controller integration: target_position writes via atomic update → PDO 1kHz
 - Python/C++ fire-and-forget target_position subscriber for low-latency PUT writes
-- 37 unit tests for bridge protocol, resources, timestamps, and control ownership
+- Unit tests for bridge protocol, resources, timestamps, and control ownership
 - `bridge/README.md` with architecture, usage, and resource documentation
 
 ## [1.5.1] - 2026-02-02

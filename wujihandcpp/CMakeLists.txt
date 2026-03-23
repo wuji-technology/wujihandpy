@@ -2,22 +2,26 @@ cmake_minimum_required(VERSION 3.24)
 
 project(wujihandcpp LANGUAGES C CXX)
 
-# Get the latest Git tag
-execute_process(
-    COMMAND git describe --tags --abbrev=0
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    OUTPUT_VARIABLE GIT_TAG
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-    RESULT_VARIABLE GIT_TAG_RESULT
-)
-
-# Extract version number if tag format is valid
-if(GIT_TAG_RESULT EQUAL 0 AND GIT_TAG MATCHES "^v.+$")
-    string(REGEX REPLACE "^v" "" PROJECT_VERSION ${GIT_TAG})
-    message(STATUS "Using Git tag version: ${PROJECT_VERSION}")
+if(DEFINED WUJIHANDCPP_VERSION_OVERRIDE AND NOT WUJIHANDCPP_VERSION_OVERRIDE STREQUAL "")
+    set(PROJECT_VERSION "${WUJIHANDCPP_VERSION_OVERRIDE}")
+    message(STATUS "Using overridden package version: ${PROJECT_VERSION}")
 else()
-    set(PROJECT_VERSION 0.0.0)
-    message(STATUS "Unable to extract git tag, using version: ${PROJECT_VERSION}")
+    # Fall back to the latest Git tag for standalone wujihandcpp builds.
+    execute_process(
+        COMMAND git describe --tags --abbrev=0
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        OUTPUT_VARIABLE GIT_TAG
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        RESULT_VARIABLE GIT_TAG_RESULT
+    )
+
+    if(GIT_TAG_RESULT EQUAL 0 AND GIT_TAG MATCHES "^v.+$")
+        string(REGEX REPLACE "^v" "" PROJECT_VERSION ${GIT_TAG})
+        message(STATUS "Using Git tag version: ${PROJECT_VERSION}")
+    else()
+        set(PROJECT_VERSION 0.0.0)
+        message(STATUS "Unable to extract git tag, using version: ${PROJECT_VERSION}")
+    endif()
 endif()
 
 # Set C++ standard to C++20

@@ -14,8 +14,8 @@ The bridge owns the device's exclusive USB connection and registers Zenoh querya
 
 | | Python | C++ |
 |---|---|---|
-| Path | `bridge/python/` | `bridge/cpp/` |
-| Dependencies | eclipse-zenoh, wujihandpy, numpy | zenoh-cpp, wujihandcpp, nlohmann/json |
+| Runtime entry | `wujihandpy-bridge` / `wujihandpy.bridge` | `bridge/cpp/` |
+| Dependencies | installed by `pip install wujihandpy` | zenoh-cpp, wujihandcpp, nlohmann/json |
 | Best for | Development, debugging, fast iteration | Production deployment, lower latency |
 | Control path | 100 Hz feed loop -> controller | Zenoh callback writes directly to controller |
 
@@ -24,19 +24,17 @@ The bridge owns the device's exclusive USB connection and registers Zenoh querya
 ### Python Bridge
 
 ```bash
-cd wujihandpy
-source .venv/bin/activate
-pip install eclipse-zenoh numpy
+pip install wujihandpy
 
 # Start the bridge (device must be connected over USB, --pub-rate is required)
-PYTHONPATH=. python -m bridge.python.hand_zenoh_bridge --pub-rate 1000
+wujihandpy-bridge --pub-rate 1000
 
 # Full arguments
-PYTHONPATH=. python -m bridge.python.hand_zenoh_bridge \
-    --sn "DEVICE_SN" \
-    --pub-rate 1000 \
-    --log-level DEBUG
+wujihandpy-bridge --sn "DEVICE_SN" --pub-rate 1000 --log-level DEBUG
 ```
+
+The pip distribution includes the Python bridge only. The C++ bridge remains a
+source-tree deployment option for internal or specialized environments.
 
 ### C++ Bridge
 
@@ -172,8 +170,8 @@ Control-changing requests must attach the requester identity in the Zenoh attach
 ## Tests
 
 ```bash
-# Unit tests (no hardware required)
+# Unit tests (no hardware required, editable install expected)
 cd wujihandpy
 source .venv/bin/activate
-PYTHONPATH=. python -m pytest tests/test_bridge.py -v
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest tests/test_bridge.py -v
 ```
