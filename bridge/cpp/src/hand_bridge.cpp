@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <stdexcept>
 
@@ -152,6 +153,10 @@ HandBridge::HandBridge(
     : hand_(hand)
     , sn_(std::move(serial_number))
     , pub_rate_(pub_rate) {
+    if (pub_rate_ <= 0.0) {
+        throw std::invalid_argument("pub_rate must be positive");
+    }
+
     // Sanitize SN: replace '.' with '_' for Zenoh key expressions
     sanitized_sn_ = sn_;
     std::replace(sanitized_sn_.begin(), sanitized_sn_.end(), '.', '_');
@@ -231,12 +236,12 @@ void HandBridge::start() {
     alive_token_.emplace(session_->liveliness_declare_token(zenoh::KeyExpr(key("@alive"))));
     log_info("Liveliness token declared: " + key("@alive"));
 
-    // 2. Status: online
+    // 2. Start realtime controller (before status/queryables so reads work)
+    start_realtime_controller();
+
+    // 3. Status: online
     session_->put(zenoh::KeyExpr(key("@status")), zenoh::Bytes("online"));
     log_info("Status: online");
-
-    // 3. Start realtime controller (before queryables so reads work)
-    start_realtime_controller();
 
     // 4. Capability queryable
     auto cap_str = build_capability();
@@ -301,10 +306,7 @@ void HandBridge::start() {
                     }
                 }
                 auto value = json::parse(sample.get_payload().as_string());
-                double pos[5][4];
-                json_to_array(value, pos);
-                if (controller_)
-                    controller_->set_joint_target_position(pos);
+                write_resource("joint/target_position", value);
             } catch (const std::exception& e) {
                 log_error(std::string("target_position subscriber error: ") + e.what());
             }
@@ -416,8 +418,8 @@ void HandBridge::start_owner_watcher(const std::string& owner_zid) {
                         control_owner_.clear();
                     }
                 }
-                // Defer watcher cleanup to avoid destroying subscriber during its own callback
-                std::thread([this]() { stop_owner_watcher(); }).detach();
+                // Keep the watcher alive until explicit release, replacement, or shutdown.
+                // Resetting the subscriber from inside its own callback is unsafe.
             }
         },
         []() {}));
@@ -719,6 +721,13 @@ void HandBridge::write_resource(const std::string& path, const json& value) {
     if (path == "joint/target_position") {
         double pos[5][4];
         json_to_array(value, pos);
+        for (int i = 0; i < 5; i++) {
+            for (int j = 0; j < 4; j++) {
+                if (!std::isfinite(pos[i][j])) {
+                    throw std::invalid_argument("target_position contains non-finite values");
+                }
+            }
+        }
         if (controller_) {
             controller_->set_joint_target_position(pos);
         }
