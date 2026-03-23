@@ -176,7 +176,4 @@ Control-changing requests must attach the requester identity in the Zenoh attach
 cd wujihandpy
 source .venv/bin/activate
 PYTHONPATH=. python -m pytest tests/test_bridge.py -v
-
-# Hardware sine-wave test (bridge running + device connected)
-python example/6.zenoh_realtime.py --duration 10
 ```
