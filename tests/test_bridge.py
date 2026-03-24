@@ -223,9 +223,7 @@ def test_get_timestamp_us_returns_microseconds():
     # Should be in microseconds (roughly current epoch in us)
     assert ts > 1_700_000_000_000_000  # after 2023
     assert ts < 2_000_000_000_000_000  # before 2033
-    # Should be monotonically increasing
-    ts2 = get_timestamp_us()
-    assert ts2 >= ts
+    # Note: wall-clock is not guaranteed monotonic (NTP), so no ts2 >= ts check
 
 
 def test_wrap_with_timestamp_structure():

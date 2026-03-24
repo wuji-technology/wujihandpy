@@ -54,135 +54,135 @@ class TactileBridge:
         return f"wuji/tboard_{sn}/{suffix}"
 
     def start(self):
-        """Connect to TouchBoard and start publishing."""
+        """Connect to TouchBoard and start publishing.
+
+        On any failure, calls stop() to clean up partially initialized resources.
+        """
         from wujihandpy import TouchBoard
 
-        logger.info("Connecting to TouchBoard...")
-        self._tb = TouchBoard(
-            serial_number=self.serial_number,
-            usb_pid=self.usb_pid,
-        )
-
-        # Wait for first frame (only tolerate timeout, not other errors)
         try:
-            self._tb.read_tactile(timeout=5.0)
-        except TimeoutError:
-            logger.warning("No initial frame within 5s, continuing anyway")
+            logger.info("Connecting to TouchBoard...")
+            self._tb = TouchBoard(
+                serial_number=self.serial_number,
+                usb_pid=self.usb_pid,
+            )
+
+            # Wait for first frame (only tolerate timeout, not other errors)
+            try:
+                self._tb.read_tactile(timeout=5.0)
+            except TimeoutError:
+                logger.warning("No initial frame within 5s, continuing anyway")
+
+            handedness = self._tb.handedness
+            logger.info(
+                f"TouchBoard connected: handedness={handedness}, fps={self._tb.fps:.0f}"
+            )
+
+            # Open Zenoh session
+            config = zenoh.Config()
+            self._session = zenoh.open(config)
+
+            # Declare liveliness token
+            self._alive_token = self._session.liveliness().declare_token(
+                self._key("@alive")
+            )
+            logger.info(f"Liveliness: {self._key('@alive')}")
+
+            # Declare capability queryable — follow wuji-sdk protocol (same as HandBridge)
+            sn = self.serial_number or f"tboard_{handedness}"
+            resources = [
+                {
+                    "path": "tactile",
+                    "schema_id": 0,
+                    "can_get": True,
+                    "can_set": False,
+                    "can_sub": True,
+                    "can_pub": False,
+                    "can_exec": False,
+                    "internal": False,
+                    "serde_format": "json",
+                    "json_schema": {
+                        "title": "TactileTimestamped",
+                        "type": "object",
+                        "properties": {
+                            "timestamp_us": {"type": "integer"},
+                            "data": {
+                                "type": "array",
+                                "items": {"type": "number"},
+                                "description": f"Normalized pressure {self.ROWS}x{self.COLS} (0.0-1.0)",
+                            },
+                        },
+                        "required": ["timestamp_us", "data"],
+                    },
+                },
+                {
+                    "path": "tactile_raw",
+                    "schema_id": 0,
+                    "can_get": True,
+                    "can_set": False,
+                    "can_sub": True,
+                    "can_pub": False,
+                    "can_exec": False,
+                    "internal": False,
+                    "serde_format": "json",
+                    "json_schema": {
+                        "title": "TactileRawTimestamped",
+                        "type": "object",
+                        "properties": {
+                            "timestamp_us": {"type": "integer"},
+                            "data": {
+                                "type": "array",
+                                "items": {"type": "integer"},
+                                "description": f"Raw ADC values {self.ROWS}x{self.COLS}",
+                            },
+                        },
+                        "required": ["timestamp_us", "data"],
+                    },
+                },
+                {
+                    "path": "handedness",
+                    "schema_id": 0,
+                    "can_get": True,
+                    "can_set": False,
+                    "can_sub": False,
+                    "can_pub": False,
+                    "can_exec": False,
+                    "internal": False,
+                    "serde_format": "json",
+                    "json_schema": {"title": "Handedness", "type": "string"},
+                },
+            ]
+
+            capability = {
+                "device_id": 0,
+                "device_proto": "custom",
+                "firmware_version": "",
+                "serial_number": sn,
+                "nodes": [],
+                "resources": resources,
+                # Extra metadata for consumers
+                "device_type": "touch_board",
+                "rows": self.ROWS,
+                "cols": self.COLS,
+                "handedness": handedness,
+            }
+
+            cap_json = json.dumps(capability)
+            self._session.declare_queryable(
+                self._key("@capability"),
+                lambda query: query.reply(self._key("@capability"), cap_json.encode()),
+            )
+            logger.info(f"Capability queryable: {self._key('@capability')}")
+
+            self._running = True
+            logger.info(f"Publishing at {self.pub_rate} Hz")
         except Exception:
             self.stop()
             raise
-
-        handedness = self._tb.handedness
-        logger.info(
-            f"TouchBoard connected: handedness={handedness}, fps={self._tb.fps:.0f}"
-        )
-
-        # Open Zenoh session
-        config = zenoh.Config()
-        self._session = zenoh.open(config)
-
-        # Declare liveliness token
-        self._alive_token = self._session.liveliness().declare_token(
-            self._key("@alive")
-        )
-        logger.info(f"Liveliness: {self._key('@alive')}")
-
-        # Declare capability queryable — follow wuji-sdk protocol (same as HandBridge)
-        sn = self.serial_number or f"tboard_{handedness}"
-        resources = [
-            {
-                "path": "tactile",
-                "schema_id": 0,
-                "can_get": True,
-                "can_set": False,
-                "can_sub": True,
-                "can_pub": False,
-                "can_exec": False,
-                "internal": False,
-                "serde_format": "json",
-                "json_schema": {
-                    "title": "TactileTimestamped",
-                    "type": "object",
-                    "properties": {
-                        "timestamp_us": {"type": "integer"},
-                        "data": {
-                            "type": "array",
-                            "items": {"type": "number"},
-                            "description": f"Normalized pressure {self.ROWS}x{self.COLS} (0.0-1.0)",
-                        },
-                    },
-                    "required": ["timestamp_us", "data"],
-                },
-            },
-            {
-                "path": "tactile_raw",
-                "schema_id": 0,
-                "can_get": True,
-                "can_set": False,
-                "can_sub": True,
-                "can_pub": False,
-                "can_exec": False,
-                "internal": False,
-                "serde_format": "json",
-                "json_schema": {
-                    "title": "TactileRawTimestamped",
-                    "type": "object",
-                    "properties": {
-                        "timestamp_us": {"type": "integer"},
-                        "data": {
-                            "type": "array",
-                            "items": {"type": "integer"},
-                            "description": f"Raw ADC values {self.ROWS}x{self.COLS}",
-                        },
-                    },
-                    "required": ["timestamp_us", "data"],
-                },
-            },
-            {
-                "path": "handedness",
-                "schema_id": 0,
-                "can_get": True,
-                "can_set": False,
-                "can_sub": False,
-                "can_pub": False,
-                "can_exec": False,
-                "internal": False,
-                "serde_format": "json",
-                "json_schema": {"title": "Handedness", "type": "string"},
-            },
-        ]
-
-        capability = {
-            "device_id": 0,
-            "device_proto": "custom",
-            "firmware_version": "",
-            "serial_number": sn,
-            "nodes": [],
-            "resources": resources,
-            # Extra metadata for consumers
-            "device_type": "touch_board",
-            "rows": self.ROWS,
-            "cols": self.COLS,
-            "handedness": handedness,
-        }
-
-        cap_json = json.dumps(capability)
-        self._session.declare_queryable(
-            self._key("@capability"),
-            lambda query: query.reply(self._key("@capability"), cap_json.encode()),
-        )
-        logger.info(f"Capability queryable: {self._key('@capability')}")
-
-        self._running = True
-        logger.info(f"Publishing at {self.pub_rate} Hz")
 
     def run(self):
         """Start and run the bridge (blocking). Ctrl+C to stop."""
-        try:
-            self.start()
-        except Exception:
-            self.stop()
-            raise
+        self.start()  # start() handles its own cleanup on failure
 
         period = 1.0 / self.pub_rate
         next_time = time.monotonic() + period
