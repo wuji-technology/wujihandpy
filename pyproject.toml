@@ -13,8 +13,10 @@ authors = [{ name = "Zihan Qin", email = "zihanqin2048@gmail.com" }]
 maintainers = [{ name = "Wuji Technology", email = "support@pan-motor.com" }]
 dependencies = [
     "numpy",
-    "eclipse-zenoh>=1.7.0",
 ]
+
+[project.optional-dependencies]
+bridge = ["eclipse-zenoh>=1.7.0"]
 
 [project.scripts]
 wujihandpy-bridge = "wujihandpy.bridge.cli:main"
