@@ -21,3 +21,5 @@ src/wujihandpy/_version.py
 # Claude-mem generated files (keep root CLAUDE.md)
 **/CLAUDE.md
 !/CLAUDE.mdbuild_py/
+build_py/
+build/
