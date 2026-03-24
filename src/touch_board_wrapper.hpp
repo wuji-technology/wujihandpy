@@ -36,7 +36,7 @@ public:
         float buf[ROWS][COLS];
         if (!board_.get_tactile(buf))
             return py::none();
-        return py::cast(make_float_array(buf));
+        return make_float_array(buf);
     }
 
     /// Non-blocking get raw data, returns numpy or None.
@@ -44,7 +44,7 @@ public:
         int16_t buf[ROWS][COLS];
         if (!board_.get_tactile_raw(buf))
             return py::none();
-        return py::cast(make_int16_array(buf));
+        return make_int16_array(buf);
     }
 
     std::string get_handedness() const {

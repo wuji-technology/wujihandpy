@@ -16,7 +16,11 @@ namespace wujihandcpp::device {
 struct TouchBoard::Impl {
     explicit Impl(const char* serial_number, int32_t usb_pid, uint16_t usb_vid)
         : logger_(logging::get_logger())
-        , transport_(transport::create_usb_transport(usb_vid, usb_pid, serial_number)) {
+        , transport_(transport::create_usb_transport(usb_vid, usb_pid, serial_number,
+                                                     1,     // interface 1 (CDC data)
+                                                     0x82,  // bulk IN endpoint
+                                                     0x01)) // bulk OUT endpoint
+    {
 
         transport_->receive([this](const std::byte* data, size_t size) {
             on_receive(data, size);

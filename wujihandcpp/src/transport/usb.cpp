@@ -22,9 +22,13 @@ namespace wujihandcpp::transport {
 
 class Usb : public ITransport {
 public:
-    explicit Usb(uint16_t usb_vid, int32_t usb_pid, const char* serial_number)
+    explicit Usb(uint16_t usb_vid, int32_t usb_pid, const char* serial_number,
+                 int interface_num = 0x01, unsigned char in_ep = 0x81, unsigned char out_ep = 0x01)
         : logger_(logging::get_logger())
-        , free_transmit_transfers_(transmit_transfer_count_) {
+        , free_transmit_transfers_(transmit_transfer_count_)
+        , target_interface_(interface_num)
+        , in_endpoint_(in_ep)
+        , out_endpoint_(out_ep) {
         if (!usb_init(usb_vid, usb_pid, serial_number)) {
             throw std::runtime_error{"Failed to init."};
         }
@@ -144,6 +148,11 @@ private:
         utility::FinalAction close_device_handle{[this]() { libusb_close(libusb_device_handle_); }};
 
         if constexpr (utility::is_linux()) {
+            // Detach kernel driver from CDC control interface (0) if present
+            // CDC ACM driver claims both control and data interfaces
+            if (target_interface_ > 0) {
+                libusb_detach_kernel_driver(libusb_device_handle_, 0);
+            }
             ret = libusb_detach_kernel_driver(libusb_device_handle_, target_interface_);
             if (ret != LIBUSB_ERROR_NOT_FOUND && ret != 0) [[unlikely]] {
                 logger_.error("Failed to detach kernel driver: {} ({})", ret, libusb_errname(ret));
@@ -440,10 +449,10 @@ private:
         }
     }
 
-    static constexpr int target_interface_ = 0x01;
+    int target_interface_ = 0x01;
 
-    static constexpr unsigned char out_endpoint_ = 0x01;
-    static constexpr unsigned char in_endpoint_ = 0x81;
+    unsigned char out_endpoint_ = 0x01;
+    unsigned char in_endpoint_ = 0x81;
 
     static constexpr int max_transfer_length_ = 512;
 
@@ -469,6 +478,12 @@ private:
 std::unique_ptr<ITransport>
     create_usb_transport(uint16_t usb_vid, int32_t usb_pid, const char* serial_number) {
     return std::make_unique<Usb>(usb_vid, usb_pid, serial_number);
+}
+
+std::unique_ptr<ITransport>
+    create_usb_transport(uint16_t usb_vid, int32_t usb_pid, const char* serial_number,
+                         int interface_num, unsigned char in_ep, unsigned char out_ep) {
+    return std::make_unique<Usb>(usb_vid, usb_pid, serial_number, interface_num, in_ep, out_ep);
 }
 
 } // namespace wujihandcpp::transport
