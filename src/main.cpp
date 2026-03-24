@@ -135,7 +135,7 @@ PYBIND11_MODULE(_core, m) {
                     ok = self.read_tactile_impl(buf, timeout);
                 }
                 if (!ok)
-                    throw py::value_error("Timed out waiting for tactile frame");
+                    throw wujihandcpp::device::TimeoutError("Timed out waiting for tactile frame");
                 return TouchBoardWrapper::make_float_array(buf);
             },
             py::arg("timeout") = 1.0)
@@ -149,7 +149,7 @@ PYBIND11_MODULE(_core, m) {
                     ok = self.read_tactile_raw_impl(buf, timeout);
                 }
                 if (!ok)
-                    throw py::value_error("Timed out waiting for tactile frame");
+                    throw wujihandcpp::device::TimeoutError("Timed out waiting for tactile frame");
                 return TouchBoardWrapper::make_int16_array(buf);
             },
             py::arg("timeout") = 1.0)

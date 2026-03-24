@@ -407,26 +407,28 @@ class HandBridge:
 
     def _stop_realtime_controller(self):
         """Stop realtime controller and disable joints."""
-        controller = self._controller
-        if controller is not None:
-            logger.info("Stopping realtime controller...")
-            # Set target to zero before stopping
-            with self._rt_lock:
-                self._rt_target = np.zeros((5, 4), dtype=np.float64)
-                target = self._rt_target.copy()
-            controller.set_joint_target_position(target)
-            time.sleep(1.0)
+        try:
+            controller = self._controller
+            if controller is not None:
+                logger.info("Stopping realtime controller...")
+                # Set target to zero before stopping
+                with self._rt_lock:
+                    self._rt_target = np.zeros((5, 4), dtype=np.float64)
+                    target = self._rt_target.copy()
+                controller.set_joint_target_position(target)
+                time.sleep(1.0)
 
-            controller.__exit__(None, None, None)
-            self._controller = None
-            logger.info("Realtime controller stopped")
-
-        logger.info("Disabling all joints...")
-        self.hand.write_joint_enabled(False)
+                controller.__exit__(None, None, None)
+                self._controller = None
+                logger.info("Realtime controller stopped")
+        finally:
+            logger.info("Disabling all joints...")
+            self.hand.write_joint_enabled(False)
 
     def _realtime_loop(self):
         """Feed target position to realtime controller at 100Hz."""
         period = 1.0 / 100.0
+        next_time = time.monotonic() + period
         while self._running:
             try:
                 with self._rt_lock:
@@ -437,7 +439,10 @@ class HandBridge:
                 controller.set_joint_target_position(target)
             except Exception as e:
                 logger.error(f"Realtime loop error: {e}")
-            time.sleep(period)
+            sleep_time = next_time - time.monotonic()
+            if sleep_time > 0:
+                time.sleep(sleep_time)
+            next_time += period
 
     def start(self):
         """Open Zenoh session, declare liveliness, publish status, start queryables."""
@@ -668,6 +673,10 @@ class HandBridge:
                 return
             try:
                 value = json.loads(payload.decode("utf-8"))
+                # NOTE: TOCTOU between control check and write is a known limitation.
+                # Holding _control_lock during USB I/O risks deadlock with the control
+                # release path. The window is small (~ms) and the worst case is one
+                # stale write from the previous owner, which is acceptable.
                 self._write_resource(resource_def["path"], value)
                 query.reply(key, b'"ok"')
             except Exception as e:
@@ -783,6 +792,7 @@ class HandBridge:
             {"timestamp_us": <UTC microseconds>, "data": <value>}
         """
         period = 1.0 / self.pub_rate
+        next_time = time.monotonic() + period
         while self._running:
             try:
                 timestamp_us = get_timestamp_us()
@@ -793,7 +803,10 @@ class HandBridge:
                     pub.put(data)
             except Exception as e:
                 logger.error(f"Publish loop error: {e}")
-            time.sleep(period)
+            sleep_time = next_time - time.monotonic()
+            if sleep_time > 0:
+                time.sleep(sleep_time)
+            next_time += period
 
 
 def main():

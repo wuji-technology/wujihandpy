@@ -3,6 +3,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstring>
+#include <deque>
 #include <mutex>
 
 #include "wujihandcpp/device/touch_board.hpp"
@@ -40,14 +41,14 @@ struct TouchBoard::Impl {
                 handedness_.store(f.handedness, std::memory_order_relaxed);
                 sequence_ = f.sequence;
                 timestamp_ms_ = f.timestamp_ms;
-                has_frame_ = true;
+                has_frame_.store(true, std::memory_order_release);
                 frame_count_.fetch_add(1, std::memory_order_relaxed);
 
                 // FPS tracking: sliding 1-second window
                 frame_times_.push_back(now);
                 auto cutoff = now - std::chrono::seconds(1);
                 while (!frame_times_.empty() && frame_times_.front() < cutoff)
-                    frame_times_.erase(frame_times_.begin());
+                    frame_times_.pop_front();
             }
 
             cv_.notify_all();
@@ -56,7 +57,7 @@ struct TouchBoard::Impl {
 
     bool get_tactile(float (&out)[ROWS][COLS]) const {
         std::lock_guard lock{mutex_};
-        if (!has_frame_)
+        if (!has_frame_.load(std::memory_order_acquire))
             return false;
         for (int r = 0; r < ROWS; ++r)
             for (int c = 0; c < COLS; ++c)
@@ -66,7 +67,7 @@ struct TouchBoard::Impl {
 
     bool get_tactile_raw(int16_t (&out)[ROWS][COLS]) const {
         std::lock_guard lock{mutex_};
-        if (!has_frame_)
+        if (!has_frame_.load(std::memory_order_acquire))
             return false;
         std::memcpy(out, raw_data_, sizeof(raw_data_));
         return true;
@@ -103,7 +104,7 @@ struct TouchBoard::Impl {
     }
 
     int get_handedness() const {
-        if (!has_frame_)
+        if (!has_frame_.load(std::memory_order_acquire))
             return -1;
         return handedness_.load(std::memory_order_relaxed);
     }
@@ -128,11 +129,11 @@ struct TouchBoard::Impl {
     std::atomic<uint8_t> handedness_{0xFF};
     uint16_t sequence_{0};
     uint32_t timestamp_ms_{0};
-    bool has_frame_{false};
+    std::atomic<bool> has_frame_{false};
     std::atomic<uint64_t> frame_count_{0};
 
     // frame timestamps for FPS calculation (within last 1 second)
-    std::vector<std::chrono::steady_clock::time_point> frame_times_;
+    std::deque<std::chrono::steady_clock::time_point> frame_times_;
 };
 
 TouchBoard::TouchBoard(const char* serial_number, int32_t usb_pid, uint16_t usb_vid)

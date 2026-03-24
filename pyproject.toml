@@ -18,6 +18,8 @@ bridge = ["eclipse-zenoh>=1.7.0"]
 
 [project.scripts]
 wujihandpy-bridge = "wujihandpy.bridge.cli:main"
+wujihandpy-tactile-bridge = "wujihandpy.bridge.tactile_bridge:main"
+wujihandpy-tactile-bridge = "wujihandpy.bridge.tactile_bridge:main"
 
 [project.urls]
 homepage = "https://github.com/wuji-technology/wujihandpy"

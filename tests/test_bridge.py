@@ -562,3 +562,57 @@ def test_start_cleans_up_partial_state_on_failure(monkeypatch):
     assert bridge._subscribers == []
     assert bridge._publishers == {}
     assert bridge._threads == []
+
+
+# ---------------------------------------------------------------------------
+# TactileBridge tests
+# ---------------------------------------------------------------------------
+
+def test_tactile_bridge_init():
+    """Test TactileBridge can be instantiated without hardware."""
+    # Can't fully test without hardware, but verify class exists and params work
+    assert hasattr(bridge_pkg, "TactileBridge")
+
+
+def test_tactile_bridge_sanitize_sn():
+    """Test SN sanitization."""
+    from wujihandpy.bridge.tactile_bridge import TactileBridge
+    tb = TactileBridge.__new__(TactileBridge)
+    assert tb._sanitize_sn("LQSQJR.251128.004") == "LQSQJR_251128_004"
+    assert tb._sanitize_sn(None) == "unknown"
+
+
+# ============================================================================
+# TactileBridge Tests
+# ============================================================================
+
+def test_tactile_bridge_exists():
+    """TactileBridge is importable from bridge package."""
+    assert hasattr(bridge_pkg, "TactileBridge")
+
+
+def test_tactile_bridge_sanitize_sn():
+    """TactileBridge SN sanitization works."""
+    from wujihandpy.bridge.tactile_bridge import TactileBridge
+    tb = TactileBridge.__new__(TactileBridge)
+    assert tb._sanitize_sn("LQSQJR.251128.004") == "LQSQJR_251128_004"
+    assert tb._sanitize_sn(None) == "unknown"
+
+
+def test_tactile_bridge_key_format():
+    """TactileBridge key expressions follow expected format."""
+    from wujihandpy.bridge.tactile_bridge import TactileBridge
+    tb = TactileBridge.__new__(TactileBridge)
+    tb.serial_number = "TEST.123"
+    assert tb._key("@alive") == "wuji/tboard_TEST_123/@alive"
+    assert tb._key("tactile") == "wuji/tboard_TEST_123/tactile"
+
+
+def test_tactile_bridge_default_params():
+    """TactileBridge default parameters are correct."""
+    from wujihandpy.bridge.tactile_bridge import TactileBridge
+    tb = TactileBridge()
+    assert tb.pub_rate == 30
+    assert tb.usb_pid == 0x5700
+    assert tb.serial_number is None
+    assert tb._running is False

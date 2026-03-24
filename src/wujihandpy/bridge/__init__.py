@@ -7,6 +7,7 @@ try:
         sanitize_sn,
         wrap_with_timestamp,
     )
+    from .tactile_bridge import TactileBridge
 except ImportError as e:
     raise ImportError(
         "Zenoh bridge requires extra dependencies. "
@@ -15,6 +16,7 @@ except ImportError as e:
 
 __all__ = [
     "HandBridge",
+    "TactileBridge",
     "RESOURCE_DEFS",
     "build_capability",
     "get_timestamp_us",
