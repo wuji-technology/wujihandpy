@@ -73,31 +73,47 @@ public:
 private:
     enum class State : uint8_t { SYNC_AA, SYNC_55, ACCUMULATE };
 
+    // Read u16 little-endian (portable, avoids UB and endian issues)
+    static uint16_t read_u16le(const uint8_t* p) {
+        return static_cast<uint16_t>(p[0]) | (static_cast<uint16_t>(p[1]) << 8);
+    }
+
+    // Read u32 little-endian
+    static uint32_t read_u32le(const uint8_t* p) {
+        return static_cast<uint32_t>(p[0])
+             | (static_cast<uint32_t>(p[1]) << 8)
+             | (static_cast<uint32_t>(p[2]) << 16)
+             | (static_cast<uint32_t>(p[3]) << 24);
+    }
+
+    // Read i16 little-endian
+    static int16_t read_i16le(const uint8_t* p) {
+        return static_cast<int16_t>(read_u16le(p));
+    }
+
     bool validate_and_extract() {
-        // Verify length field: bytes [2..4] should be 1550 (u16 LE)
-        uint16_t length_field;
-        std::memcpy(&length_field, &buf_[2], sizeof(length_field));
-        if (length_field != FRAME_SIZE)
+        // Verify length field: bytes [2..4] = 1550 (u16 LE)
+        if (read_u16le(&buf_[2]) != static_cast<uint16_t>(FRAME_SIZE))
             return false;
 
         // CRC16-CCITT over bytes [2..1548)
         uint16_t computed_crc = crc16_ccitt(&buf_[2], 1546);
-        uint16_t received_crc;
-        std::memcpy(&received_crc, &buf_[1548], sizeof(received_crc));
-        if (computed_crc != received_crc)
+        if (computed_crc != read_u16le(&buf_[1548]))
             return false;
 
-        // Extract fields
+        // Extract fields (all little-endian)
         frame_.handedness = buf_[4];
 
         // Tactile data: bytes [6..1542), 24×32 i16 LE
-        std::memcpy(frame_.data, &buf_[6], 24 * 32 * sizeof(int16_t));
+        for (int r = 0; r < 24; ++r)
+            for (int c = 0; c < 32; ++c)
+                frame_.data[r][c] = read_i16le(&buf_[6 + (r * 32 + c) * 2]);
 
-        // Sequence: bytes [1542..1544)
-        std::memcpy(&frame_.sequence, &buf_[1542], sizeof(frame_.sequence));
+        // Sequence: bytes [1542..1544), u16 LE
+        frame_.sequence = read_u16le(&buf_[1542]);
 
-        // Timestamp: bytes [1544..1548)
-        std::memcpy(&frame_.timestamp_ms, &buf_[1544], sizeof(frame_.timestamp_ms));
+        // Timestamp: bytes [1544..1548), u32 LE
+        frame_.timestamp_ms = read_u32le(&buf_[1544]);
 
         return true;
     }

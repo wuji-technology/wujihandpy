@@ -45,6 +45,7 @@ class TactileBridge:
         self._tb: Optional[TouchBoard] = None
         self._session = None
         self._alive_token = None
+        self._queryable = None
 
     def _sanitize_sn(self, sn):
         return sn.replace(".", "_") if sn else "unknown"
@@ -94,7 +95,7 @@ class TactileBridge:
                 {
                     "path": "tactile",
                     "schema_id": 0,
-                    "can_get": True,
+                    "can_get": False,
                     "can_set": False,
                     "can_sub": True,
                     "can_pub": False,
@@ -118,7 +119,7 @@ class TactileBridge:
                 {
                     "path": "tactile_raw",
                     "schema_id": 0,
-                    "can_get": True,
+                    "can_get": False,
                     "can_set": False,
                     "can_sub": True,
                     "can_pub": False,
@@ -142,7 +143,7 @@ class TactileBridge:
                 {
                     "path": "handedness",
                     "schema_id": 0,
-                    "can_get": True,
+                    "can_get": False,
                     "can_set": False,
                     "can_sub": False,
                     "can_pub": False,
@@ -168,7 +169,7 @@ class TactileBridge:
             }
 
             cap_json = json.dumps(capability)
-            self._session.declare_queryable(
+            self._queryable = self._session.declare_queryable(
                 self._key("@capability"),
                 lambda query: query.reply(self._key("@capability"), cap_json.encode()),
             )
@@ -238,6 +239,12 @@ class TactileBridge:
     def stop(self):
         """Stop the bridge and clean up."""
         self._running = False
+        if self._queryable is not None:
+            try:
+                self._queryable.undeclare()
+            except Exception:
+                pass
+            self._queryable = None
         if self._alive_token is not None:
             try:
                 self._alive_token.undeclare()
