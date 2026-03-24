@@ -297,6 +297,7 @@ class HandBridge:
         self._controller = None
         self._rt_target = np.zeros((5, 4), dtype=np.float64)
         self._rt_lock = threading.Lock()
+        self._joints_enabled_by_bridge = False
         # Allow multi-thread access (we protect with our own lock)
         hand.disable_thread_safe_check()
 
@@ -383,6 +384,7 @@ class HandBridge:
 
         logger.info("Enabling all joints...")
         self.hand.write_joint_enabled(True)
+        self._joints_enabled_by_bridge = True
         time.sleep(0.3)
 
         # Read initial position as starting target
@@ -422,8 +424,10 @@ class HandBridge:
                 self._controller = None
                 logger.info("Realtime controller stopped")
         finally:
-            logger.info("Disabling all joints...")
-            self.hand.write_joint_enabled(False)
+            if self._joints_enabled_by_bridge:
+                logger.info("Disabling all joints...")
+                self.hand.write_joint_enabled(False)
+                self._joints_enabled_by_bridge = False
 
     def _realtime_loop(self):
         """Feed target position to realtime controller at 100Hz."""

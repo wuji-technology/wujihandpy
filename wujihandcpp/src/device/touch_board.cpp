@@ -38,6 +38,11 @@ struct TouchBoard::Impl {
             {
                 std::lock_guard lock{mutex_};
                 std::memcpy(raw_data_, f.data, sizeof(raw_data_));
+                // Pre-compute normalized data so read_tactile() is just memcpy
+                for (int r = 0; r < ROWS; ++r)
+                    for (int c = 0; c < COLS; ++c)
+                        normalized_data_[r][c] = std::clamp(
+                            1.0f - raw_data_[r][c] / ADC_OPEN_CIRCUIT, 0.0f, 1.0f);
                 handedness_.store(f.handedness, std::memory_order_relaxed);
                 sequence_ = f.sequence;
                 timestamp_ms_ = f.timestamp_ms;
@@ -75,32 +80,34 @@ struct TouchBoard::Impl {
 
     bool read_tactile(float (&out)[ROWS][COLS], double timeout_seconds) {
         uint64_t before = frame_count_.load(std::memory_order_relaxed);
-        {
-            std::unique_lock lock{mutex_};
-            auto deadline =
-                std::chrono::steady_clock::now()
-                + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-                      std::chrono::duration<double>(timeout_seconds));
-            cv_.wait_until(lock, deadline, [&]() {
-                return frame_count_.load(std::memory_order_relaxed) > before;
-            });
-        }
-        return get_tactile(out);
+        std::unique_lock lock{mutex_};
+        auto deadline =
+            std::chrono::steady_clock::now()
+            + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                  std::chrono::duration<double>(timeout_seconds));
+        bool got_new = cv_.wait_until(lock, deadline, [&]() {
+            return frame_count_.load(std::memory_order_relaxed) > before;
+        });
+        if (!got_new)
+            return false;
+        std::memcpy(out, normalized_data_, sizeof(out));
+        return true;
     }
 
     bool read_tactile_raw(int16_t (&out)[ROWS][COLS], double timeout_seconds) {
         uint64_t before = frame_count_.load(std::memory_order_relaxed);
-        {
-            std::unique_lock lock{mutex_};
-            auto deadline =
-                std::chrono::steady_clock::now()
-                + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-                      std::chrono::duration<double>(timeout_seconds));
-            cv_.wait_until(lock, deadline, [&]() {
-                return frame_count_.load(std::memory_order_relaxed) > before;
-            });
-        }
-        return get_tactile_raw(out);
+        std::unique_lock lock{mutex_};
+        auto deadline =
+            std::chrono::steady_clock::now()
+            + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                  std::chrono::duration<double>(timeout_seconds));
+        bool got_new = cv_.wait_until(lock, deadline, [&]() {
+            return frame_count_.load(std::memory_order_relaxed) > before;
+        });
+        if (!got_new)
+            return false;
+        std::memcpy(out, raw_data_, sizeof(out));
+        return true;
     }
 
     int get_handedness() const {
@@ -111,7 +118,17 @@ struct TouchBoard::Impl {
 
     float get_fps() const {
         std::lock_guard lock{mutex_};
-        return static_cast<float>(frame_times_.size());
+        if (frame_times_.empty())
+            return 0.0f;
+        // Prune stale entries (for accurate FPS when stream stops)
+        auto now = std::chrono::steady_clock::now();
+        auto cutoff = now - std::chrono::seconds(1);
+        size_t count = 0;
+        for (const auto& t : frame_times_) {
+            if (t >= cutoff)
+                count++;
+        }
+        return static_cast<float>(count);
     }
 
     uint64_t get_frame_count() const {
@@ -126,6 +143,7 @@ struct TouchBoard::Impl {
     std::condition_variable cv_;
 
     int16_t raw_data_[ROWS][COLS]{};
+    float normalized_data_[ROWS][COLS]{};
     std::atomic<uint8_t> handedness_{0xFF};
     uint16_t sequence_{0};
     uint32_t timestamp_ms_{0};

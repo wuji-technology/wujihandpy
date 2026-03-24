@@ -9,6 +9,8 @@ CLI:
     wujihandpy-tactile-bridge --pub-rate 30
 """
 
+from __future__ import annotations
+
 import json
 import time
 import logging
@@ -34,6 +36,8 @@ class TactileBridge:
     COLS = 32
 
     def __init__(self, serial_number=None, usb_pid=0x5700, pub_rate=30):
+        if pub_rate <= 0:
+            raise ValueError(f"pub_rate must be positive, got {pub_rate}")
         self.serial_number = serial_number
         self.usb_pid = usb_pid
         self.pub_rate = pub_rate
@@ -59,11 +63,14 @@ class TactileBridge:
             usb_pid=self.usb_pid,
         )
 
-        # Wait for first frame
+        # Wait for first frame (only tolerate timeout, not other errors)
         try:
             self._tb.read_tactile(timeout=5.0)
+        except TimeoutError:
+            logger.warning("No initial frame within 5s, continuing anyway")
         except Exception:
-            pass
+            self.stop()
+            raise
 
         handedness = self._tb.handedness
         logger.info(
@@ -126,7 +133,11 @@ class TactileBridge:
 
     def run(self):
         """Start and run the bridge (blocking). Ctrl+C to stop."""
-        self.start()
+        try:
+            self.start()
+        except Exception:
+            self.stop()
+            raise
 
         period = 1.0 / self.pub_rate
         next_time = time.monotonic() + period

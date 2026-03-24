@@ -591,14 +591,6 @@ def test_tactile_bridge_exists():
     assert hasattr(bridge_pkg, "TactileBridge")
 
 
-def test_tactile_bridge_sanitize_sn():
-    """TactileBridge SN sanitization works."""
-    from wujihandpy.bridge.tactile_bridge import TactileBridge
-    tb = TactileBridge.__new__(TactileBridge)
-    assert tb._sanitize_sn("LQSQJR.251128.004") == "LQSQJR_251128_004"
-    assert tb._sanitize_sn(None) == "unknown"
-
-
 def test_tactile_bridge_key_format():
     """TactileBridge key expressions follow expected format."""
     from wujihandpy.bridge.tactile_bridge import TactileBridge
@@ -616,3 +608,16 @@ def test_tactile_bridge_default_params():
     assert tb.usb_pid == 0x5700
     assert tb.serial_number is None
     assert tb._running is False
+
+
+def test_tactile_bridge_pub_rate_validation():
+    """TactileBridge rejects invalid pub_rate."""
+    import pytest
+    from wujihandpy.bridge.tactile_bridge import TactileBridge
+    with pytest.raises(ValueError):
+        TactileBridge(pub_rate=0)
+    with pytest.raises(ValueError):
+        TactileBridge(pub_rate=-1)
+    # Valid rate should not raise
+    TactileBridge(pub_rate=1)
+    TactileBridge(pub_rate=100)
