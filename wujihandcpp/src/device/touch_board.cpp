@@ -31,14 +31,16 @@ struct TouchBoard::Impl {
     ~Impl() = default;
 
     void on_receive(const std::byte* data, size_t size) {
-        if (parser_.feed(data, size)) {
+        // feed() processes all bytes and returns how many frames were parsed.
+        // frame() returns the last one (fine for real-time latest-value semantics).
+        int n = parser_.feed(data, size);
+        if (n > 0) {
             const auto& f = parser_.frame();
             auto now = std::chrono::steady_clock::now();
 
             {
                 std::lock_guard lock{mutex_};
                 std::memcpy(raw_data_, f.data, sizeof(raw_data_));
-                // Pre-compute normalized data so read_tactile() is just memcpy
                 for (int r = 0; r < ROWS; ++r)
                     for (int c = 0; c < COLS; ++c)
                         normalized_data_[r][c] = std::clamp(
@@ -47,10 +49,12 @@ struct TouchBoard::Impl {
                 sequence_ = f.sequence;
                 timestamp_ms_ = f.timestamp_ms;
                 has_frame_.store(true, std::memory_order_release);
-                frame_count_.fetch_add(1, std::memory_order_relaxed);
+                // Count all frames parsed, not just 1
+                frame_count_.fetch_add(static_cast<uint64_t>(n), std::memory_order_relaxed);
 
-                // FPS tracking: sliding 1-second window
-                frame_times_.push_back(now);
+                // FPS: add n entries (approximation for multi-frame callbacks)
+                for (int i = 0; i < n; ++i)
+                    frame_times_.push_back(now);
                 auto cutoff = now - std::chrono::seconds(1);
                 while (!frame_times_.empty() && frame_times_.front() < cutoff)
                     frame_times_.pop_front();

@@ -21,8 +21,10 @@ public:
 
     /// Feed raw bytes from USB CDC. Returns true when a complete valid frame is parsed.
     /// USB CDC delivers data in 64-byte chunks; multiple calls may be needed.
-    bool feed(const std::byte* data, size_t length) {
-        bool got_frame = false;
+    /// Feed raw bytes. Returns number of complete frames parsed (0 if none).
+    /// frame() returns the last parsed frame.
+    int feed(const std::byte* data, size_t length) {
+        int frames_parsed = 0;
 
         for (size_t i = 0; i < length; ++i) {
             auto byte = static_cast<uint8_t>(data[i]);
@@ -54,7 +56,7 @@ public:
                 buf_[buf_pos_++] = byte;
                 if (buf_pos_ == FRAME_SIZE) {
                     if (validate_and_extract()) {
-                        got_frame = true;
+                        frames_parsed++;
                     }
                     state_ = State::SYNC_AA;
                 }
@@ -62,7 +64,7 @@ public:
             }
         }
 
-        return got_frame;
+        return frames_parsed;
     }
 
     /// Get the last successfully parsed frame. Only valid after feed() returns true.

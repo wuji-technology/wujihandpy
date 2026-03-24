@@ -87,38 +87,83 @@ class TactileBridge:
         )
         logger.info(f"Liveliness: {self._key('@alive')}")
 
-        # Declare capability queryable
+        # Declare capability queryable — follow wuji-sdk protocol (same as HandBridge)
+        sn = self.serial_number or f"tboard_{handedness}"
+        resources = [
+            {
+                "path": "tactile",
+                "schema_id": 0,
+                "can_get": True,
+                "can_set": False,
+                "can_sub": True,
+                "can_pub": False,
+                "can_exec": False,
+                "internal": False,
+                "serde_format": "json",
+                "json_schema": {
+                    "title": "TactileTimestamped",
+                    "type": "object",
+                    "properties": {
+                        "timestamp_us": {"type": "integer"},
+                        "data": {
+                            "type": "array",
+                            "items": {"type": "number"},
+                            "description": f"Normalized pressure {self.ROWS}x{self.COLS} (0.0-1.0)",
+                        },
+                    },
+                    "required": ["timestamp_us", "data"],
+                },
+            },
+            {
+                "path": "tactile_raw",
+                "schema_id": 0,
+                "can_get": True,
+                "can_set": False,
+                "can_sub": True,
+                "can_pub": False,
+                "can_exec": False,
+                "internal": False,
+                "serde_format": "json",
+                "json_schema": {
+                    "title": "TactileRawTimestamped",
+                    "type": "object",
+                    "properties": {
+                        "timestamp_us": {"type": "integer"},
+                        "data": {
+                            "type": "array",
+                            "items": {"type": "integer"},
+                            "description": f"Raw ADC values {self.ROWS}x{self.COLS}",
+                        },
+                    },
+                    "required": ["timestamp_us", "data"],
+                },
+            },
+            {
+                "path": "handedness",
+                "schema_id": 0,
+                "can_get": True,
+                "can_set": False,
+                "can_sub": False,
+                "can_pub": False,
+                "can_exec": False,
+                "internal": False,
+                "serde_format": "json",
+                "json_schema": {"title": "Handedness", "type": "string"},
+            },
+        ]
+
         capability = {
+            "device_id": 0,
+            "device_proto": "custom",
+            "firmware_version": "",
+            "serial_number": sn,
+            "nodes": [],
+            "resources": resources,
+            # Extra metadata for consumers
             "device_type": "touch_board",
-            "handedness": handedness,
             "rows": self.ROWS,
             "cols": self.COLS,
-            "resources": [
-                {
-                    "path": "tactile",
-                    "can_get": True,
-                    "can_set": False,
-                    "can_sub": True,
-                },
-                {
-                    "path": "tactile_raw",
-                    "can_get": True,
-                    "can_set": False,
-                    "can_sub": True,
-                },
-                {
-                    "path": "handedness",
-                    "can_get": True,
-                    "can_set": False,
-                    "can_sub": False,
-                },
-                {
-                    "path": "fps",
-                    "can_get": True,
-                    "can_set": False,
-                    "can_sub": False,
-                },
-            ],
+            "handedness": handedness,
         }
 
         cap_json = json.dumps(capability)

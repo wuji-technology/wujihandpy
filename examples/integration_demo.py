@@ -98,25 +98,38 @@ def demo_local_touchboard():
 def demo_bridge_hand(sn=None):
     """启动一代手桥接，将数据发布到 Zenoh 网络。
 
-    在另一个终端运行:
+    推荐方式 — 用 CLI（会自动处理 Hand 连接和 SN）:
         wujihandpy-bridge --sn <SN> --pub-rate 100
-    或:
-        python -c "
-        from wujihandpy.bridge import HandBridge
-        bridge = HandBridge(sn='<SN>', pub_rate=100)
-        bridge.run()
-        "
+
+    本函数展示等效的 Python 调用方式:
     """
+    import wujihandpy
     from wujihandpy.bridge import HandBridge
 
     print("=" * 60)
     print("  场景 3: 一代手 → Zenoh Bridge")
     print("=" * 60)
 
-    bridge = HandBridge(sn=sn, pub_rate=100)
-    print(f"Starting HandBridge (SN: {sn or 'auto'})...")
+    print(f"Connecting to Hand (SN: {sn or 'auto'})...")
+    hand = wujihandpy.Hand(serial_number=sn)
+    actual_sn = hand.get_product_sn() or (sn or "auto")
+
+    bridge = HandBridge(hand=hand, serial_number=actual_sn, pub_rate=100)
+    print(f"Starting HandBridge (SN: {actual_sn})...")
     print("Press Ctrl+C to stop")
-    bridge.run()  # 阻塞
+
+    try:
+        bridge.start()
+        bridge.wait()  # blocks until Ctrl+C
+    except AttributeError:
+        # If wait() not available, use run() or keep alive manually
+        import time
+        print("Bridge running. Press Ctrl+C to stop.")
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            bridge.stop()
 
 
 def demo_bridge_tactile(sn=None):
@@ -169,11 +182,27 @@ def demo_sdk_subscribe():
         print(f"  - SN: {d.sn}, Transport: {d.transport_type}, Address: {d.address}")
 
     if not devices:
-        print("No devices found. Make sure a bridge is running.")
+        print("No devices found. Make sure TactileBridge is running.")
+        print("Run: wujihandpy-tactile-bridge --pub-rate 30")
         return
 
-    # 连接第一个设备
-    sn = devices[0].sn
+    # 优先选择有 tactile 资源的设备（tboard），否则选第一个
+    target = None
+    for d in devices:
+        if "tboard" in d.sn.lower() or d.sn.startswith("tboard"):
+            target = d
+            break
+    if target is None:
+        # 如果只有一个设备，用它
+        if len(devices) == 1:
+            target = devices[0]
+        else:
+            print("Multiple devices found. Please specify SN:")
+            for d in devices:
+                print(f"  {d.sn}")
+            return
+
+    sn = target.sn
     device = manager.connect(sn=sn, device_name="demo_device")
     print(f"\nConnected to: {device.serial_number}")
 
