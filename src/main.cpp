@@ -10,6 +10,7 @@
 #include "controller.hpp"
 #include "filter.hpp"
 #include "logging.hpp"
+#include "touch_board_wrapper.hpp"
 #include "wrapper.hpp"
 
 namespace py = pybind11;
@@ -117,4 +118,44 @@ PYBIND11_MODULE(_core, m) {
     register_py_interface<data::joint::TargetPosition>("target_position", hand, finger, joint);
     register_py_interface<data::joint::UpperLimit>("upper_limit", hand, finger, joint);
     register_py_interface<data::joint::LowerLimit>("lower_limit", hand, finger, joint);
+
+    // TouchBoard binding
+    py::class_<TouchBoardWrapper>(m, "TouchBoard")
+        .def(
+            py::init<std::optional<std::string>, int32_t, uint16_t>(),
+            py::arg("serial_number") = py::none(), py::arg("usb_pid") = 0x5700,
+            py::arg("usb_vid") = 0x0483)
+        .def(
+            "read_tactile",
+            [](TouchBoardWrapper& self, double timeout) {
+                float buf[24][32];
+                bool ok;
+                {
+                    py::gil_scoped_release release;
+                    ok = self.read_tactile_impl(buf, timeout);
+                }
+                if (!ok)
+                    throw py::value_error("Timed out waiting for tactile frame");
+                return TouchBoardWrapper::make_float_array(buf);
+            },
+            py::arg("timeout") = 1.0)
+        .def(
+            "read_tactile_raw",
+            [](TouchBoardWrapper& self, double timeout) {
+                int16_t buf[24][32];
+                bool ok;
+                {
+                    py::gil_scoped_release release;
+                    ok = self.read_tactile_raw_impl(buf, timeout);
+                }
+                if (!ok)
+                    throw py::value_error("Timed out waiting for tactile frame");
+                return TouchBoardWrapper::make_int16_array(buf);
+            },
+            py::arg("timeout") = 1.0)
+        .def("get_tactile", &TouchBoardWrapper::get_tactile)
+        .def("get_tactile_raw", &TouchBoardWrapper::get_tactile_raw)
+        .def_property_readonly("handedness", &TouchBoardWrapper::get_handedness)
+        .def_property_readonly("fps", &TouchBoardWrapper::get_fps)
+        .def_property_readonly("frame_count", &TouchBoardWrapper::get_frame_count);
 }
