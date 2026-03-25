@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **TouchBoard** device class: USB CDC connection to tboard (STM32H723) for tactile data
+  - `TouchBoard()` — connect via libusb (PID=0x5700)
+  - `read_tactile()` / `read_tactile_raw()` — blocking read with timeout
+  - `get_tactile()` / `get_tactile_raw()` — non-blocking latest frame
+  - `.handedness`, `.fps`, `.frame_count` read-only properties
+  - C++ TactileParser: frame sync state machine + CRC16-CCITT validation
+  - USB transport: configurable interface/endpoint support
+- **Zenoh Bridge module** (`wujihandpy.bridge`, optional `[bridge]` extra)
+  - `HandBridge`: publishes Hand joint data to Zenoh with resource model, control ownership, and realtime loop
+  - `TactileBridge`: publishes TouchBoard tactile data to Zenoh at configurable rate
+  - CLI entry points: `wujihandpy-bridge`, `wujihandpy-tactile-bridge`
+  - `build_capability()`, `get_timestamp_us()`, `sanitize_sn()`, `wrap_with_timestamp()` utilities
+- Integration demo script (`examples/integration_demo.py`)
+- Python package CI workflow (`.github/workflows/python-package-ci.yml`)
+- Unit tests for bridge module (28 tests in `tests/test_bridge.py`)
+
 ## [1.5.1] - 2026-02-02
 
 ### Added
