@@ -99,7 +99,7 @@ class TactileBridge:
             logger.info(f"Liveliness: {self._key('@alive')}")
 
             # Declare capability queryable — follow wuji-sdk protocol (same as HandBridge)
-            sn = self._bridge_id
+            sn = self.serial_number or f"tboard_{handedness}"
             resources = [
                 {
                     "path": "tactile",
@@ -201,22 +201,22 @@ class TactileBridge:
 
         try:
             while self._running:
-                data = self._tb.get_tactile()
                 raw = self._tb.get_tactile_raw()
 
-                if data is not None:
+                if raw is not None:
+                    data = np.clip(1.0 - raw / 2135.0, 0.0, 1.0).astype(np.float32)
+                    timestamp_us = int(time.time() * 1_000_000)
                     payload = json.dumps(
                         {
-                            "timestamp_us": int(time.time() * 1_000_000),
+                            "timestamp_us": timestamp_us,
                             "data": data.flatten().tolist(),
                         }
                     )
                     self._session.put(self._key("tactile"), payload.encode())
 
-                if raw is not None:
                     payload_raw = json.dumps(
                         {
-                            "timestamp_us": int(time.time() * 1_000_000),
+                            "timestamp_us": timestamp_us,
                             "data": raw.flatten().tolist(),
                         }
                     )

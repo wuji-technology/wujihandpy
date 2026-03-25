@@ -118,11 +118,14 @@ def demo_bridge_hand(sn=None):
     print(f"Starting HandBridge (SN: {actual_sn})...")
     print("Press Ctrl+C to stop")
 
-    try:
-        bridge.start()
-        bridge.wait()  # blocks until Ctrl+C
-    except AttributeError:
-        # If wait() not available, use run() or keep alive manually
+    bridge.start()
+    wait_fn = getattr(bridge, "wait", None)
+    if callable(wait_fn):
+        try:
+            wait_fn()
+        except KeyboardInterrupt:
+            bridge.stop()
+    else:
         import time
         print("Bridge running. Press Ctrl+C to stop.")
         try:

@@ -9,7 +9,7 @@ on:
 jobs:
   package-smoke:
     name: Editable install and bridge smoke tests
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     env:
       CC: gcc-14
       CXX: g++-14

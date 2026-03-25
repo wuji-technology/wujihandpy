@@ -17,9 +17,9 @@ except ModuleNotFoundError as e:
     ) from e
 
 __all__ = [
+    "RESOURCE_DEFS",
     "HandBridge",
     "TactileBridge",
-    "RESOURCE_DEFS",
     "build_capability",
     "get_timestamp_us",
     "sanitize_sn",

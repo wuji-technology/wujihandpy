@@ -779,7 +779,7 @@ class HandBridge:
         # Other writes need SDO access
         with self._hand_lock:
             if path == "joint/control_mode":
-                self.hand.write_joint_control_mode(np.array(value, dtype=np.int32))
+                self.hand.write_joint_control_mode(np.array(value, dtype=np.uint16))
             elif path == "joint/enabled":
                 self.hand.write_joint_enabled(np.array(value, dtype=bool))
             elif path == "joint/effort_limit":

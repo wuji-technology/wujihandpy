@@ -22,7 +22,7 @@ namespace wujihandcpp::transport {
 
 class Usb : public ITransport {
 public:
-    explicit Usb(uint16_t usb_vid, int32_t usb_pid, const char* serial_number,
+    explicit Usb(uint16_t usb_vid, uint16_t usb_pid, const char* serial_number,
                  int interface_num = 0x01, unsigned char in_ep = 0x81, unsigned char out_ep = 0x01)
         : logger_(logging::get_logger())
         , free_transmit_transfers_(transmit_transfer_count_)
@@ -50,8 +50,10 @@ public:
         free_transmit_transfers_.pop_front_n([](TransferWrapper* wrapper) { delete wrapper; });
 
         libusb_release_interface(libusb_device_handle_, target_interface_);
-        if constexpr (utility::is_linux())
-            libusb_attach_kernel_driver(libusb_device_handle_, 0);
+        if constexpr (utility::is_linux()) {
+            for (int iface : detached_interfaces_)
+                libusb_attach_kernel_driver(libusb_device_handle_, iface);
+        }
 
         // libusb_close() reliably cancels all pending transfers and invokes their callbacks,
         // avoiding race conditions present in other cancellation methods
@@ -133,7 +135,7 @@ private:
         libusb_transfer* transfer_;
     };
 
-    bool usb_init(uint16_t vendor_id, int32_t product_id, const char* serial_number) {
+    bool usb_init(uint16_t vendor_id, uint16_t product_id, const char* serial_number) {
         int ret;
 
         ret = libusb_init(&libusb_context_);
@@ -151,10 +153,14 @@ private:
             // Detach kernel driver from CDC control interface (0) if present
             // CDC ACM driver claims both control and data interfaces
             if (target_interface_ > 0) {
-                libusb_detach_kernel_driver(libusb_device_handle_, 0);
+                int det_ret = libusb_detach_kernel_driver(libusb_device_handle_, 0);
+                if (det_ret == 0)
+                    detached_interfaces_.push_back(0);
             }
             ret = libusb_detach_kernel_driver(libusb_device_handle_, target_interface_);
-            if (ret != LIBUSB_ERROR_NOT_FOUND && ret != 0) [[unlikely]] {
+            if (ret == 0)
+                detached_interfaces_.push_back(target_interface_);
+            else if (ret != LIBUSB_ERROR_NOT_FOUND) [[unlikely]] {
                 logger_.error("Failed to detach kernel driver: {} ({})", ret, libusb_errname(ret));
                 return false;
             }
@@ -172,7 +178,7 @@ private:
         return true;
     }
 
-    bool select_device(uint16_t vendor_id, int32_t product_id, const char* serial_number) {
+    bool select_device(uint16_t vendor_id, uint16_t product_id, const char* serial_number) {
         libusb_device** device_list = nullptr;
         const ssize_t device_count = libusb_get_device_list(libusb_context_, &device_list);
         if (device_count < 0) {
@@ -267,7 +273,7 @@ private:
 
     int print_matched_unmatched_devices(
         libusb_device** device_list, ssize_t device_count,
-        libusb_device_descriptor* device_descriptors, uint16_t vendor_id, int32_t product_id,
+        libusb_device_descriptor* device_descriptors, uint16_t vendor_id, uint16_t product_id,
         const char* serial_number) {
 
         int j = 0, k = 0;
@@ -450,6 +456,7 @@ private:
     }
 
     int target_interface_ = 0x01;
+    std::vector<int> detached_interfaces_;
 
     unsigned char out_endpoint_ = 0x01;
     unsigned char in_endpoint_ = 0x81;
@@ -476,12 +483,12 @@ private:
 };
 
 std::unique_ptr<ITransport>
-    create_usb_transport(uint16_t usb_vid, int32_t usb_pid, const char* serial_number) {
+    create_usb_transport(uint16_t usb_vid, uint16_t usb_pid, const char* serial_number) {
     return std::make_unique<Usb>(usb_vid, usb_pid, serial_number);
 }
 
 std::unique_ptr<ITransport>
-    create_usb_transport(uint16_t usb_vid, int32_t usb_pid, const char* serial_number,
+    create_usb_transport(uint16_t usb_vid, uint16_t usb_pid, const char* serial_number,
                          int interface_num, unsigned char in_ep, unsigned char out_ep) {
     return std::make_unique<Usb>(usb_vid, usb_pid, serial_number, interface_num, in_ep, out_ep);
 }

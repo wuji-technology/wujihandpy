@@ -15,7 +15,7 @@
 namespace wujihandcpp::device {
 
 struct TouchBoard::Impl {
-    explicit Impl(const char* serial_number, int32_t usb_pid, uint16_t usb_vid)
+    explicit Impl(const char* serial_number, uint16_t usb_pid, uint16_t usb_vid)
         : logger_(logging::get_logger())
         , transport_(transport::create_usb_transport(usb_vid, usb_pid, serial_number,
                                                      1,     // interface 1 (CDC data)
@@ -158,7 +158,7 @@ struct TouchBoard::Impl {
     std::deque<std::chrono::steady_clock::time_point> frame_times_;
 };
 
-TouchBoard::TouchBoard(const char* serial_number, int32_t usb_pid, uint16_t usb_vid)
+TouchBoard::TouchBoard(const char* serial_number, uint16_t usb_pid, uint16_t usb_vid)
     : impl_(std::make_unique<Impl>(serial_number, usb_pid, usb_vid)) {}
 
 TouchBoard::~TouchBoard() = default;

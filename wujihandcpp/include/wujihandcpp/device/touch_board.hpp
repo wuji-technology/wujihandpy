@@ -17,7 +17,7 @@ public:
     static constexpr float ADC_OPEN_CIRCUIT = 2135.0f;
 
     explicit TouchBoard(
-        const char* serial_number = nullptr, int32_t usb_pid = DEFAULT_USB_PID,
+        const char* serial_number = nullptr, uint16_t usb_pid = DEFAULT_USB_PID,
         uint16_t usb_vid = DEFAULT_USB_VID);
 
     ~TouchBoard();
