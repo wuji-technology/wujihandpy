@@ -65,8 +65,11 @@ public:
                 if (buf_pos_ == FRAME_SIZE) {
                     if (validate_and_extract()) {
                         frames_parsed++;
+                        state_ = State::SYNC_AA;
+                    } else {
+                        // Validation failed — resync: scan buffer for next 0xAA55
+                        resync_after_failure();
                     }
-                    state_ = State::SYNC_AA;
                 }
                 break;
             }
@@ -97,6 +100,29 @@ private:
     // Read i16 little-endian
     static int16_t read_i16le(const uint8_t* p) {
         return static_cast<int16_t>(read_u16le(p));
+    }
+
+    /// Resync after validation failure: scan buffer for next 0xAA55 header.
+    void resync_after_failure() {
+        // Search buf_[1..FRAME_SIZE) for next sync sequence
+        for (size_t j = 1; j < FRAME_SIZE - 1; ++j) {
+            if (buf_[j] == 0xAA && buf_[j + 1] == 0x55) {
+                // Found potential header — shift remaining data to start
+                size_t remaining = FRAME_SIZE - j;
+                std::memmove(buf_.data(), &buf_[j], remaining);
+                buf_pos_ = remaining;
+                state_ = State::ACCUMULATE;
+                return;
+            }
+        }
+        // Check if last byte is 0xAA (possible start of next header)
+        if (buf_[FRAME_SIZE - 1] == 0xAA) {
+            buf_[0] = 0xAA;
+            buf_pos_ = 1;
+            state_ = State::SYNC_55;
+        } else {
+            state_ = State::SYNC_AA;
+        }
     }
 
     bool validate_and_extract() {

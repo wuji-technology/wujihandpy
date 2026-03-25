@@ -38,8 +38,10 @@ jobs:
       - name: Smoke test package imports
         run: python -c "import wujihandpy; import wujihandpy.bridge"
 
-      - name: Smoke test CLI
-        run: wujihandpy-bridge --help
+      - name: Smoke test CLIs
+        run: |
+          wujihandpy-bridge --help
+          wujihandpy-tactile-bridge --help
 
       - name: Run bridge tests
         run: python -m pytest tests/test_bridge.py -q

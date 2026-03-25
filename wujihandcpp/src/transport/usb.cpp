@@ -497,7 +497,7 @@ std::unique_ptr<ITransport>
 }
 
 std::unique_ptr<ITransport>
-    create_usb_transport(uint16_t usb_vid, uint16_t usb_pid, const char* serial_number,
+    create_usb_transport(uint16_t usb_vid, int32_t usb_pid, const char* serial_number,
                          int interface_num, unsigned char in_ep, unsigned char out_ep) {
     return std::make_unique<Usb>(usb_vid, usb_pid, serial_number, interface_num, in_ep, out_ep);
 }

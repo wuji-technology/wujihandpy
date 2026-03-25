@@ -159,7 +159,7 @@ def test_write_resource_target_position():
 
 
 def test_write_resource_control_mode():
-    """Test that _write_resource writes an int32 array to joint/control_mode."""
+    """Test that _write_resource writes a uint16 array to joint/control_mode."""
     hand = MagicMock()
     bridge = HandBridge(hand, "TEST", pub_rate=100.0)
     bridge._write_resource("joint/control_mode", [[1] * 4] * 5)

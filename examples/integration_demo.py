@@ -43,7 +43,6 @@
 import sys
 import time
 import json
-import threading
 import numpy as np
 
 
@@ -63,7 +62,7 @@ def demo_local_hand():
     print(f"Connected to hand")
 
     # 读取关节角度
-    for i in range(5):
+    for _ in range(5):
         pos = hand.read_joint_actual_position()
         print(f"  Joint positions: {pos[:4]}...")  # 前 4 个关节
         time.sleep(0.1)
@@ -80,7 +79,7 @@ def demo_local_touchboard():
     tb = TouchBoard()
     print(f"Connected! Handedness: {tb.handedness}")
 
-    for i in range(5):
+    for _ in range(5):
         data = tb.read_tactile()
         print(f"  Frame {i}: shape={data.shape} "
               f"range=[{data.min():.3f}, {data.max():.3f}] "
