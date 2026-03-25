@@ -1,5 +1,9 @@
 name: Notify Docs Center
 
+env:
+  AUTOMATION_APP_ID: ${{ vars.AUTOMATION_APP_ID }}
+  AUTOMATION_APP_PRIVATE_KEY: ${{ secrets.AUTOMATION_APP_PRIVATE_KEY }}
+
 on:
   push:
     branches: [main]
@@ -10,15 +14,27 @@ jobs:
   notify:
     runs-on: ubuntu-latest
     steps:
+      - name: Check automation app config
+        id: automation-config
+        run: |
+          if [[ -n "${AUTOMATION_APP_ID}" && -n "${AUTOMATION_APP_PRIVATE_KEY}" ]]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping docs center notification because automation app credentials are not configured."
+          fi
+
       - name: Generate GitHub App Token
+        if: steps.automation-config.outputs.configured == 'true'
         id: app-token
         uses: actions/create-github-app-token@v2
         with:
-          app-id: ${{ vars.AUTOMATION_APP_ID }}
-          private-key: ${{ secrets.AUTOMATION_APP_PRIVATE_KEY }}
+          app-id: ${{ env.AUTOMATION_APP_ID }}
+          private-key: ${{ env.AUTOMATION_APP_PRIVATE_KEY }}
           owner: wuji-technology
 
       - uses: peter-evans/repository-dispatch@v4
+        if: steps.automation-config.outputs.configured == 'true'
         with:
           token: ${{ steps.app-token.outputs.token }}
           repository: wuji-technology/wuji-docs-center

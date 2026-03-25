@@ -28,45 +28,9 @@ sudo udevadm control --reload-rules &&
 sudo udevadm trigger
 ```
 
-### 2.2 Troubleshooting
-
-#### 2.2.1 Upgrade pip
-If you encounter `Could not find a version that satisfies the requirement` (using Ubuntu 20.04 as an example):
-```text
-ERROR: Could not find a version that satisfies the requirement wujihandpy (from versions: none)
-ERROR: No matching distribution found for wujihandpy
-```
-Consider upgrading pip and using the upgraded pip to install:
-```bash
-python3 -m pip install --upgrade pip && python3 -m pip install wujihandpy
-```
-If the issue remains unresolved, please verify that your system version and Python version meet the [Compatibility and Requirements](#1-compatibility-and-requirements).
-
-#### 2.2.2 Using Virtual Environments
-If you encounter `This environment is externally managed` (using Ubuntu 24.04 as an example):
-```text
-error: externally-managed-environment
-
-× This environment is externally managed
-╰─> To install Python packages system-wide, try apt install
-    python3-xyz, where xyz is the package you are trying to
-    install.
-
-    If you wish to install a non-Debian-packaged Python package,
-    create a virtual environment using python3 -m venv path/to/venv.
-    Then use path/to/venv/bin/python and path/to/venv/bin/pip. Make
-    sure you have python3-full installed.
-
-    If you wish to install a non-Debian packaged Python application,
-    it may be easiest to use pipx install xyz, which will manage a
-    virtual environment for you. Make sure you have pipx installed.
-
-    See /usr/share/doc/python3.12/README.venv for more information.
-
-note: If you believe this is a mistake, please contact your Python installation or OS distribution provider. You can override this, at the risk of breaking your Python installation or OS, by passing --break-system-packages.
-hint: See PEP 668 for the detailed specification.
-```
-This indicates that pip is managed by the system package manager and requires using a virtual environment (venv) for installation.
+<Callout type="info">
+  Note: For common installation errors and fixes, see [Troubleshooting - Installation](#51-installation) at the end of this page.
+</Callout>
 
 ## 3. Quick Start
 This section provides a minimal working example to help you quickly test the dexterous hand with the wujihandpy library.
@@ -94,38 +58,9 @@ Run the above code with the following command to see the dexterous hand's index 
 python3 quickstart.py
 ```
 
-### 3.1 Troubleshooting
-
-#### 3.1.1 Dexterous Hand Not Connected
-```text
-[ERROR] No device found with specified vendor id (0x0483)
-Traceback (most recent call last):
-  File "/workspaces/quickstart.py", line 5, in <module>
-    hand = wujihandpy.Hand()
-           ^^^^^^^^^^^^^^^^^
-RuntimeError: Failed to init.
-```
-If you encounter the above error, please confirm that the dexterous hand is connected to the computer via USB.
-You can use `lsusb` to verify the device is properly recognized. If the device is correctly connected, `lsusb` will produce output similar to:
-```text
-Bus 001 Device 032: ID 0483:2000 WUJITECH WUJIHAND
-```
-When using a USB C-to-C cable to connect the dexterous hand, some computers may not properly recognize the device. Please try replacing it with a USB A-to-C cable.
-
-#### 3.1.2 Insufficient Permissions
-```text
-[ERROR] No device found with specified vendor id (0x0483)
-[ERROR]   Device 1 (0483:2000): Ignored because device could not be opened: -3 (ERROR_ACCESS)
-[ERROR] Consider relaxing some filters
-Traceback (most recent call last):
-  File "/workspaces/quickstart.py", line 5, in <module>
-    hand = wujihandpy.Hand()
-           ^^^^^^^^^^^^^^^^^
-RuntimeError: Failed to init.
-```
-If you encounter the above error (ERROR_ACCESS), it indicates that the current user does not have read/write permissions for the USB device.
-Please check the Linux udev configuration section in [Installation](#21-installation), complete the permission configuration, and try again.
-> Note: If developing in a Docker container (DevContainer), the udev configuration commands must still be executed on the host machine.
+<Callout type="info">
+  Note: For common connection and permission issues during quick start, see [Troubleshooting - Quick Start](#52-quick-start) at the end of this page.
+</Callout>
 
 ## 4. Core Concepts
 This section introduces wujihandpy's device model and data model to help you understand the library's overall architecture and usage patterns.
@@ -146,7 +81,9 @@ wujihandpy has a three-layer device model: Hand, Finger, and Joint. The hierarch
 
 ### 4.2 Data Model
 Data consists of readable/writable objects. Similar to devices, data also has a hierarchical relationship:
-> Note: Only some data fields are listed here as examples. For the complete API Reference, see [Field List](../api-reference/#1-field-list).
+<Callout type="info">
+  Note: Only some data fields are listed here as examples. For the complete API Reference, see [Field List](../api-reference/#1-field-list).
+</Callout>
 - **Hand** layer: Data unique to the entire hand resides at this layer, for example:
   - `handedness`: Handedness (left/right hand)
   - `firmware_version`: Firmware version
@@ -161,5 +98,83 @@ Data consists of readable/writable objects. Similar to devices, data also has a 
   - `joint_temperature`: Current joint temperature
   - `joint_error_code`: Joint error code
 
-  > Note: All data belonging to the Joint layer is prefixed with `joint` in naming.
+<Callout type="info">
+  Note: All data belonging to the Joint layer is prefixed with `joint`.
+</Callout>
 
+## 5. Troubleshooting
+
+### 5.1 Installation
+
+#### 5.1.1 Upgrade pip
+If you encounter `Could not find a version that satisfies the requirement`, for example in an older Python or pip environment:
+```text
+ERROR: Could not find a version that satisfies the requirement wujihandpy (from versions: none)
+ERROR: No matching distribution found for wujihandpy
+```
+Consider upgrading pip and using the upgraded pip to install:
+```bash
+python3 -m pip install --upgrade pip && python3 -m pip install wujihandpy
+```
+If the issue remains unresolved, please verify that your system version and Python version meet the [Compatibility and Requirements](#1-compatibility-and-requirements).
+
+#### 5.1.2 Using Virtual Environments
+If you encounter `This environment is externally managed`, for example in Ubuntu environments where the system Python is managed by the OS:
+```text
+error: externally-managed-environment
+
+× This environment is externally managed
+╰─> To install Python packages system-wide, try apt install
+    python3-xyz, where xyz is the package you are trying to
+    install.
+
+    If you wish to install a non-Debian-packaged Python package,
+    create a virtual environment using python3 -m venv path/to/venv.
+    Then use path/to/venv/bin/python and path/to/venv/bin/pip. Make
+    sure you have python3-full installed.
+
+    If you wish to install a non-Debian packaged Python application,
+    it may be easiest to use pipx install xyz, which will manage a
+    virtual environment for you. Make sure you have pipx installed.
+
+    See /usr/share/doc/python3.12/README.venv for more information.
+
+note: If you believe this is a mistake, please contact your Python installation or OS distribution provider. You can override this, at the risk of breaking your Python installation or OS, by passing --break-system-packages.
+hint: See PEP 668 for the detailed specification.
+```
+This indicates that pip is managed by the system package manager and requires using a virtual environment (venv) for installation.
+
+### 5.2 Quick Start
+
+#### 5.2.1 Dexterous Hand Not Connected
+```text
+[ERROR] No device found with specified vendor id (0x0483)
+Traceback (most recent call last):
+  File "/workspaces/quickstart.py", line 5, in <module>
+    hand = wujihandpy.Hand()
+           ^^^^^^^^^^^^^^^^^
+RuntimeError: Failed to init.
+```
+If you encounter the above error, please confirm that the dexterous hand is connected to the computer via USB.
+You can use `lsusb` to verify the device is properly recognized. If the device is correctly connected, `lsusb` will produce output similar to:
+```text
+Bus 001 Device 032: ID 0483:2000 WUJITECH WUJIHAND
+```
+When using a USB-C to USB-C cable to connect the dexterous hand, some computers may not properly recognize the device. Please try replacing it with a USB-A to USB-C cable.
+
+#### 5.2.2 Insufficient Permissions
+```text
+[ERROR] No device found with specified vendor id (0x0483)
+[ERROR]   Device 1 (0483:2000): Ignored because device could not be opened: -3 (ERROR_ACCESS)
+[ERROR] Consider relaxing some filters
+Traceback (most recent call last):
+  File "/workspaces/quickstart.py", line 5, in <module>
+    hand = wujihandpy.Hand()
+           ^^^^^^^^^^^^^^^^^
+RuntimeError: Failed to init.
+```
+If you encounter the above error (ERROR_ACCESS), it indicates that the current user does not have read/write permissions for the USB device.
+Please check the Linux udev configuration section in [Installation](#21-installation), complete the permission configuration, and try again.
+<Callout type="warning">
+  Note: If developing in a Docker container (DevContainer), the udev configuration commands must still be executed on the host machine.
+</Callout>

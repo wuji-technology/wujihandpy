@@ -76,13 +76,17 @@ Effort is the actuation value in current space, filtered before output. It is no
 
 To protect the device, the firmware automatically reduces the effective effort limit based on joint temperature:
 
-| Temperature Status | Effective Effort Limit |
-|-------------------|------------------------|
-| Normal | User-set value (default 1.5A) |
-| Temperature Warning (Tier 1) | User-set value × 70% |
-| Temperature Alert (Tier 2) | User-set value × 40% |
+| Temperature Status | Trigger Condition | Effective Effort Limit |
+|-------------------|-------------------|------------------------|
+| Normal | Below 85°C | User-set value (default 1.5A) |
+| Temperature Warning (Tier 1) | Greater than or equal to 85°C | User-set value × 70% |
+| Temperature Alert (Tier 2) | Greater than or equal to 93°C | User-set value × 40% |
 
-When the temperature returns to a safe range, the effort limit automatically recovers. The value returned by `read_joint_effort_limit()` is the user-set value, not the current effective value.
+Recovery uses a 4°C hysteresis threshold:
+- Tier 2 returns to Tier 1 when temperature drops below 89°C
+- Tier 1 returns to Normal when temperature drops below 81°C
+
+When the temperature returns to a safe range, the effort limit automatically recovers.
 </Callout>
 
 <Callout type="error">
