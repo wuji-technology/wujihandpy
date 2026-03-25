@@ -165,7 +165,7 @@ def test_write_resource_control_mode():
     bridge._write_resource("joint/control_mode", [[1] * 4] * 5)
     hand.write_joint_control_mode.assert_called_once()
     arg = hand.write_joint_control_mode.call_args[0][0]
-    assert arg.dtype == np.int32
+    assert arg.dtype == np.uint16
     assert arg.shape == (5, 4)
 
 
@@ -243,7 +243,8 @@ def test_get_timestamp_us_returns_microseconds():
     ts = get_timestamp_us()
     # Should be in microseconds (roughly current epoch in us)
     assert ts > 1_700_000_000_000_000  # after 2023
-    assert ts < 2_000_000_000_000_000  # before 2033
+    now_us = int(time.time() * 1_000_000)
+    assert abs(ts - now_us) < 5_000_000  # within 5 seconds
     # Note: wall-clock is not guaranteed monotonic (NTP), so no ts2 >= ts check
 
 
@@ -654,7 +655,6 @@ def test_tactile_bridge_default_params():
 
 def test_tactile_bridge_pub_rate_validation():
     """TactileBridge rejects invalid pub_rate."""
-    import pytest
     from wujihandpy.bridge.tactile_bridge import TactileBridge
     with pytest.raises(ValueError):
         TactileBridge(pub_rate=0)

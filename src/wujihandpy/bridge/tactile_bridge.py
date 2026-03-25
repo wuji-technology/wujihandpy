@@ -90,7 +90,7 @@ class TactileBridge:
                 logger.warning("No initial frame within 5s, continuing anyway")
 
             handedness = self._tb.handedness
-            hand_str = {0: "left", 1: "right"}.get(handedness, "unknown")
+            hand_str = handedness if handedness in ("left", "right") else "unknown"
             logger.info(
                 f"TouchBoard connected: handedness={handedness}, fps={self._tb.fps:.0f}"
             )

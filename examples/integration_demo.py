@@ -32,7 +32,7 @@
     wujihandpy-tactile-bridge --sn <tboard_SN> --pub-rate 30
 
 终端 3: SDK 订阅端（本脚本）
-    python examples/integration_demo.py
+    python examples/integration_demo.py sdk-sub
 
 === 环境要求 ===
 

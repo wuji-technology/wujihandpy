@@ -123,7 +123,12 @@ struct TouchBoard::Impl {
 
     float get_fps() const {
         std::lock_guard lock{mutex_};
-        // fps_count_ is maintained incrementally by on_receive (add on push, decrement on prune)
+        auto now = std::chrono::steady_clock::now();
+        auto cutoff = now - std::chrono::seconds(1);
+        while (!frame_times_.empty() && frame_times_.front() < cutoff) {
+            frame_times_.pop_front();
+            fps_count_--;
+        }
         return static_cast<float>(fps_count_);
     }
 
@@ -147,8 +152,8 @@ struct TouchBoard::Impl {
     std::atomic<uint64_t> frame_count_{0};
 
     // frame timestamps for FPS calculation (within last 1 second)
-    std::deque<std::chrono::steady_clock::time_point> frame_times_;
-    int fps_count_{0};  // Incremental count of frame_times_ entries (avoids scan in get_fps)
+    mutable std::deque<std::chrono::steady_clock::time_point> frame_times_;
+    mutable int fps_count_{0};  // Incremental count of frame_times_ entries; pruned in get_fps
 };
 
 TouchBoard::TouchBoard(const char* serial_number, uint16_t usb_pid, uint16_t usb_vid)

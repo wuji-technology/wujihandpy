@@ -641,7 +641,8 @@ class HandBridge:
                 if self._control_owner == requester:
                     self._control_owner = None
                     # _stop_owner_watcher() calls zenoh undeclare() which is synchronous
-                    # and does not trigger callbacks, so it's safe under _control_lock.
+                    # and does not trigger callbacks (verified with eclipse-zenoh>=1.7.0),
+                    # so it's safe under _control_lock. Verify this on Zenoh upgrades.
                     self._stop_owner_watcher()
                     query.reply(key, b"released")
                     logger.info(f"Control released by {requester}")

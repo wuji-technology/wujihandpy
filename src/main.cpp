@@ -122,7 +122,13 @@ PYBIND11_MODULE(_core, m) {
     // TouchBoard binding
     py::class_<TouchBoardWrapper>(m, "TouchBoard")
         .def(
-            py::init<std::optional<std::string>, int32_t, uint16_t>(),
+            py::init([](std::optional<std::string> serial_number, int32_t usb_pid,
+                        uint16_t usb_vid) {
+                if (usb_pid < 0 || usb_pid > 65535)
+                    throw py::value_error(
+                        "usb_pid must be in range [0, 65535], got " + std::to_string(usb_pid));
+                return std::make_unique<TouchBoardWrapper>(serial_number, usb_pid, usb_vid);
+            }),
             py::arg("serial_number") = py::none(), py::arg("usb_pid") = 0x5700,
             py::arg("usb_vid") = 0x0483)
         .def(

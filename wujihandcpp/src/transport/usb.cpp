@@ -156,6 +156,7 @@ private:
                 int det_ret = libusb_detach_kernel_driver(libusb_device_handle_, 0);
                 if (det_ret == 0)
                     detached_interfaces_.push_back(0);
+                // Note: LIBUSB_ERROR_NOT_FOUND means no driver attached — not an error
             }
             ret = libusb_detach_kernel_driver(libusb_device_handle_, target_interface_);
             if (ret == 0)
@@ -166,6 +167,13 @@ private:
             }
         }
 
+        // Reattach kernel drivers if init fails after detach
+        utility::FinalAction reattach_on_failure{[this]() {
+            for (int iface : detached_interfaces_)
+                libusb_attach_kernel_driver(libusb_device_handle_, iface);
+            detached_interfaces_.clear();
+        }};
+
         ret = libusb_claim_interface(libusb_device_handle_, target_interface_);
         if (ret != 0) [[unlikely]] {
             logger_.error("Failed to claim interface: {} ({})", ret, libusb_errname(ret));
@@ -173,6 +181,7 @@ private:
         }
 
         // Libusb successfully initialized
+        reattach_on_failure.disable();
         close_device_handle.disable();
         exit_libusb.disable();
         return true;
