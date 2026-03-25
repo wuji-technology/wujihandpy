@@ -79,7 +79,7 @@ def demo_local_touchboard():
     tb = TouchBoard()
     print(f"Connected! Handedness: {tb.handedness}")
 
-    for _ in range(5):
+    for i in range(5):
         data = tb.read_tactile()
         print(f"  Frame {i}: shape={data.shape} "
               f"range=[{data.min():.3f}, {data.max():.3f}] "
