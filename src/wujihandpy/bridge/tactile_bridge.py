@@ -254,7 +254,12 @@ class TactileBridge:
             self.stop()
 
     def stop(self):
-        """Stop the bridge and clean up."""
+        """Stop the bridge and clean up.
+
+        Uses broad Exception catching intentionally — cleanup must complete
+        all steps regardless of individual failures. Zenoh does not export
+        a specific exception type for undeclare/close failures.
+        """
         self._running = False
         if self._queryable is not None:
             try:

@@ -52,12 +52,15 @@ struct TouchBoard::Impl {
                 // Count all frames parsed, not just 1
                 frame_count_.fetch_add(static_cast<uint64_t>(n), std::memory_order_relaxed);
 
-                // FPS: add n entries (approximation for multi-frame callbacks)
+                // FPS: add n entries and prune old ones, maintain incremental count
                 for (int i = 0; i < n; ++i)
                     frame_times_.push_back(now);
+                fps_count_ += n;
                 auto cutoff = now - std::chrono::seconds(1);
-                while (!frame_times_.empty() && frame_times_.front() < cutoff)
+                while (!frame_times_.empty() && frame_times_.front() < cutoff) {
                     frame_times_.pop_front();
+                    fps_count_--;
+                }
             }
 
             cv_.notify_all();
@@ -120,17 +123,8 @@ struct TouchBoard::Impl {
 
     float get_fps() const {
         std::lock_guard lock{mutex_};
-        if (frame_times_.empty())
-            return 0.0f;
-        // Count entries within last 1 second (pruning happens in on_receive)
-        auto now = std::chrono::steady_clock::now();
-        auto cutoff = now - std::chrono::seconds(1);
-        size_t count = 0;
-        for (const auto& t : frame_times_) {
-            if (t >= cutoff)
-                count++;
-        }
-        return static_cast<float>(count);
+        // fps_count_ is maintained incrementally by on_receive (add on push, decrement on prune)
+        return static_cast<float>(fps_count_);
     }
 
     uint64_t get_frame_count() const {
@@ -154,6 +148,7 @@ struct TouchBoard::Impl {
 
     // frame timestamps for FPS calculation (within last 1 second)
     std::deque<std::chrono::steady_clock::time_point> frame_times_;
+    int fps_count_{0};  // Incremental count of frame_times_ entries (avoids scan in get_fps)
 };
 
 TouchBoard::TouchBoard(const char* serial_number, uint16_t usb_pid, uint16_t usb_vid)
