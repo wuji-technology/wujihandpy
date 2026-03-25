@@ -68,9 +68,7 @@ struct TouchBoard::Impl {
         std::lock_guard lock{mutex_};
         if (!has_frame_.load(std::memory_order_acquire))
             return false;
-        for (int r = 0; r < ROWS; ++r)
-            for (int c = 0; c < COLS; ++c)
-                out[r][c] = std::clamp(1.0f - raw_data_[r][c] / ADC_OPEN_CIRCUIT, 0.0f, 1.0f);
+        std::memcpy(out, normalized_data_, sizeof(out));
         return true;
     }
 
@@ -124,7 +122,7 @@ struct TouchBoard::Impl {
         std::lock_guard lock{mutex_};
         if (frame_times_.empty())
             return 0.0f;
-        // Prune stale entries (for accurate FPS when stream stops)
+        // Count entries within last 1 second (pruning happens in on_receive)
         auto now = std::chrono::steady_clock::now();
         auto cutoff = now - std::chrono::seconds(1);
         size_t count = 0;

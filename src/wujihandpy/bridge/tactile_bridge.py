@@ -37,6 +37,7 @@ class TactileBridge:
 
     ROWS = 24
     COLS = 32
+    ADC_OPEN_CIRCUIT = 2135.0  # Must match C++ TouchBoard::ADC_OPEN_CIRCUIT
 
     def __init__(self, serial_number=None, usb_pid=0x5700, pub_rate=30):
         if pub_rate <= 0:
@@ -84,9 +85,10 @@ class TactileBridge:
                 f"TouchBoard connected: handedness={handedness}, fps={self._tb.fps:.0f}"
             )
 
-            # Compute canonical bridge ID once; used for both _key() and capability
+            # Compute canonical bridge ID once; used by _key() for Zenoh key generation.
+            # _key() adds "wuji/tboard_" prefix, so bridge_id should NOT include "tboard_".
             self._bridge_id = self._sanitize_sn(
-                self.serial_number or f"tboard_{hand_str}"
+                self.serial_number or hand_str
             )
 
             # Open Zenoh session
@@ -100,6 +102,8 @@ class TactileBridge:
             logger.info(f"Liveliness: {self._key('@alive')}")
 
             # Declare capability queryable — follow wuji-sdk protocol (same as HandBridge)
+            # capability.serial_number preserves the original serial for human readability,
+            # while _bridge_id (used by _key()) is sanitized for safe Zenoh key naming.
             sn = self.serial_number or f"tboard_{hand_str}"
             resources = [
                 {
@@ -205,7 +209,7 @@ class TactileBridge:
                 raw = self._tb.get_tactile_raw()
 
                 if raw is not None:
-                    data = np.clip(1.0 - raw / 2135.0, 0.0, 1.0).astype(np.float32)
+                    data = np.clip(1.0 - raw / self.ADC_OPEN_CIRCUIT, 0.0, 1.0).astype(np.float32)
                     timestamp_us = int(time.time() * 1_000_000)
                     payload = json.dumps(
                         {

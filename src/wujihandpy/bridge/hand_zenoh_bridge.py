@@ -315,18 +315,27 @@ class HandBridge:
 
         owner_key = self._control_owner_key(owner_zid)
 
+        # Capture the watcher identity so we only stop our own watcher, not a newer one
+        watcher_owner_zid = owner_zid
+
         def on_sample(sample):
             """Handle liveliness change; auto-release control on owner crash."""
             # SampleKind.DELETE means the liveliness token was dropped (owner crashed)
             if hasattr(sample, "kind") and sample.kind == zenoh.SampleKind.DELETE:
-                should_stop_watcher = False
+                watcher_to_stop = None
                 with self._control_lock:
-                    if self._control_owner == owner_zid:
-                        logger.warning(f"Control owner {owner_zid} crashed, auto-releasing")
+                    if self._control_owner == watcher_owner_zid:
+                        logger.warning(f"Control owner {watcher_owner_zid} crashed, auto-releasing")
                         self._control_owner = None
-                        should_stop_watcher = True
-                if should_stop_watcher:
-                    self._stop_owner_watcher()
+                        # Grab and clear the watcher under lock to avoid racing
+                        # with _start_owner_watcher for a new owner
+                        watcher_to_stop = self._control_owner_watcher
+                        self._control_owner_watcher = None
+                if watcher_to_stop is not None:
+                    try:
+                        watcher_to_stop.undeclare()
+                    except Exception as e:
+                        logger.debug(f"Error undeclaring owner watcher: {e}")
 
         try:
             watcher = self.session.liveliness().declare_subscriber(owner_key, on_sample)
@@ -449,7 +458,10 @@ class HandBridge:
             sleep_time = next_time - time.monotonic()
             if sleep_time > 0:
                 time.sleep(sleep_time)
-            next_time += period
+                next_time += period
+            else:
+                # Overrun: skip missed intervals instead of burst catch-up
+                next_time = time.monotonic() + period
 
     def start(self):
         """Open Zenoh session, declare liveliness, publish status, start queryables."""
