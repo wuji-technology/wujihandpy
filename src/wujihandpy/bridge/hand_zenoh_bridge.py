@@ -319,11 +319,14 @@ class HandBridge:
             """Handle liveliness change; auto-release control on owner crash."""
             # SampleKind.DELETE means the liveliness token was dropped (owner crashed)
             if hasattr(sample, "kind") and sample.kind == zenoh.SampleKind.DELETE:
+                should_stop_watcher = False
                 with self._control_lock:
                     if self._control_owner == owner_zid:
                         logger.warning(f"Control owner {owner_zid} crashed, auto-releasing")
                         self._control_owner = None
-                self._stop_owner_watcher()
+                        should_stop_watcher = True
+                if should_stop_watcher:
+                    self._stop_owner_watcher()
 
         try:
             watcher = self.session.liveliness().declare_subscriber(owner_key, on_sample)
@@ -379,7 +382,7 @@ class HandBridge:
         # Set control mode to RT_FCL (9) for force-closed-loop, matching HMI behavior
         RT_FCL_MODE = 9
         logger.info("Setting control mode to RT_FCL (%d)...", RT_FCL_MODE)
-        self.hand.write_joint_control_mode(np.full((5, 4), RT_FCL_MODE, dtype=np.int32))
+        self.hand.write_joint_control_mode(np.full((5, 4), RT_FCL_MODE, dtype=np.uint16))
         time.sleep(0.5)
 
         logger.info("Enabling all joints...")
@@ -810,7 +813,9 @@ class HandBridge:
             sleep_time = next_time - time.monotonic()
             if sleep_time > 0:
                 time.sleep(sleep_time)
-            next_time += period
+                next_time += period
+            else:
+                next_time = time.monotonic() + period
 
 
 def main():

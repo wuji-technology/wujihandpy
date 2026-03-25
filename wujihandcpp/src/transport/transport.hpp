@@ -29,7 +29,7 @@ public:
 };
 
 std::unique_ptr<ITransport>
-    create_usb_transport(uint16_t usb_vid, uint16_t usb_pid, const char* serial_number);
+    create_usb_transport(uint16_t usb_vid, int32_t usb_pid, const char* serial_number);
 
 std::unique_ptr<ITransport>
     create_usb_transport(uint16_t usb_vid, uint16_t usb_pid, const char* serial_number,

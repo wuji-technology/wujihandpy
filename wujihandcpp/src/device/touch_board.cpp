@@ -28,7 +28,7 @@ struct TouchBoard::Impl {
         });
     }
 
-    ~Impl() = default;
+    ~Impl() { transport_.reset(); }
 
     void on_receive(const std::byte* data, size_t size) {
         // feed() processes all bytes and returns how many frames were parsed.

@@ -22,7 +22,7 @@ namespace wujihandcpp::transport {
 
 class Usb : public ITransport {
 public:
-    explicit Usb(uint16_t usb_vid, uint16_t usb_pid, const char* serial_number,
+    explicit Usb(uint16_t usb_vid, int32_t usb_pid, const char* serial_number,
                  int interface_num = 0x01, unsigned char in_ep = 0x81, unsigned char out_ep = 0x01)
         : logger_(logging::get_logger())
         , free_transmit_transfers_(transmit_transfer_count_)
@@ -135,7 +135,7 @@ private:
         libusb_transfer* transfer_;
     };
 
-    bool usb_init(uint16_t vendor_id, uint16_t product_id, const char* serial_number) {
+    bool usb_init(uint16_t vendor_id, int32_t product_id, const char* serial_number) {
         int ret;
 
         ret = libusb_init(&libusb_context_);
@@ -178,7 +178,7 @@ private:
         return true;
     }
 
-    bool select_device(uint16_t vendor_id, uint16_t product_id, const char* serial_number) {
+    bool select_device(uint16_t vendor_id, int32_t product_id, const char* serial_number) {
         libusb_device** device_list = nullptr;
         const ssize_t device_count = libusb_get_device_list(libusb_context_, &device_list);
         if (device_count < 0) {
@@ -273,7 +273,7 @@ private:
 
     int print_matched_unmatched_devices(
         libusb_device** device_list, ssize_t device_count,
-        libusb_device_descriptor* device_descriptors, uint16_t vendor_id, uint16_t product_id,
+        libusb_device_descriptor* device_descriptors, uint16_t vendor_id, int32_t product_id,
         const char* serial_number) {
 
         int j = 0, k = 0;
@@ -483,7 +483,7 @@ private:
 };
 
 std::unique_ptr<ITransport>
-    create_usb_transport(uint16_t usb_vid, uint16_t usb_pid, const char* serial_number) {
+    create_usb_transport(uint16_t usb_vid, int32_t usb_pid, const char* serial_number) {
     return std::make_unique<Usb>(usb_vid, usb_pid, serial_number);
 }
 

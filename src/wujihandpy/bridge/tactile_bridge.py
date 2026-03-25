@@ -79,13 +79,14 @@ class TactileBridge:
                 logger.warning("No initial frame within 5s, continuing anyway")
 
             handedness = self._tb.handedness
+            hand_str = {0: "left", 1: "right"}.get(handedness, "unknown")
             logger.info(
                 f"TouchBoard connected: handedness={handedness}, fps={self._tb.fps:.0f}"
             )
 
             # Compute canonical bridge ID once; used for both _key() and capability
             self._bridge_id = self._sanitize_sn(
-                self.serial_number or f"tboard_{handedness}"
+                self.serial_number or f"tboard_{hand_str}"
             )
 
             # Open Zenoh session
@@ -99,7 +100,7 @@ class TactileBridge:
             logger.info(f"Liveliness: {self._key('@alive')}")
 
             # Declare capability queryable — follow wuji-sdk protocol (same as HandBridge)
-            sn = self.serial_number or f"tboard_{handedness}"
+            sn = self.serial_number or f"tboard_{hand_str}"
             resources = [
                 {
                     "path": "tactile",
