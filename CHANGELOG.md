@@ -21,7 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `TactileBridge`: publishes TouchBoard tactile data to Zenoh at configurable rate
   - CLI entry points: `wujihandpy-bridge`, `wujihandpy-tactile-bridge`
   - `build_capability()`, `get_timestamp_us()`, `sanitize_sn()`, `wrap_with_timestamp()` utilities
-  - 16 Zenoh resources: 12 GET + 5 SET, 2 SUB publishers with configurable `--pub-rate`
+  - 17 Zenoh resources: 12 GET + 5 SET, 2 SUB publishers with configurable `--pub-rate`
   - `@capability` queryable with JSON schema, `@control` acquire/release with liveliness TTL
   - Realtime controller integration: target_position via atomic update → PDO 1kHz
 - Integration demo script (`examples/integration_demo.py`)

@@ -149,6 +149,15 @@ private:
             return false;
         utility::FinalAction close_device_handle{[this]() { libusb_close(libusb_device_handle_); }};
 
+        // Guard: reattach any detached interfaces on failure (must be before detach calls)
+        utility::FinalAction reattach_on_failure{[this]() {
+            if constexpr (utility::is_linux()) {
+                for (int iface : detached_interfaces_)
+                    libusb_attach_kernel_driver(libusb_device_handle_, iface);
+                detached_interfaces_.clear();
+            }
+        }};
+
         if constexpr (utility::is_linux()) {
             // Detach kernel driver from CDC control interface (0) if present
             // CDC ACM driver claims both control and data interfaces
@@ -156,7 +165,12 @@ private:
                 int det_ret = libusb_detach_kernel_driver(libusb_device_handle_, 0);
                 if (det_ret == 0)
                     detached_interfaces_.push_back(0);
-                // Note: LIBUSB_ERROR_NOT_FOUND means no driver attached — not an error
+                else if (det_ret != LIBUSB_ERROR_NOT_FOUND) [[unlikely]] {
+                    logger_.error(
+                        "Failed to detach kernel driver from interface 0: {} ({})",
+                        det_ret, libusb_errname(det_ret));
+                    return false;
+                }
             }
             ret = libusb_detach_kernel_driver(libusb_device_handle_, target_interface_);
             if (ret == 0)
@@ -166,13 +180,6 @@ private:
                 return false;
             }
         }
-
-        // Reattach kernel drivers if init fails after detach
-        utility::FinalAction reattach_on_failure{[this]() {
-            for (int iface : detached_interfaces_)
-                libusb_attach_kernel_driver(libusb_device_handle_, iface);
-            detached_interfaces_.clear();
-        }};
 
         ret = libusb_claim_interface(libusb_device_handle_, target_interface_);
         if (ret != 0) [[unlikely]] {

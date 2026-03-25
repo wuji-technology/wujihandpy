@@ -59,7 +59,7 @@ def demo_local_hand():
     print("=" * 60)
 
     hand = Hand()  # 自动发现 USB 设备
-    print(f"Connected to hand")
+    print("Connected to hand")
 
     # 读取关节角度
     for _ in range(5):
@@ -217,7 +217,7 @@ def demo_sdk_subscribe():
     # 订阅触觉数据
     try:
         sub = device.subscribe("tactile")
-        print(f"\nSubscribed to tactile! Waiting for data...")
+        print("\nSubscribed to tactile! Waiting for data...")
         for i in range(10):
             frame = sub.recv()
             if frame is not None:
@@ -257,9 +257,9 @@ def demo_full_integration():
 
     # Step 3: 声明发布者
     sn = "tboard"
-    pub_tactile = session.declare_publisher(f"wuji/{sn}/tactile")
-    alive_token = session.liveliness().declare_token(f"wuji/{sn}/@alive")
-    print(f"    Publishing to wuji/{sn}/tactile")
+    pub_tactile = session.declare_publisher(f"wuji/tboard_{sn}/tactile")
+    alive_token = session.liveliness().declare_token(f"wuji/tboard_{sn}/@alive")
+    print(f"    Publishing to wuji/tboard_{sn}/tactile")
 
     # Step 4: 同时订阅（验证端到端）
     received = {"count": 0, "last_data": None}
@@ -272,7 +272,7 @@ def demo_full_integration():
             print(f"    [SUB] Received #{received['count']}: "
                   f"data_len={len(data.get('data', []))}")
 
-    sub = session.declare_subscriber(f"wuji/{sn}/tactile", on_sample)
+    sub = session.declare_subscriber(f"wuji/tboard_{sn}/tactile", on_sample)
     print("[3] Subscriber ready")
 
     # Step 5: 发布循环
@@ -292,7 +292,7 @@ def demo_full_integration():
         time.sleep(1.0 / 30)  # 30 Hz
 
     elapsed = time.time() - start
-    print(f"\n[5] Results:")
+    print("\n[5] Results:")
     print(f"    Published: {pub_count} frames in {elapsed:.1f}s "
           f"({pub_count / elapsed:.1f} Hz)")
     print(f"    Received:  {received['count']} frames")
