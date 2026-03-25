@@ -14,7 +14,10 @@ from __future__ import annotations
 import json
 import time
 import logging
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from wujihandpy import TouchBoard
 
 import zenoh
 import numpy as np
@@ -42,7 +45,8 @@ class TactileBridge:
         self.usb_pid = usb_pid
         self.pub_rate = pub_rate
         self._running = False
-        self._tb: Optional[TouchBoard] = None
+        self._bridge_id: Optional[str] = None
+        self._tb: Optional["TouchBoard"] = None
         self._session = None
         self._alive_token = None
         self._queryable = None
@@ -51,8 +55,8 @@ class TactileBridge:
         return sn.replace(".", "_") if sn else "unknown"
 
     def _key(self, suffix):
-        sn = self._sanitize_sn(self.serial_number or "tboard")
-        return f"wuji/tboard_{sn}/{suffix}"
+        bridge_id = self._bridge_id or self._sanitize_sn(self.serial_number or "tboard")
+        return f"wuji/tboard_{bridge_id}/{suffix}"
 
     def start(self):
         """Connect to TouchBoard and start publishing.
@@ -79,6 +83,11 @@ class TactileBridge:
                 f"TouchBoard connected: handedness={handedness}, fps={self._tb.fps:.0f}"
             )
 
+            # Compute canonical bridge ID once; used for both _key() and capability
+            self._bridge_id = self._sanitize_sn(
+                self.serial_number or f"tboard_{handedness}"
+            )
+
             # Open Zenoh session
             config = zenoh.Config()
             self._session = zenoh.open(config)
@@ -90,7 +99,7 @@ class TactileBridge:
             logger.info(f"Liveliness: {self._key('@alive')}")
 
             # Declare capability queryable — follow wuji-sdk protocol (same as HandBridge)
-            sn = self.serial_number or f"tboard_{handedness}"
+            sn = self._bridge_id
             resources = [
                 {
                     "path": "tactile",
@@ -229,7 +238,10 @@ class TactileBridge:
                 sleep_time = next_time - time.monotonic()
                 if sleep_time > 0:
                     time.sleep(sleep_time)
-                next_time += period
+                    next_time += period
+                else:
+                    # Overrun: skip missed intervals instead of burst catch-up
+                    next_time = time.monotonic() + period
 
         except KeyboardInterrupt:
             logger.info("Interrupted")
@@ -242,20 +254,20 @@ class TactileBridge:
         if self._queryable is not None:
             try:
                 self._queryable.undeclare()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Error undeclaring queryable: %s", e)
             self._queryable = None
         if self._alive_token is not None:
             try:
                 self._alive_token.undeclare()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Error undeclaring alive token: %s", e)
             self._alive_token = None
         if self._session is not None:
             try:
                 self._session.close()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Error closing Zenoh session: %s", e)
             self._session = None
         self._tb = None
         logger.info("TactileBridge stopped")

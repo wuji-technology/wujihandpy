@@ -19,9 +19,17 @@ class TactileParser {
 public:
     static constexpr size_t FRAME_SIZE = 1550;
 
-    /// Feed raw bytes from USB CDC. Returns true when a complete valid frame is parsed.
+    static constexpr size_t OFFSET_LENGTH     = 2;
+    static constexpr size_t OFFSET_HANDEDNESS = 4;
+    static constexpr size_t OFFSET_DATA       = 6;
+    static constexpr size_t OFFSET_SEQUENCE   = 1542;
+    static constexpr size_t OFFSET_TIMESTAMP  = 1544;
+    static constexpr size_t CRC_DATA_LENGTH   = 1546;
+    static constexpr size_t OFFSET_CRC        = 1548;
+
+    /// Feed raw bytes from USB CDC.
     /// USB CDC delivers data in 64-byte chunks; multiple calls may be needed.
-    /// Feed raw bytes. Returns number of complete frames parsed (0 if none).
+    /// Returns number of complete frames parsed (0 if none).
     /// frame() returns the last parsed frame.
     int feed(const std::byte* data, size_t length) {
         int frames_parsed = 0;
@@ -92,28 +100,28 @@ private:
     }
 
     bool validate_and_extract() {
-        // Verify length field: bytes [2..4] = 1550 (u16 LE)
-        if (read_u16le(&buf_[2]) != static_cast<uint16_t>(FRAME_SIZE))
+        // Verify length field: bytes [OFFSET_LENGTH..OFFSET_HANDEDNESS) = 1550 (u16 LE)
+        if (read_u16le(&buf_[OFFSET_LENGTH]) != static_cast<uint16_t>(FRAME_SIZE))
             return false;
 
-        // CRC16-CCITT over bytes [2..1548)
-        uint16_t computed_crc = crc16_ccitt(&buf_[2], 1546);
-        if (computed_crc != read_u16le(&buf_[1548]))
+        // CRC16-CCITT over bytes [OFFSET_LENGTH..OFFSET_CRC)
+        uint16_t computed_crc = crc16_ccitt(&buf_[OFFSET_LENGTH], CRC_DATA_LENGTH);
+        if (computed_crc != read_u16le(&buf_[OFFSET_CRC]))
             return false;
 
         // Extract fields (all little-endian)
-        frame_.handedness = buf_[4];
+        frame_.handedness = buf_[OFFSET_HANDEDNESS];
 
-        // Tactile data: bytes [6..1542), 24×32 i16 LE
+        // Tactile data: bytes [OFFSET_DATA..OFFSET_SEQUENCE), 24×32 i16 LE
         for (int r = 0; r < 24; ++r)
             for (int c = 0; c < 32; ++c)
-                frame_.data[r][c] = read_i16le(&buf_[6 + (r * 32 + c) * 2]);
+                frame_.data[r][c] = read_i16le(&buf_[OFFSET_DATA + (r * 32 + c) * 2]);
 
-        // Sequence: bytes [1542..1544), u16 LE
-        frame_.sequence = read_u16le(&buf_[1542]);
+        // Sequence: bytes [OFFSET_SEQUENCE..OFFSET_TIMESTAMP), u16 LE
+        frame_.sequence = read_u16le(&buf_[OFFSET_SEQUENCE]);
 
-        // Timestamp: bytes [1544..1548), u32 LE
-        frame_.timestamp_ms = read_u32le(&buf_[1544]);
+        // Timestamp: bytes [OFFSET_TIMESTAMP..OFFSET_CRC), u32 LE
+        frame_.timestamp_ms = read_u32le(&buf_[OFFSET_TIMESTAMP]);
 
         return true;
     }

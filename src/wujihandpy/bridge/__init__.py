@@ -8,7 +8,9 @@ try:
         wrap_with_timestamp,
     )
     from .tactile_bridge import TactileBridge
-except ImportError as e:
+except ModuleNotFoundError as e:
+    if e.name != "zenoh":
+        raise
     raise ImportError(
         "Zenoh bridge requires extra dependencies. "
         "Install with: pip install wujihandpy[bridge]"
