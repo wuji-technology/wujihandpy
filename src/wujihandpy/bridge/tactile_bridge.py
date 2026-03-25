@@ -40,6 +40,16 @@ class TactileBridge:
     ADC_OPEN_CIRCUIT = 2135.0  # Must match C++ TouchBoard::ADC_OPEN_CIRCUIT
 
     def __init__(self, serial_number=None, usb_pid=0x5700, pub_rate=30):
+        """Initialize TactileBridge.
+
+        Args:
+            serial_number: TouchBoard USB serial number filter (None for auto-detect).
+            usb_pid: USB Product ID (default: 0x5700 for tboard).
+            pub_rate: Zenoh publish rate in Hz (must be positive).
+
+        Raises:
+            ValueError: If pub_rate is not positive.
+        """
         if pub_rate <= 0:
             raise ValueError(f"pub_rate must be positive, got {pub_rate}")
         self.serial_number = serial_number
