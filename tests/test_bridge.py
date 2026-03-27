@@ -611,12 +611,6 @@ def test_start_cleans_up_partial_state_on_failure(monkeypatch):
 # TactileBridge tests
 # ---------------------------------------------------------------------------
 
-def test_tactile_bridge_init():
-    """Test TactileBridge can be instantiated without hardware."""
-    # Can't fully test without hardware, but verify class exists and params work
-    assert hasattr(bridge_pkg, "TactileBridge")
-
-
 def test_tactile_bridge_sanitize_sn():
     """Test SN sanitization."""
     from wujihandpy.bridge.tactile_bridge import TactileBridge
@@ -629,7 +623,7 @@ def test_tactile_bridge_sanitize_sn():
 # TactileBridge Tests
 # ============================================================================
 
-def test_tactile_bridge_exists():
+def test_tactile_bridge_importable():
     """TactileBridge is importable from bridge package."""
     assert hasattr(bridge_pkg, "TactileBridge")
 
@@ -639,6 +633,7 @@ def test_tactile_bridge_key_format():
     from wujihandpy.bridge.tactile_bridge import TactileBridge
     tb = TactileBridge.__new__(TactileBridge)
     tb.serial_number = "TEST.123"
+    tb._bridge_id = None
     assert tb._key("@alive") == "wuji/tboard_TEST_123/@alive"
     assert tb._key("tactile") == "wuji/tboard_TEST_123/tactile"
 

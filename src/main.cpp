@@ -127,14 +127,14 @@ PYBIND11_MODULE(_core, m) {
                 if (usb_pid < 0 || usb_pid > 65535)
                     throw py::value_error(
                         "usb_pid must be in range [0, 65535], got " + std::to_string(usb_pid));
-                return std::make_unique<TouchBoardWrapper>(serial_number, usb_pid, usb_vid);
+                return std::make_unique<TouchBoardWrapper>(serial_number, static_cast<uint16_t>(usb_pid), usb_vid);
             }),
             py::arg("serial_number") = py::none(), py::arg("usb_pid") = 0x5700,
             py::arg("usb_vid") = 0x0483)
         .def(
             "read_tactile",
             [](TouchBoardWrapper& self, double timeout) {
-                float buf[24][32];
+                float buf[TouchBoardWrapper::ROWS][TouchBoardWrapper::COLS];
                 bool ok;
                 {
                     py::gil_scoped_release release;
@@ -148,7 +148,7 @@ PYBIND11_MODULE(_core, m) {
         .def(
             "read_tactile_raw",
             [](TouchBoardWrapper& self, double timeout) {
-                int16_t buf[24][32];
+                int16_t buf[TouchBoardWrapper::ROWS][TouchBoardWrapper::COLS];
                 bool ok;
                 {
                     py::gil_scoped_release release;

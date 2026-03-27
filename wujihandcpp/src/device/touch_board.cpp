@@ -52,15 +52,12 @@ struct TouchBoard::Impl {
                 // Count all frames parsed, not just 1
                 frame_count_.fetch_add(static_cast<uint64_t>(n), std::memory_order_relaxed);
 
-                // FPS: add n entries and prune old ones, maintain incremental count
+                // FPS: add n entries and prune old ones
                 for (int i = 0; i < n; ++i)
                     frame_times_.push_back(now);
-                fps_count_ += n;
                 auto cutoff = now - std::chrono::seconds(1);
-                while (!frame_times_.empty() && frame_times_.front() < cutoff) {
+                while (!frame_times_.empty() && frame_times_.front() < cutoff)
                     frame_times_.pop_front();
-                    fps_count_--;
-                }
             }
 
             cv_.notify_all();
@@ -83,33 +80,29 @@ struct TouchBoard::Impl {
         return true;
     }
 
-    bool read_tactile(float (&out)[ROWS][COLS], double timeout_seconds) {
+    /// Wait for a new frame under lock. Returns true if a new frame arrived before deadline.
+    bool wait_for_new_frame(std::unique_lock<std::mutex>& lock, double timeout_seconds) {
         uint64_t before = frame_count_.load(std::memory_order_relaxed);
-        std::unique_lock lock{mutex_};
         auto deadline =
             std::chrono::steady_clock::now()
             + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
                   std::chrono::duration<double>(timeout_seconds));
-        bool got_new = cv_.wait_until(lock, deadline, [&]() {
+        return cv_.wait_until(lock, deadline, [&]() {
             return frame_count_.load(std::memory_order_relaxed) > before;
         });
-        if (!got_new)
+    }
+
+    bool read_tactile(float (&out)[ROWS][COLS], double timeout_seconds) {
+        std::unique_lock lock{mutex_};
+        if (!wait_for_new_frame(lock, timeout_seconds))
             return false;
         std::memcpy(out, normalized_data_, sizeof(out));
         return true;
     }
 
     bool read_tactile_raw(int16_t (&out)[ROWS][COLS], double timeout_seconds) {
-        uint64_t before = frame_count_.load(std::memory_order_relaxed);
         std::unique_lock lock{mutex_};
-        auto deadline =
-            std::chrono::steady_clock::now()
-            + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-                  std::chrono::duration<double>(timeout_seconds));
-        bool got_new = cv_.wait_until(lock, deadline, [&]() {
-            return frame_count_.load(std::memory_order_relaxed) > before;
-        });
-        if (!got_new)
+        if (!wait_for_new_frame(lock, timeout_seconds))
             return false;
         std::memcpy(out, raw_data_, sizeof(out));
         return true;
@@ -125,11 +118,9 @@ struct TouchBoard::Impl {
         std::lock_guard lock{mutex_};
         auto now = std::chrono::steady_clock::now();
         auto cutoff = now - std::chrono::seconds(1);
-        while (!frame_times_.empty() && frame_times_.front() < cutoff) {
+        while (!frame_times_.empty() && frame_times_.front() < cutoff)
             frame_times_.pop_front();
-            fps_count_--;
-        }
-        return static_cast<float>(fps_count_);
+        return static_cast<float>(frame_times_.size());
     }
 
     uint64_t get_frame_count() const {
@@ -153,7 +144,6 @@ struct TouchBoard::Impl {
 
     // frame timestamps for FPS calculation (within last 1 second)
     mutable std::deque<std::chrono::steady_clock::time_point> frame_times_;
-    mutable int fps_count_{0};  // Incremental count of frame_times_ entries; pruned in get_fps
 };
 
 TouchBoard::TouchBoard(const char* serial_number, uint16_t usb_pid, uint16_t usb_vid)

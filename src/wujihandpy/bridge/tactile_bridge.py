@@ -22,6 +22,8 @@ if TYPE_CHECKING:
 import zenoh
 import numpy as np
 
+from wujihandpy.bridge.hand_zenoh_bridge import sanitize_sn as _sanitize_sn
+
 logger = logging.getLogger("tactile_bridge")
 
 
@@ -62,8 +64,9 @@ class TactileBridge:
         self._alive_token = None
         self._queryable = None
 
-    def _sanitize_sn(self, sn):
-        return sn.replace(".", "_") if sn else "unknown"
+    @staticmethod
+    def _sanitize_sn(sn):
+        return _sanitize_sn(sn) if sn else "unknown"
 
     def _key(self, suffix):
         bridge_id = self._bridge_id or self._sanitize_sn(self.serial_number or "tboard")

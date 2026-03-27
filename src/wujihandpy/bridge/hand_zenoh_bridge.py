@@ -470,11 +470,11 @@ class HandBridge:
             config = zenoh.Config()
             self.session = zenoh.open(config)
             zid = str(self.session.zid())
-            logger.info(f"Zenoh session opened, ZID: {zid}")
+            logger.debug(f"Zenoh session opened, ZID: {zid}")
 
             # 1. Liveliness token
             self._alive_token = self.session.liveliness().declare_token(self._key("@alive"))
-            logger.info(f"Liveliness token declared: {self._key('@alive')}")
+            logger.debug(f"Liveliness token declared: {self._key('@alive')}")
 
             # 2. Start realtime controller BEFORE exposing queryables
             self._running = True
@@ -482,7 +482,7 @@ class HandBridge:
 
             # 3. Status: online (after controller is ready)
             self.session.put(self._key("@status"), b"online")
-            logger.info("Status: online")
+            logger.debug("Status: online")
 
             # 4. Capability queryable
             cap_bytes = build_capability(self.sn).encode("utf-8")
@@ -490,14 +490,14 @@ class HandBridge:
                 self._key("@capability"),
                 lambda query, data=cap_bytes: query.reply(self._key("@capability"), data),
             ))
-            logger.info("@capability queryable declared")
+            logger.debug("@capability queryable declared")
 
             # 5. Control queryable
             self._queryables.append(self.session.declare_queryable(
                 self._key("@control"),
                 self._handle_control,
             ))
-            logger.info("@control queryable declared")
+            logger.debug("@control queryable declared")
 
             # 6. Resource queryables (GET/SET)
             for r in RESOURCE_DEFS:
@@ -507,7 +507,7 @@ class HandBridge:
                         lambda query, res=r: self._handle_resource_query(query, res),
                     )
                     self._queryables.append(q)
-                    logger.info(f"Resource queryable: {r['path']}")
+                    logger.debug(f"Resource queryable: {r['path']}")
 
             # 7. Subscribe to target_position for fire-and-forget writes (low latency)
             target_pos_sub = self.session.declare_subscriber(
@@ -515,7 +515,7 @@ class HandBridge:
                 self._handle_target_position_put,
             )
             self._subscribers.append(target_pos_sub)
-            logger.info("target_position subscriber declared (fire-and-forget path)")
+            logger.debug("target_position subscriber declared (fire-and-forget path)")
 
             # 8. SUB publishers (continuous streams)
             for r in RESOURCE_DEFS:
@@ -527,9 +527,9 @@ class HandBridge:
                 t = threading.Thread(target=self._publish_loop, daemon=True)
                 t.start()
                 self._threads.append(t)
-                logger.info(f"Publisher loop started at {self.pub_rate} Hz")
+                logger.debug(f"Publisher loop started at {self.pub_rate} Hz")
 
-            logger.info("Hand Zenoh Bridge fully started")
+            logger.info(f"Hand Zenoh Bridge fully started (SN={self.sn}, pub_rate={self.pub_rate} Hz)")
         except Exception:
             logger.exception("Bridge startup failed, cleaning up partial state")
             self.stop()

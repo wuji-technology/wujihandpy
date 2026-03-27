@@ -118,20 +118,12 @@ def demo_bridge_hand(sn=None):
     print("Press Ctrl+C to stop")
 
     bridge.start()
-    wait_fn = getattr(bridge, "wait", None)
-    if callable(wait_fn):
-        try:
-            wait_fn()
-        except KeyboardInterrupt:
-            bridge.stop()
-    else:
-        import time
-        print("Bridge running. Press Ctrl+C to stop.")
-        try:
-            while True:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            bridge.stop()
+    print("Bridge running. Press Ctrl+C to stop.")
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        bridge.stop()
 
 
 def demo_bridge_tactile(sn=None):

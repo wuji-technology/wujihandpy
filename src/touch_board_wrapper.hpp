@@ -18,7 +18,7 @@ public:
     static constexpr int COLS = wujihandcpp::device::TouchBoard::COLS;
 
     explicit TouchBoardWrapper(
-        std::optional<std::string> serial_number, int32_t usb_pid, uint16_t usb_vid)
+        std::optional<std::string> serial_number, uint16_t usb_pid, uint16_t usb_vid)
         : board_(serial_number ? serial_number->c_str() : nullptr, usb_pid, usb_vid) {}
 
     /// Blocking read, returns normalized float32 (24,32). Throws on timeout.
