@@ -39,17 +39,34 @@ hand = wujihandpy.Hand(serial_number="337238793233")
 ```
 This ensures that the program always connects to the correct device instance.
 
-### 1.4 Querying Device Serial Numbers
-If you're unsure of the device's serial number, you can execute the following command in the terminal to view all connected dexterous hands:
+### 1.4 Querying Serial Numbers
+
+The dexterous hand has two types of serial numbers:
+
+- **USB serial number**: An identifier in the USB hardware descriptor, used to distinguish multiple devices during connection. The constructor's `serial_number` parameter uses this number.
+- **Product serial number**: A product tracking number stored in firmware, used for after-sales service and device management.
+
+#### Querying the USB serial number
+
+Execute the following command in the terminal to view all connected dexterous hands:
 ```bash
 lsusb -v -d 0483:2000 | grep iSerial
 ```
 Example output:
 ```
   iSerial                 3 337238793233
-                            ^^^^^^^^^^^^  <-- Device Serial Number
+                            ^^^^^^^^^^^^  <-- USB Serial Number
 ```
-The highlighted number is the serial number of the dexterous hand, which can be passed directly to the constructor's `serial_number` parameter.
+The highlighted number is the USB serial number, which can be passed directly to the constructor's `serial_number` parameter.
+
+#### Querying the product serial number
+
+After connecting to a device, call `get_product_sn()` to retrieve the product serial number:
+```python
+hand = wujihandpy.Hand()
+product_sn = hand.get_product_sn()
+print(product_sn)  # e.g. "WJ-DH5-R-2501001"
+```
 
 
 ## 2. Reading Data
@@ -81,7 +98,7 @@ class Joint:
     def read_<dataname>(self) -> datatype: ...
 ```
 
-#### Examples:
+**Examples**
 Read the dexterous hand's uptime (Hand level) using `hand`:
 ```python
 time = hand.read_system_time()
@@ -104,7 +121,7 @@ class Joint:
     def read_<dataname>(self) -> np.NDArray[datatype]: ...
 ```
 
-#### Examples:
+**Examples**
 Request the current position data for all joints in the entire hand (20 joints in total) using `hand` (Joint level):
 ```python
 positions = hand.read_joint_actual_position()
@@ -157,7 +174,7 @@ class Joint:
     def write_<dataname>(self, datatype) -> None: ...
 ```
 
-#### Examples:
+**Examples**
 Enable the index finger's proximal joint (Joint level):
 ```python
 hand.finger(1).joint(0).write_joint_enabled(True)
@@ -185,7 +202,7 @@ class Joint:
     def write_<dataname>(self, np.NDArray[datatype]) -> None: ...
 ```
 
-#### Examples:
+**Examples**
 Enable all joints in the entire hand (Joint level) using `hand`:
 ```python
 hand.write_joint_enabled(True)
@@ -314,7 +331,7 @@ Typical use cases:
 - Load monitoring: calculate output percentage via `effort / effort_limit`
 </Callout>
 
-### 4.6 Example
+**Example**
 ```python
 import wujihandpy
 import numpy as np
@@ -370,7 +387,7 @@ When calling asynchronous interfaces, use `await`. The event loop is not blocked
   - Using [Async APIs](#5-async-readwrite) in a low-speed bypass loop
 </Callout>
 
-### 5.2 Example
+**Example**
 ```python
 import asyncio
 import wujihandpy
@@ -421,7 +438,7 @@ class Hand:
 - You must use synchronization mechanisms such as `threading.Lock` to protect concurrent access to the `Hand` object
 - It is recommended to wrap all operations on the `Hand` object and its derived objects (such as `IController`) with `with lock:` blocks
 
-### 6.3 Example
+**Example**
 The following example demonstrates how to use the real-time controller in a multi-threaded environment:
 ```python
 import threading
