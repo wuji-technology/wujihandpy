@@ -179,9 +179,9 @@ struct TactileBoard::Impl {
 
     void reader_loop(FrameCallback callback) {
         while (!stop_requested.load(std::memory_order_acquire)) {
+            TactileFrame frame;
             try {
-                TactileFrame frame = read_one_frame(100);
-                callback(frame);
+                frame = read_one_frame(100);
             } catch (const ConnectionLostError&) {
                 // Notify caller with a zero-initialized frame
                 TactileFrame empty{};
@@ -189,8 +189,12 @@ struct TactileBoard::Impl {
                 break;
             } catch (const std::runtime_error&) {
                 // Timeout or sync failure: retry
-            } catch (const std::exception& e) {
-                // Unexpected error: log and stop
+                continue;
+            }
+            // Callback exceptions must not be swallowed as timeouts
+            try {
+                callback(frame);
+            } catch (...) {
                 streaming.store(false, std::memory_order_release);
                 return;
             }
