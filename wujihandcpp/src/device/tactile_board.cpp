@@ -183,6 +183,7 @@ struct TactileBoard::Impl {
             try {
                 frame = read_one_frame(100);
             } catch (const ConnectionLostError&) {
+                close_device();  // Reset connected/fd so connect() can reopen
                 // Notify caller with a zero-initialized frame
                 TactileFrame empty{};
                 try {
@@ -247,9 +248,20 @@ void TactileBoard::start_streaming(FrameCallback callback) {
     if (impl_->streaming.load(std::memory_order_acquire))
         throw std::logic_error("TactileBoard: already streaming");
 
+    // Join any previously exited reader thread to avoid std::terminate
+    // on assignment (thread may have exited via ConnectionLostError)
+    if (impl_->reader_thread.joinable()) {
+        impl_->reader_thread.join();
+    }
+
     impl_->stop_requested.store(false, std::memory_order_release);
     impl_->streaming.store(true, std::memory_order_release);
-    impl_->reader_thread = std::thread(&Impl::reader_loop, impl_.get(), std::move(callback));
+    try {
+        impl_->reader_thread = std::thread(&Impl::reader_loop, impl_.get(), std::move(callback));
+    } catch (...) {
+        impl_->streaming.store(false, std::memory_order_release);
+        throw;
+    }
 }
 
 void TactileBoard::stop_streaming() {
