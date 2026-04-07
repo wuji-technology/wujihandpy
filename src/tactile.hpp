@@ -70,7 +70,14 @@ inline void init_module(py::module_& m) {
             self.start_streaming([callback = std::move(callback)](
                     const TactileFrame& frame) {
                 py::gil_scoped_acquire acquire;
-                callback(frame);
+                try {
+                    callback(frame);
+                } catch (py::error_already_set& e) {
+                    e.restore();
+                    PyErr_Clear();
+                    throw std::runtime_error(
+                        "TactileBoard: Python callback raised an exception");
+                }
             });
         }, py::arg("callback"))
 

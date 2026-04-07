@@ -187,8 +187,12 @@ struct TactileBoard::Impl {
                 TactileFrame empty{};
                 callback(empty);
                 break;
-            } catch (...) {
-                // Timeout or other transient error: retry
+            } catch (const std::runtime_error&) {
+                // Timeout or sync failure: retry
+            } catch (const std::exception& e) {
+                // Unexpected error: log and stop
+                streaming.store(false, std::memory_order_release);
+                return;
             }
         }
         streaming.store(false, std::memory_order_release);

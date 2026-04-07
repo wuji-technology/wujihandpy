@@ -28,7 +28,7 @@ class WUJIHANDCPP_API ConnectionLostError : public std::runtime_error {
 ///   - is_connected() and handedness() are thread-safe.
 ///   - read_frame() and start_streaming() are mutually exclusive.
 ///   - disconnect() can be called from any thread; it stops streaming.
-///   - After disconnect, destroy and re-construct to reconnect.
+///   - After disconnect, connect() can be called again to reconnect.
 class WUJIHANDCPP_API TactileBoard {
 public:
     /// Construct a TactileBoard.
