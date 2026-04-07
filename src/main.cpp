@@ -10,6 +10,7 @@
 #include "controller.hpp"
 #include "filter.hpp"
 #include "logging.hpp"
+#include "tactile.hpp"
 #include "wrapper.hpp"
 
 namespace py = pybind11;
@@ -31,6 +32,8 @@ PYBIND11_MODULE(_core, m) {
             return;
         try {
             std::rethrow_exception(p);
+        } catch (const wujihandcpp::ConnectionLostError& e) {
+            PyErr_SetString(PyExc_ConnectionError, e.what());
         } catch (const wujihandcpp::device::TimeoutError& e) {
             PyErr_SetString(PyExc_TimeoutError, e.what());
         }
@@ -51,6 +54,8 @@ PYBIND11_MODULE(_core, m) {
     filter::init_module(m);
 
     logging::init_module(m);
+
+    tactile::init_module(m);
 
     using namespace wujihandcpp;
 
