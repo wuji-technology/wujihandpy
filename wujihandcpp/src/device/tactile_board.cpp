@@ -185,7 +185,11 @@ struct TactileBoard::Impl {
             } catch (const ConnectionLostError&) {
                 // Notify caller with a zero-initialized frame
                 TactileFrame empty{};
-                callback(empty);
+                try {
+                    callback(empty);
+                } catch (...) {
+                    // Callback exception during disconnect notification: ignore
+                }
                 break;
             } catch (const std::runtime_error&) {
                 // Timeout or sync failure: retry
@@ -195,8 +199,7 @@ struct TactileBoard::Impl {
             try {
                 callback(frame);
             } catch (...) {
-                streaming.store(false, std::memory_order_release);
-                return;
+                break;
             }
         }
         streaming.store(false, std::memory_order_release);
@@ -250,8 +253,6 @@ void TactileBoard::start_streaming(FrameCallback callback) {
 }
 
 void TactileBoard::stop_streaming() {
-    if (!impl_->streaming.load(std::memory_order_acquire)) return;
-
     impl_->stop_requested.store(true, std::memory_order_release);
     if (impl_->reader_thread.joinable()) {
         impl_->reader_thread.join();
