@@ -50,13 +50,6 @@ description: Wuji Hand SDK (wujihandpy) 完整 API 参考，包括 Hand、Finger
 
 > 说明：模式会自动切换，一般情况下不应修改该字段。
 
-#### joint_sin_level
-该字段用于设置关节驱动的正弦波激励档位。  
-- **类型**：`uint16`
-- **读写属性**：只写
-
-> 说明：该字段用于内部调试，一般情况下不应修改该字段。
-
 #### joint_effort_limit
 该字段用于设置关节允许的 effort 上限。
 - **类型**：`float64`
@@ -413,19 +406,6 @@ URDF 文件中的关节范围是理论设计值，经过保守缩放以考虑加
 
 ##### 其他参数配置
 
-- `write_joint_sin_level(value, timeout=0.5) -> None`
-  *同步设置所有关节正弦波激励档位*
-- `write_joint_sin_level(value_array, timeout=0.5) -> None`
-  *同步批量设置各关节正弦波激励档位*
-- `write_joint_sin_level_async(value, timeout=0.5) -> Awaitable[None]`
-  *异步设置所有关节正弦波激励档位*
-- `write_joint_sin_level_async(value_array, timeout=0.5) -> Awaitable[None]`
-  *异步批量设置各关节正弦波激励档位*
-- `write_joint_sin_level_unchecked(value, timeout=0.5) -> None`
-  *非阻塞设置所有关节正弦波激励档位*
-- `write_joint_sin_level_unchecked(value_array, timeout=0.5) -> None`
-  *非阻塞批量设置各关节正弦波激励档位*
-
 - `write_joint_reset_error(value, timeout=0.5) -> None`
   *同步重置所有关节错误*
 - `write_joint_reset_error(value_array, timeout=0.5) -> None`
@@ -601,19 +581,6 @@ URDF 文件中的关节范围是理论设计值，经过保守缩放以考虑加
 
 ##### 其他参数配置
 
-- `write_joint_sin_level(value, timeout=0.5) -> None`
-  *同步设置手指所有关节正弦波激励档位*
-- `write_joint_sin_level(value_array, timeout=0.5) -> None`
-  *同步批量设置手指各关节正弦波激励档位*
-- `write_joint_sin_level_async(value, timeout=0.5) -> Awaitable[None]`
-  *异步设置手指所有关节正弦波激励档位*
-- `write_joint_sin_level_async(value_array, timeout=0.5) -> Awaitable[None]`
-  *异步批量设置手指各关节正弦波激励档位*
-- `write_joint_sin_level_unchecked(value, timeout=0.5) -> None`
-  *非阻塞设置手指所有关节正弦波激励档位*
-- `write_joint_sin_level_unchecked(value_array, timeout=0.5) -> None`
-  *非阻塞批量设置手指各关节正弦波激励档位*
-
 - `write_joint_reset_error(value, timeout=0.5) -> None`
   *同步重置手指所有关节错误*
 - `write_joint_reset_error(value_array, timeout=0.5) -> None`
@@ -756,13 +723,6 @@ URDF 文件中的关节范围是理论设计值，经过保守缩放以考虑加
   *非阻塞设置关节 effort limit*
 
 ##### 其他参数配置
-
-- `write_joint_sin_level(value, timeout=0.5) -> None`
-  *同步设置关节正弦波激励档位*
-- `write_joint_sin_level_async(value, timeout=0.5) -> Awaitable[None]`
-  *异步设置关节正弦波激励档位*
-- `write_joint_sin_level_unchecked(value, timeout=0.5) -> None`
-  *非阻塞设置关节正弦波激励档位*
 
 - `write_joint_reset_error(value, timeout=0.5) -> None`
   *同步重置关节错误*

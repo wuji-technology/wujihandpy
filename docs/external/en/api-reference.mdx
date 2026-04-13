@@ -50,13 +50,6 @@ This field is used to set the control mode of the joint.
 
 > Note: The mode switches automatically, and this field should not be modified under normal circumstances.
 
-#### joint_sin_level
-This field is used to set the sine wave excitation level of the joint drive.
-- **Type**: `uint16`
-- **Read/Write**: Write-only
-
-> Note: This field is used for internal debugging and should not be modified under normal circumstances.
-
 #### joint_effort_limit
 This field is used to set the upper effort limit allowed by the joint.
 - **Type**: `float64`
@@ -413,19 +406,6 @@ This field records the lower position limit of the joint.
 
 ##### Other Parameter Configuration
 
-- `write_joint_sin_level(value, timeout=0.5) -> None`
-  *Synchronously set all joint sine wave excitation levels*
-- `write_joint_sin_level(value_array, timeout=0.5) -> None`
-  *Synchronously batch set each joint sine wave excitation level*
-- `write_joint_sin_level_async(value, timeout=0.5) -> Awaitable[None]`
-  *Asynchronously set all joint sine wave excitation levels*
-- `write_joint_sin_level_async(value_array, timeout=0.5) -> Awaitable[None]`
-  *Asynchronously batch set each joint sine wave excitation level*
-- `write_joint_sin_level_unchecked(value, timeout=0.5) -> None`
-  *Non-blocking set all joint sine wave excitation levels*
-- `write_joint_sin_level_unchecked(value_array, timeout=0.5) -> None`
-  *Non-blocking batch set each joint sine wave excitation level*
-
 - `write_joint_reset_error(value, timeout=0.5) -> None`
   *Synchronously reset all joint errors*
 - `write_joint_reset_error(value_array, timeout=0.5) -> None`
@@ -601,19 +581,6 @@ This field records the lower position limit of the joint.
 
 ##### Other Parameter Configuration
 
-- `write_joint_sin_level(value, timeout=0.5) -> None`
-  *Synchronously set all joint sine wave excitation levels of the finger*
-- `write_joint_sin_level(value_array, timeout=0.5) -> None`
-  *Synchronously batch set each joint sine wave excitation level of the finger*
-- `write_joint_sin_level_async(value, timeout=0.5) -> Awaitable[None]`
-  *Asynchronously set all joint sine wave excitation levels of the finger*
-- `write_joint_sin_level_async(value_array, timeout=0.5) -> Awaitable[None]`
-  *Asynchronously batch set each joint sine wave excitation level of the finger*
-- `write_joint_sin_level_unchecked(value, timeout=0.5) -> None`
-  *Non-blocking set all joint sine wave excitation levels of the finger*
-- `write_joint_sin_level_unchecked(value_array, timeout=0.5) -> None`
-  *Non-blocking batch set each joint sine wave excitation level of the finger*
-
 - `write_joint_reset_error(value, timeout=0.5) -> None`
   *Synchronously reset all joint errors of the finger*
 - `write_joint_reset_error(value_array, timeout=0.5) -> None`
@@ -756,13 +723,6 @@ This field records the lower position limit of the joint.
   *Non-blocking set joint effort limit*
 
 ##### Other Parameter Configuration
-
-- `write_joint_sin_level(value, timeout=0.5) -> None`
-  *Synchronously set joint sine wave excitation level*
-- `write_joint_sin_level_async(value, timeout=0.5) -> Awaitable[None]`
-  *Asynchronously set joint sine wave excitation level*
-- `write_joint_sin_level_unchecked(value, timeout=0.5) -> None`
-  *Non-blocking set joint sine wave excitation level*
 
 - `write_joint_reset_error(value, timeout=0.5) -> None`
   *Synchronously reset joint error*
