@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Initialization error messages now report specific disconnected joints (e.g. `finger(2).joint(1)`) instead of generic "joint configuration incomplete"
+- Initialization failure now reports specific disconnected joints (e.g. `finger(2).joint(1)`) instead of generic error message
 
 ### Added
 
