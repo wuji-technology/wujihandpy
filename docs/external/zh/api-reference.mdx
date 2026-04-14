@@ -9,7 +9,7 @@ description: Wuji Hand SDK (wujihandpy) 完整 API 参考，包括 Hand、Finger
 ### 1.1 Hand 层
 该层包含整手设备唯一的通用字段，例如手性、固件版本等。  
 #### handedness
-该字段表示灵巧手的手性（左/右手，0 表示左手，1 表示右手）。  
+该字段表示灵巧手的手性（左/右手，0 表示右手，1 表示左手）。  
 - **类型**：`uint8`
 - **读写属性**：只读
 #### firmware_version
@@ -225,7 +225,7 @@ URDF 文件中的关节范围是理论设计值，经过保守缩放以考虑加
   *获取缓存的固件编译日期*
 
 - `read_handedness(timeout=0.5) -> uint8`
-  *同步读取左右手标识（0=左，1=右）*
+  *同步读取左右手标识（0=右，1=左）*
 - `read_handedness_async(timeout=0.5) -> Awaitable[uint8]`
   *异步读取左右手标识*
 - `read_handedness_unchecked(timeout=0.5) -> None`
