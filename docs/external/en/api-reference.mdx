@@ -9,7 +9,7 @@ This section introduces all available data fields in wujihandpy.
 ### 1.1 Hand Layer
 This layer contains device-unique general fields, such as handedness, firmware version, etc.
 #### handedness
-This field indicates the handedness of the dexterous hand (left/right hand, 0 for left, 1 for right).
+This field indicates the handedness of the dexterous hand (left/right hand, 0 for right, 1 for left).
 - **Type**: `uint8`
 - **Read/Write**: Read-only
 #### firmware_version
@@ -225,7 +225,7 @@ This field records the lower position limit of the joint.
   *Get cached firmware compilation date*
 
 - `read_handedness(timeout=0.5) -> uint8`
-  *Synchronously read left/right hand identifier (0=left, 1=right)*
+  *Synchronously read left/right hand identifier (0=right, 1=left)*
 - `read_handedness_async(timeout=0.5) -> Awaitable[uint8]`
   *Asynchronously read left/right hand identifier*
 - `read_handedness_unchecked(timeout=0.5) -> None`
