@@ -28,15 +28,28 @@ cd wujihandpy
 source .venv/bin/activate
 pip install eclipse-zenoh numpy
 
-# Start the bridge (device must be connected over USB, --pub-rate is required)
-PYTHONPATH=. python -m bridge.python.hand_zenoh_bridge --pub-rate 1000
+# Start the bridge (device over USB; --pub-rate and --side are required)
+PYTHONPATH=. python -m bridge.python.hand_zenoh_bridge --pub-rate 1000 --side left
 
 # Full arguments
 PYTHONPATH=. python -m bridge.python.hand_zenoh_bridge \
     --sn "DEVICE_SN" \
     --pub-rate 1000 \
+    --side left \
     --log-level DEBUG
 ```
+
+`--side {left,right}` selects which set of joint names is published on
+`joint_states` (`left_finger{1..5}_joint{1..4}` or `right_...`). It must match
+the URDF loaded downstream (e.g. in Wuji Studio).
+
+`--filter-cutoff <Hz>` (default `5.0`) tunes the internal
+`realtime_controller` LowPass cutoff. The filter runs at PDO 1 kHz and
+smooths target_position writes from the bridge's 100 Hz feed loop out to the
+1 ms PDO tick, so remote clients can send step targets at any rate without
+stair-stepping the motors. Lower the cutoff for smoother motion, raise it
+(e.g. `10000`) to approximate passthrough if you prefer to pre-filter on the
+client.
 
 ### C++ Bridge
 
@@ -131,6 +144,12 @@ finally:
 | `joint/lower_limit` | 5x4 float | Joint lower limit |
 | `joint/bus_voltage` | 5x4 float | Joint bus voltage |
 
+### SUB-only Resources
+
+| Path | Type / Schema title | Description |
+|------|---------------------|-------------|
+| `joint_states` | `sensor_msgs/JointState` — `{name: string[20], position: number[20]}` | Flat row-major projection of `joint/actual_position`. Joint names follow `{side}_finger{1..5}_joint{1..4}`, matching [`wuji-hand-description`](https://github.com/wuji-technology/wuji-hand-description) URDFs. **Published without the timestamp envelope** so downstream consumers (e.g. Wuji Studio's 3D panel) can identify it directly by schema title and drive a URDF visualization. |
+
 ### SET Resources
 
 These resources require control ownership.
@@ -168,6 +187,19 @@ SUB resources are published as:
 Control-changing requests must attach the requester identity in the Zenoh attachment. The bridge verifies that:
 - `@control` acquire/release uses the same requester in both payload and attachment
 - fire-and-forget `joint/target_position` PUT uses the current control owner's requester id in the attachment
+
+## Visualize in Wuji Studio
+
+With the bridge running, you can view the hand in Studio's 3D panel without
+touching the control path:
+
+1. Open Wuji Studio. When it discovers this bridge over Zenoh, the topic
+   `/wuji/{sn}/joint_states` becomes subscribable (schema
+   `sensor_msgs/JointState`).
+2. Open a **3D** panel → **Add URDF** → source **filePath** → point to
+   `wuji-hand-description/urdf/left.urdf` (or `right.urdf` — must match the
+   `--side` you launched the bridge with).
+3. The 3D panel auto-subscribes `joint_states` and animates the URDF.
 
 ## Tests
 
