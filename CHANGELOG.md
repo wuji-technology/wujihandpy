@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Initialization failure now reports specific disconnected joints (e.g. `finger(2).joint(1)`) instead of generic error message
+- **Zenoh Bridge (Python)**: `realtime_controller` LowPass cutoff is now configurable via `--filter-cutoff` (default `5.0` Hz, matching `example/3.realtime.py`); previously hard-coded at 10000 Hz. Pass `--filter-cutoff 10000` to restore the prior near-passthrough behavior.
+- **Zenoh Bridge (Python)**: `--side {left,right}` is now a required CLI argument so the published `joint_states` joint names match the URDF loaded downstream.
 
 ### Added
 
@@ -24,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Python/C++ fire-and-forget target_position subscriber for low-latency PUT writes
 - 37 unit tests for bridge protocol, resources, timestamps, and control ownership
 - `bridge/README.md` with architecture, usage, and resource documentation
+- **Zenoh Bridge (Python)**: `joint_states` SUB topic (`sensor_msgs/JointState`) — flat row-major projection of `joint/actual_position` with joint names matching [`wuji-hand-description`](https://github.com/wuji-technology/wuji-hand-description) URDFs, enabling live URDF visualization in Wuji Studio's 3D panel. Published without the timestamp envelope so the schema title stays exactly `sensor_msgs/JointState`; ordering is carried in `header.stamp` via a bridge-side monotonic clock.
 
 ## [1.5.1] - 2026-02-02
 

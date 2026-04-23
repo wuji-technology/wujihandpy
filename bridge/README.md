@@ -164,11 +164,11 @@ These resources require control ownership.
 
 ## Data Format
 
-GET/queryable replies always use the resource's original schema. Only SUB streams are wrapped in a timestamped envelope.
+GET/queryable replies always use the resource's original schema. Most SUB streams are wrapped in a timestamped envelope, with one exception called out below.
 
 ### SUB Stream Format
 
-SUB resources are published as:
+By default, SUB resources are published as a timestamped envelope:
 
 ```json
 {
@@ -176,6 +176,8 @@ SUB resources are published as:
   "data": [[0.1, 0.2, 0.3, 0.4], "..."]
 }
 ```
+
+**Exception:** `joint_states` is published raw (no envelope) so its schema title remains exactly `sensor_msgs/JointState` for downstream consumers that key on schema name (e.g. Wuji Studio's 3D panel). Ordering for this topic is carried in the standard ROS `header.stamp` field instead of `timestamp_us`.
 
 ## Control Protocol
 
