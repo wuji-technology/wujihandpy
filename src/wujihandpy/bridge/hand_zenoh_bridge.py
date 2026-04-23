@@ -297,6 +297,7 @@ class HandBridge:
         self._controller = None
         self._rt_target = np.zeros((5, 4), dtype=np.float64)
         self._rt_lock = threading.Lock()
+        self._joints_enabled_by_bridge = False
         # Allow multi-thread access (we protect with our own lock)
         hand.disable_thread_safe_check()
 
@@ -314,15 +315,27 @@ class HandBridge:
 
         owner_key = self._control_owner_key(owner_zid)
 
+        # Capture the watcher identity so we only stop our own watcher, not a newer one
+        watcher_owner_zid = owner_zid
+
         def on_sample(sample):
             """Handle liveliness change; auto-release control on owner crash."""
             # SampleKind.DELETE means the liveliness token was dropped (owner crashed)
             if hasattr(sample, "kind") and sample.kind == zenoh.SampleKind.DELETE:
+                watcher_to_stop = None
                 with self._control_lock:
-                    if self._control_owner == owner_zid:
-                        logger.warning(f"Control owner {owner_zid} crashed, auto-releasing")
+                    if self._control_owner == watcher_owner_zid:
+                        logger.warning(f"Control owner {watcher_owner_zid} crashed, auto-releasing")
                         self._control_owner = None
-                self._stop_owner_watcher()
+                        # Grab and clear the watcher under lock to avoid racing
+                        # with _start_owner_watcher for a new owner
+                        watcher_to_stop = self._control_owner_watcher
+                        self._control_owner_watcher = None
+                if watcher_to_stop is not None:
+                    try:
+                        watcher_to_stop.undeclare()
+                    except Exception as e:
+                        logger.debug(f"Error undeclaring owner watcher: {e}")
 
         try:
             watcher = self.session.liveliness().declare_subscriber(owner_key, on_sample)
@@ -378,11 +391,12 @@ class HandBridge:
         # Set control mode to RT_FCL (9) for force-closed-loop, matching HMI behavior
         RT_FCL_MODE = 9
         logger.info("Setting control mode to RT_FCL (%d)...", RT_FCL_MODE)
-        self.hand.write_joint_control_mode(np.full((5, 4), RT_FCL_MODE, dtype=np.int32))
+        self.hand.write_joint_control_mode(np.full((5, 4), RT_FCL_MODE, dtype=np.uint16))
         time.sleep(0.5)
 
         logger.info("Enabling all joints...")
         self.hand.write_joint_enabled(True)
+        self._joints_enabled_by_bridge = True
         time.sleep(0.3)
 
         # Read initial position as starting target
@@ -407,26 +421,30 @@ class HandBridge:
 
     def _stop_realtime_controller(self):
         """Stop realtime controller and disable joints."""
-        controller = self._controller
-        if controller is not None:
-            logger.info("Stopping realtime controller...")
-            # Set target to zero before stopping
-            with self._rt_lock:
-                self._rt_target = np.zeros((5, 4), dtype=np.float64)
-                target = self._rt_target.copy()
-            controller.set_joint_target_position(target)
-            time.sleep(1.0)
+        try:
+            controller = self._controller
+            if controller is not None:
+                logger.info("Stopping realtime controller...")
+                # Set target to zero before stopping
+                with self._rt_lock:
+                    self._rt_target = np.zeros((5, 4), dtype=np.float64)
+                    target = self._rt_target.copy()
+                controller.set_joint_target_position(target)
+                time.sleep(1.0)
 
-            controller.__exit__(None, None, None)
-            self._controller = None
-            logger.info("Realtime controller stopped")
-
-        logger.info("Disabling all joints...")
-        self.hand.write_joint_enabled(False)
+                controller.__exit__(None, None, None)
+                self._controller = None
+                logger.info("Realtime controller stopped")
+        finally:
+            if self._joints_enabled_by_bridge:
+                logger.info("Disabling all joints...")
+                self.hand.write_joint_enabled(False)
+                self._joints_enabled_by_bridge = False
 
     def _realtime_loop(self):
         """Feed target position to realtime controller at 100Hz."""
         period = 1.0 / 100.0
+        next_time = time.monotonic() + period
         while self._running:
             try:
                 with self._rt_lock:
@@ -437,7 +455,13 @@ class HandBridge:
                 controller.set_joint_target_position(target)
             except Exception as e:
                 logger.error(f"Realtime loop error: {e}")
-            time.sleep(period)
+            sleep_time = next_time - time.monotonic()
+            if sleep_time > 0:
+                time.sleep(sleep_time)
+                next_time += period
+            else:
+                # Overrun: skip missed intervals instead of burst catch-up
+                next_time = time.monotonic() + period
 
     def start(self):
         """Open Zenoh session, declare liveliness, publish status, start queryables."""
@@ -446,11 +470,11 @@ class HandBridge:
             config = zenoh.Config()
             self.session = zenoh.open(config)
             zid = str(self.session.zid())
-            logger.info(f"Zenoh session opened, ZID: {zid}")
+            logger.debug(f"Zenoh session opened, ZID: {zid}")
 
             # 1. Liveliness token
             self._alive_token = self.session.liveliness().declare_token(self._key("@alive"))
-            logger.info(f"Liveliness token declared: {self._key('@alive')}")
+            logger.debug(f"Liveliness token declared: {self._key('@alive')}")
 
             # 2. Start realtime controller BEFORE exposing queryables
             self._running = True
@@ -458,7 +482,7 @@ class HandBridge:
 
             # 3. Status: online (after controller is ready)
             self.session.put(self._key("@status"), b"online")
-            logger.info("Status: online")
+            logger.debug("Status: online")
 
             # 4. Capability queryable
             cap_bytes = build_capability(self.sn).encode("utf-8")
@@ -466,14 +490,14 @@ class HandBridge:
                 self._key("@capability"),
                 lambda query, data=cap_bytes: query.reply(self._key("@capability"), data),
             ))
-            logger.info("@capability queryable declared")
+            logger.debug("@capability queryable declared")
 
             # 5. Control queryable
             self._queryables.append(self.session.declare_queryable(
                 self._key("@control"),
                 self._handle_control,
             ))
-            logger.info("@control queryable declared")
+            logger.debug("@control queryable declared")
 
             # 6. Resource queryables (GET/SET)
             for r in RESOURCE_DEFS:
@@ -483,7 +507,7 @@ class HandBridge:
                         lambda query, res=r: self._handle_resource_query(query, res),
                     )
                     self._queryables.append(q)
-                    logger.info(f"Resource queryable: {r['path']}")
+                    logger.debug(f"Resource queryable: {r['path']}")
 
             # 7. Subscribe to target_position for fire-and-forget writes (low latency)
             target_pos_sub = self.session.declare_subscriber(
@@ -491,7 +515,7 @@ class HandBridge:
                 self._handle_target_position_put,
             )
             self._subscribers.append(target_pos_sub)
-            logger.info("target_position subscriber declared (fire-and-forget path)")
+            logger.debug("target_position subscriber declared (fire-and-forget path)")
 
             # 8. SUB publishers (continuous streams)
             for r in RESOURCE_DEFS:
@@ -503,9 +527,9 @@ class HandBridge:
                 t = threading.Thread(target=self._publish_loop, daemon=True)
                 t.start()
                 self._threads.append(t)
-                logger.info(f"Publisher loop started at {self.pub_rate} Hz")
+                logger.debug(f"Publisher loop started at {self.pub_rate} Hz")
 
-            logger.info("Hand Zenoh Bridge fully started")
+            logger.info(f"Hand Zenoh Bridge fully started (SN={self.sn}, pub_rate={self.pub_rate} Hz)")
         except Exception:
             logger.exception("Bridge startup failed, cleaning up partial state")
             self.stop()
@@ -616,6 +640,9 @@ class HandBridge:
             with self._control_lock:
                 if self._control_owner == requester:
                     self._control_owner = None
+                    # _stop_owner_watcher() calls zenoh undeclare() which is synchronous
+                    # and does not trigger callbacks (verified with eclipse-zenoh>=1.7.0),
+                    # so it's safe under _control_lock. Verify this on Zenoh upgrades.
                     self._stop_owner_watcher()
                     query.reply(key, b"released")
                     logger.info(f"Control released by {requester}")
@@ -668,6 +695,10 @@ class HandBridge:
                 return
             try:
                 value = json.loads(payload.decode("utf-8"))
+                # NOTE: TOCTOU between control check and write is a known limitation.
+                # Holding _control_lock during USB I/O risks deadlock with the control
+                # release path. The window is small (~ms) and the worst case is one
+                # stale write from the previous owner, which is acceptable.
                 self._write_resource(resource_def["path"], value)
                 query.reply(key, b'"ok"')
             except Exception as e:
@@ -766,7 +797,7 @@ class HandBridge:
         # Other writes need SDO access
         with self._hand_lock:
             if path == "joint/control_mode":
-                self.hand.write_joint_control_mode(np.array(value, dtype=np.int32))
+                self.hand.write_joint_control_mode(np.array(value, dtype=np.uint16))
             elif path == "joint/enabled":
                 self.hand.write_joint_enabled(np.array(value, dtype=bool))
             elif path == "joint/effort_limit":
@@ -783,6 +814,7 @@ class HandBridge:
             {"timestamp_us": <UTC microseconds>, "data": <value>}
         """
         period = 1.0 / self.pub_rate
+        next_time = time.monotonic() + period
         while self._running:
             try:
                 timestamp_us = get_timestamp_us()
@@ -793,7 +825,12 @@ class HandBridge:
                     pub.put(data)
             except Exception as e:
                 logger.error(f"Publish loop error: {e}")
-            time.sleep(period)
+            sleep_time = next_time - time.monotonic()
+            if sleep_time > 0:
+                time.sleep(sleep_time)
+                next_time += period
+            else:
+                next_time = time.monotonic() + period
 
 
 def main():

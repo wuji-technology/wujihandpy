@@ -13,17 +13,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Zenoh Bridge (Python)**: standalone bridge process exposing WujiHand via Zenoh network protocol (`bridge/python/hand_zenoh_bridge.py`)
-- **Zenoh Bridge (C++)**: native C++ bridge with lower latency for production deployment (`bridge/cpp/`)
-- 16 Zenoh resources: 12 GET (scalar + 5×4 joint arrays), 5 SET (target_position, control_mode, enabled, effort_limit, reset_error)
-- 2 SUB publishers (actual_position + actual_effort) with configurable `--pub-rate` (no default, must be explicitly set)
-- Host-side UTC microsecond timestamps in `{timestamp_us, data}` envelope format for all SUB data
-- `@capability` queryable with full JSON schema (SUB resources include timestamp envelope schema)
-- `@control` acquire/release protocol with liveliness-based TTL for automatic crash recovery
-- Realtime controller integration: target_position writes via atomic update → PDO 1kHz
-- Python/C++ fire-and-forget target_position subscriber for low-latency PUT writes
-- 37 unit tests for bridge protocol, resources, timestamps, and control ownership
-- `bridge/README.md` with architecture, usage, and resource documentation
+- **TouchBoard** device class: USB CDC connection to tboard (STM32H723) for tactile data
+  - `TouchBoard()` — connect via libusb (PID=0x5700)
+  - `read_tactile()` / `read_tactile_raw()` — blocking read with timeout
+  - `get_tactile()` / `get_tactile_raw()` — non-blocking latest frame
+  - `.handedness`, `.fps`, `.frame_count` read-only properties
+  - C++ TactileParser: frame sync state machine + CRC16-CCITT validation
+  - USB transport: configurable interface/endpoint support
+- **Zenoh Bridge module** (`wujihandpy.bridge`, optional `[bridge]` extra)
+  - `HandBridge`: publishes Hand joint data to Zenoh with resource model, control ownership, and realtime loop
+  - `TactileBridge`: publishes TouchBoard tactile data to Zenoh at configurable rate
+  - CLI entry points: `wujihandpy-bridge`, `wujihandpy-tactile-bridge`
+  - `build_capability()`, `get_timestamp_us()`, `sanitize_sn()`, `wrap_with_timestamp()` utilities
+  - 17 Zenoh resources: 12 GET + 5 SET, 2 SUB publishers with configurable `--pub-rate`
+  - `@capability` queryable with JSON schema, `@control` acquire/release with liveliness TTL
+  - Realtime controller integration: target_position via atomic update → PDO 1kHz
+- Integration demo script (`examples/integration_demo.py`)
+- Python package CI workflow (`.github/workflows/python-package-ci.yml`)
+- Unit tests for bridge module (50 tests in `tests/test_bridge.py`)
 
 ## [1.5.1] - 2026-02-02
 

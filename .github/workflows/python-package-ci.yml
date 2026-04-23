@@ -1,0 +1,47 @@
+name: Python Package CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  package-smoke:
+    name: Editable install and bridge smoke tests
+    runs-on: ubuntu-latest
+    env:
+      CC: gcc-14
+      CXX: g++-14
+      PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-14 g++-14 libusb-1.0-0-dev ninja-build
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.10"
+
+      - name: Install test dependencies
+        run: python -m pip install --upgrade pip pytest
+
+      - name: Install package
+        run: python -m pip install -e ".[bridge]"
+
+      - name: Smoke test package imports
+        run: python -c "import wujihandpy; import wujihandpy.bridge"
+
+      - name: Smoke test CLIs
+        run: |
+          wujihandpy-bridge --help
+          wujihandpy-tactile-bridge --help
+
+      - name: Run bridge tests
+        run: python -m pytest tests/test_bridge.py -q

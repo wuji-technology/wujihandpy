@@ -22,9 +22,13 @@ namespace wujihandcpp::transport {
 
 class Usb : public ITransport {
 public:
-    explicit Usb(uint16_t usb_vid, int32_t usb_pid, const char* serial_number)
+    explicit Usb(uint16_t usb_vid, int32_t usb_pid, const char* serial_number,
+                 int interface_num = 0x01, unsigned char in_ep = 0x81, unsigned char out_ep = 0x01)
         : logger_(logging::get_logger())
-        , free_transmit_transfers_(transmit_transfer_count_) {
+        , free_transmit_transfers_(transmit_transfer_count_)
+        , target_interface_(interface_num)
+        , in_endpoint_(in_ep)
+        , out_endpoint_(out_ep) {
         if (!usb_init(usb_vid, usb_pid, serial_number)) {
             throw std::runtime_error{"Failed to init."};
         }
@@ -46,8 +50,10 @@ public:
         free_transmit_transfers_.pop_front_n([](TransferWrapper* wrapper) { delete wrapper; });
 
         libusb_release_interface(libusb_device_handle_, target_interface_);
-        if constexpr (utility::is_linux())
-            libusb_attach_kernel_driver(libusb_device_handle_, 0);
+        if constexpr (utility::is_linux()) {
+            for (int iface : detached_interfaces_)
+                libusb_attach_kernel_driver(libusb_device_handle_, iface);
+        }
 
         // libusb_close() reliably cancels all pending transfers and invokes their callbacks,
         // avoiding race conditions present in other cancellation methods
@@ -143,9 +149,33 @@ private:
             return false;
         utility::FinalAction close_device_handle{[this]() { libusb_close(libusb_device_handle_); }};
 
+        // Guard: reattach any detached interfaces on failure (must be before detach calls)
+        utility::FinalAction reattach_on_failure{[this]() {
+            if constexpr (utility::is_linux()) {
+                for (int iface : detached_interfaces_)
+                    libusb_attach_kernel_driver(libusb_device_handle_, iface);
+                detached_interfaces_.clear();
+            }
+        }};
+
         if constexpr (utility::is_linux()) {
+            // Detach kernel driver from CDC control interface (0) if present
+            // CDC ACM driver claims both control and data interfaces
+            if (target_interface_ > 0) {
+                int det_ret = libusb_detach_kernel_driver(libusb_device_handle_, 0);
+                if (det_ret == 0)
+                    detached_interfaces_.push_back(0);
+                else if (det_ret != LIBUSB_ERROR_NOT_FOUND) [[unlikely]] {
+                    logger_.error(
+                        "Failed to detach kernel driver from interface 0: {} ({})",
+                        det_ret, libusb_errname(det_ret));
+                    return false;
+                }
+            }
             ret = libusb_detach_kernel_driver(libusb_device_handle_, target_interface_);
-            if (ret != LIBUSB_ERROR_NOT_FOUND && ret != 0) [[unlikely]] {
+            if (ret == 0)
+                detached_interfaces_.push_back(target_interface_);
+            else if (ret != LIBUSB_ERROR_NOT_FOUND) [[unlikely]] {
                 logger_.error("Failed to detach kernel driver: {} ({})", ret, libusb_errname(ret));
                 return false;
             }
@@ -158,6 +188,7 @@ private:
         }
 
         // Libusb successfully initialized
+        reattach_on_failure.disable();
         close_device_handle.disable();
         exit_libusb.disable();
         return true;
@@ -440,10 +471,11 @@ private:
         }
     }
 
-    static constexpr int target_interface_ = 0x01;
+    int target_interface_ = 0x01;
+    std::vector<int> detached_interfaces_;
 
-    static constexpr unsigned char out_endpoint_ = 0x01;
-    static constexpr unsigned char in_endpoint_ = 0x81;
+    unsigned char out_endpoint_ = 0x01;
+    unsigned char in_endpoint_ = 0x81;
 
     static constexpr int max_transfer_length_ = 512;
 
@@ -469,6 +501,12 @@ private:
 std::unique_ptr<ITransport>
     create_usb_transport(uint16_t usb_vid, int32_t usb_pid, const char* serial_number) {
     return std::make_unique<Usb>(usb_vid, usb_pid, serial_number);
+}
+
+std::unique_ptr<ITransport>
+    create_usb_transport(uint16_t usb_vid, int32_t usb_pid, const char* serial_number,
+                         int interface_num, unsigned char in_ep, unsigned char out_ep) {
+    return std::make_unique<Usb>(usb_vid, usb_pid, serial_number, interface_num, in_ep, out_ep);
 }
 
 } // namespace wujihandcpp::transport

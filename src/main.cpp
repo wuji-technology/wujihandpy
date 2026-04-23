@@ -10,6 +10,7 @@
 #include "controller.hpp"
 #include "filter.hpp"
 #include "logging.hpp"
+#include "touch_board_wrapper.hpp"
 #include "wrapper.hpp"
 
 namespace py = pybind11;
@@ -117,4 +118,50 @@ PYBIND11_MODULE(_core, m) {
     register_py_interface<data::joint::TargetPosition>("target_position", hand, finger, joint);
     register_py_interface<data::joint::UpperLimit>("upper_limit", hand, finger, joint);
     register_py_interface<data::joint::LowerLimit>("lower_limit", hand, finger, joint);
+
+    // TouchBoard binding
+    py::class_<TouchBoardWrapper>(m, "TouchBoard")
+        .def(
+            py::init([](std::optional<std::string> serial_number, int32_t usb_pid,
+                        uint16_t usb_vid) {
+                if (usb_pid < 0 || usb_pid > 65535)
+                    throw py::value_error(
+                        "usb_pid must be in range [0, 65535], got " + std::to_string(usb_pid));
+                return std::make_unique<TouchBoardWrapper>(serial_number, static_cast<uint16_t>(usb_pid), usb_vid);
+            }),
+            py::arg("serial_number") = py::none(), py::arg("usb_pid") = 0x5700,
+            py::arg("usb_vid") = 0x0483)
+        .def(
+            "read_tactile",
+            [](TouchBoardWrapper& self, double timeout) {
+                float buf[TouchBoardWrapper::ROWS][TouchBoardWrapper::COLS];
+                bool ok;
+                {
+                    py::gil_scoped_release release;
+                    ok = self.read_tactile_impl(buf, timeout);
+                }
+                if (!ok)
+                    throw wujihandcpp::device::TimeoutError("Timed out waiting for tactile frame");
+                return TouchBoardWrapper::make_float_array(buf);
+            },
+            py::arg("timeout") = 1.0)
+        .def(
+            "read_tactile_raw",
+            [](TouchBoardWrapper& self, double timeout) {
+                int16_t buf[TouchBoardWrapper::ROWS][TouchBoardWrapper::COLS];
+                bool ok;
+                {
+                    py::gil_scoped_release release;
+                    ok = self.read_tactile_raw_impl(buf, timeout);
+                }
+                if (!ok)
+                    throw wujihandcpp::device::TimeoutError("Timed out waiting for tactile frame");
+                return TouchBoardWrapper::make_int16_array(buf);
+            },
+            py::arg("timeout") = 1.0)
+        .def("get_tactile", &TouchBoardWrapper::get_tactile)
+        .def("get_tactile_raw", &TouchBoardWrapper::get_tactile_raw)
+        .def_property_readonly("handedness", &TouchBoardWrapper::get_handedness)
+        .def_property_readonly("fps", &TouchBoardWrapper::get_fps)
+        .def_property_readonly("frame_count", &TouchBoardWrapper::get_frame_count);
 }
