@@ -508,10 +508,15 @@ def trigger_check_in_background(sn: str, raw_version: int | None) -> None:
     except Exception:
         return  # rare: sys.stderr replaced with something exotic / None
 
-    t = threading.Thread(
-        target=_run_check_sync,
-        args=(sn, raw_version),
-        name="wujihandpy-upgrade-check",
-        daemon=True,
-    )
-    t.start()
+    # Thread() construction and start() can raise (RuntimeError when the
+    # process is out of thread resources, etc.); a fire-and-forget worker
+    # must never propagate such failures to the caller.
+    try:
+        threading.Thread(
+            target=_run_check_sync,
+            args=(sn, raw_version),
+            name="wujihandpy-upgrade-check",
+            daemon=True,
+        ).start()
+    except Exception as e:
+        _log.debug("upgrade check: failed to spawn worker thread: %s", e)
