@@ -1,9 +1,16 @@
 from __future__ import annotations
 
+import sys
+from typing import TYPE_CHECKING, Annotated, SupportsInt
+
 from . import _core
 from ._core import Finger, Joint, IController, filter, logging  # noqa: F401
 from ._upgrade_check import trigger_check_in_background
 from ._version import __version__
+
+if TYPE_CHECKING:
+    import numpy
+    import numpy.typing
 
 
 class Hand(_core.Hand):
@@ -14,8 +21,22 @@ class Hand(_core.Hand):
     C++ binding.
     """
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(
+        self,
+        serial_number: str | None = None,
+        usb_pid: SupportsInt = -1,
+        usb_vid: SupportsInt = 0x0483,
+        mask: Annotated[numpy.typing.ArrayLike, numpy.bool_] | None = None,
+    ) -> None:
+        super().__init__(serial_number, usb_pid, usb_vid, mask)
+        # Skip the upgrade check entirely in non-interactive environments
+        # (pipes, CI, Jupyter) — saves the synchronous SN read below.
+        try:
+            if not sys.stderr.isatty():
+                return
+        except Exception:
+            return
+
         # The C++ Hand is single-threaded; read identifying values on the
         # construction thread and pass them to the background worker.
         # get_full_system_firmware_version() is a cached accessor (zero

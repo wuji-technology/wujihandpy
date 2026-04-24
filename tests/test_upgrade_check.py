@@ -1,5 +1,7 @@
 """Tests for wujihandpy._upgrade_check."""
 
+from __future__ import annotations
+
 from wujihandpy._upgrade_check import decode_firmware_version
 
 
