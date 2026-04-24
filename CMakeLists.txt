@@ -81,5 +81,9 @@ target_link_libraries(_core PRIVATE pybind11::module)
 target_link_directories(_core PRIVATE ${CMAKE_BINARY_DIR}/wujihandcpp)
 target_link_libraries(_core PRIVATE wujihandcpp)
 
+if(NOT WIN32)
+    target_compile_definitions(_core PRIVATE WUJIHANDPY_ENABLE_TACTILE)
+endif()
+
 # The install directory is the output (wheel) directory
 install(TARGETS _core DESTINATION wujihandpy)

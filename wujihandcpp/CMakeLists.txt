@@ -61,6 +61,13 @@ file(GLOB_RECURSE PROJECT_SOURCE CONFIGURE_DEPENDS
     ${PROJECT_SOURCE_DIR}/src/*.c
 )
 
+if(WIN32)
+    list(REMOVE_ITEM PROJECT_SOURCE
+        ${PROJECT_SOURCE_DIR}/src/device/tactile_board.cpp
+        ${PROJECT_SOURCE_DIR}/src/transport/cdc_transport.cpp
+    )
+endif()
+
 option(BUILD_STATIC_WUJIHANDCPP "Build static library wujihandcpp" OFF)
 if(BUILD_STATIC_WUJIHANDCPP)
     add_library(

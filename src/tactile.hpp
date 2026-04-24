@@ -5,6 +5,8 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
+#include <memory>
+
 #include <wujihandcpp/data/tactile.hpp>
 #include <wujihandcpp/device/tactile_board.hpp>
 
@@ -65,13 +67,20 @@ inline void init_module(py::module_& m) {
         }, py::arg("timeout_ms") = 100)
 
         .def("start_streaming", [](TactileBoard& self, py::function callback) {
+            auto callback_ptr = std::shared_ptr<py::function>(
+                new py::function(std::move(callback)),
+                [](py::function* callback) {
+                    py::gil_scoped_acquire acquire;
+                    delete callback;
+                });
+
             // The C++ callback runs on the reader thread without the GIL.
             // We must acquire the GIL before calling back into Python.
-            self.start_streaming([callback = std::move(callback)](
+            self.start_streaming([callback = std::move(callback_ptr)](
                     const TactileFrame& frame) {
                 py::gil_scoped_acquire acquire;
                 try {
-                    callback(frame);
+                    (*callback)(frame);
                 } catch (py::error_already_set& e) {
                     e.restore();
                     PyErr_Clear();
