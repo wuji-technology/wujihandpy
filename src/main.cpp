@@ -64,6 +64,7 @@ PYBIND11_MODULE(_core, m) {
     register_py_interface<data::hand::Handedness>("handedness", hand);
     register_py_interface<data::hand::FirmwareVersion>("firmware_version", hand);
     register_py_interface<data::hand::FirmwareDate>("firmware_date", hand);
+    register_py_interface<data::hand::FullSystemFirmwareVersion>("full_system_firmware_version", hand);
     register_py_interface<data::hand::SystemTime>("system_time", hand);
     register_py_interface<data::hand::Temperature>("temperature", hand);
     register_py_interface<data::hand::InputVoltage>("input_voltage", hand);
