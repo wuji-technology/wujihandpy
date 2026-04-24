@@ -226,34 +226,35 @@ UPGRADE_GUIDE_URL = (
     "https://docs.wuji.tech/docs/en/wuji-hand/latest/wuji-hand-upgrader-user-guide/"
 )
 
-# WUJIHAND pixel LOGO. Compact 5-row design with proportional letter widths:
-# W/U/H/A/N/D = 5 cols (10 chars wide), J = 4 cols (8 chars), I = 1 col (2 chars).
-# Letters are separated by 3-char gaps for a sparser look. Inner width = 91;
-# centered in a 94-char frame (1 leading + 2 trailing spaces) to match the
-# bottom URL line, so the banner has a clean right edge from top ruler down
-# to the URL.
+# WUJIHAND pixel LOGO. Each letter is a 6-row glyph with proportional widths
+# (W = 14 cols, I = 2 cols, others = 9-10 cols). Letters separated by 3-char
+# gaps; total width = 96 chars. Glyph shapes mirror the reference design at
+# /home/zenggui/windows_file/upgrade-notice.py exactly.
 _LOGO_LINES = [
-    " ██      ██   ██      ██         ██   ██   ██      ██       ██       ██      ██   ████████    ",
-    " ██      ██   ██      ██         ██   ██   ██      ██     ██  ██     ████    ██   ██      ██  ",
-    " ██  ██  ██   ██      ██         ██   ██   ██████████   ██████████   ██  ██  ██   ██      ██  ",
-    " ████  ████   ██      ██   ██    ██   ██   ██      ██   ██      ██   ██    ████   ██      ██  ",
-    "   ██  ██       ██████       ████     ██   ██      ██   ██      ██   ██      ██   ████████    ",
+    "██          ██   ██      ██          ██   ██   ██      ██      ████      ██      ██   ██████    ",
+    "██    ██    ██   ██      ██          ██   ██   ██      ██    ██    ██    ███     ██   ██    ██  ",
+    " ██  ████  ██    ██      ██          ██   ██   ██████████   ██      ██   █████   ██   ██      ██",
+    "  ██ ████ ██     ██      ██          ██   ██   ██      ██   ██████████   ██ ████ ██   ██      ██",
+    "  ████  ████      ██    ██    ██     ██   ██   ██      ██   ██      ██   ██   █████   ██    ██  ",
+    "   ██    ██        ██████      ███████    ██   ██      ██   ██      ██   ██     ███   ██████    ",
 ]
-_LOGO_WIDTH = 94
+_LOGO_WIDTH = 96
+_FRAME_WIDTH = _LOGO_WIDTH + 2     # ruler / separator overhang past LOGO edges
+_BODY_INDENT = "  "                # 2-space indent on every printed line
 
-_RULER = "═" * _LOGO_WIDTH
-_SEPARATOR = "─" * _LOGO_WIDTH
+_RULER = "━" * _FRAME_WIDTH        # heavy horizontal box-drawing for top/bottom
+_SEPARATOR = "─" * _FRAME_WIDTH    # light horizontal for separator above URL
 
 # 24-bit ANSI color helpers. Disabled when NO_COLOR env var is set.
 _COLOR_RESET = "\033[0m"
-_COLOR_GREEN = "\033[38;2;100;220;120m"   # bright green for the new version
-_COLOR_BLUE = "\033[38;2;100;160;240m"    # solid blue for the headline and URL
-_COLOR_DIM = "\033[2m"                     # dim grey for the bottom separator
-# Horizontal blue gradient used for the LOGO and rulers.
-# Light end (left): RGB(120, 180, 255) -- sky blue
-# Dark  end (right): RGB(40, 100, 220) -- royal blue
-_GRADIENT_LIGHT = (120, 180, 255)
-_GRADIENT_DARK = (40, 100, 220)
+_COLOR_BOLD = "\033[1m"
+_COLOR_DIM = "\033[2m"
+_COLOR_GRAY = "\033[90m"
+_COLOR_GREEN = "\033[38;2;52;168;83m"     # google-style green for the new version
+_COLOR_BLUE = "\033[38;2;43;127;255m"     # solid blue for the headline and URL
+# Vertical blue gradient endpoints for the LOGO and rulers.
+_GRADIENT_LIGHT = (120, 185, 255)
+_GRADIENT_DARK = (22, 85, 215)
 
 
 def _colors_enabled() -> bool:
@@ -270,55 +271,69 @@ def _gradient_blue(row: int, total_rows: int) -> str:
     return f"\033[38;2;{r};{g};{b}m"
 
 
-def _gradient_line(line: str, row: int, total_rows: int, color: bool) -> str:
-    """Wrap `line` in a single ANSI color picked from the vertical gradient.
-
-    Top row uses the light end, bottom row uses the dark end, with linear
-    interpolation in between.
-    """
+def _hyperlink(url: str, color: bool) -> str:
+    """Wrap URL with OSC 8 hyperlink escape so modern terminals make it clickable."""
     if not color:
-        return line
-    return f"{_gradient_blue(row, total_rows)}{line}{_COLOR_RESET}"
+        return url
+    return f"\033]8;;{url}\033\\{url}\033]8;;\033\\"
+
+
+def _render_logo_block(color: bool) -> list[str]:
+    """Top ruler + blank + 6 LOGO rows (vertical gradient) + blank + bottom ruler.
+
+    Rulers are solid blue (matches the reference); gradient runs only across
+    the 6 LOGO rows. Each line is indented to match the rest of the banner.
+    """
+    blue = _COLOR_BLUE if color else ""
+    reset = _COLOR_RESET if color else ""
+
+    out: list[str] = []
+    out.append(f"{_BODY_INDENT}{blue}{_RULER}{reset}")
+    out.append("")
+
+    n = len(_LOGO_LINES)
+    for i, row in enumerate(_LOGO_LINES):
+        if not color:
+            out.append(_BODY_INDENT + row)
+            continue
+        c = _gradient_blue(i, n)
+        rendered = "".join((c + ch) if ch == "█" else ch for ch in row)
+        out.append(_BODY_INDENT + rendered + _COLOR_RESET)
+
+    out.append("")
+    out.append(f"{_BODY_INDENT}{blue}{_RULER}{reset}")
+    return out
 
 
 def render_banner(current: str, latest_version: str) -> str:
     """Render the complete upgrade banner as a single string.
 
-    Includes ANSI color (24-bit truecolor) when stderr is a TTY and the
-    NO_COLOR env var is unset. The banner is self-contained: includes
-    trailing newline so a single sys.stderr.write() + flush() outputs a
-    tidy block.
+    Includes ANSI color (24-bit truecolor) and OSC 8 hyperlink for the URL
+    when stderr is a TTY and NO_COLOR is unset. Self-contained: includes
+    leading + trailing blank lines so a single sys.stderr.write() outputs
+    a tidy block.
     """
     color = _colors_enabled()
-    blue_open = _COLOR_BLUE if color else ""
-    green_open = _COLOR_GREEN if color else ""
-    dim_open = _COLOR_DIM if color else ""
+    bold = _COLOR_BOLD if color else ""
+    blue = _COLOR_BLUE if color else ""
+    green = _COLOR_GREEN if color else ""
+    dim = _COLOR_DIM if color else ""
+    gray = _COLOR_GRAY if color else ""
     reset = _COLOR_RESET if color else ""
 
-    # Top ruler + LOGO rows + bottom ruler form a single vertical blue gradient.
-    # A blank line separates the rulers from the LOGO for visual breathing room.
-    gradient_block = [_RULER, *_LOGO_LINES, _RULER]
-    total = len(gradient_block)
-    colored_top = _gradient_line(_RULER, 0, total, color)
-    colored_logo = [
-        _gradient_line(_LOGO_LINES[i], i + 1, total, color)
-        for i in range(len(_LOGO_LINES))
-    ]
-    colored_bottom = _gradient_line(_RULER, total - 1, total, color)
-
-    lines: list[str] = [colored_top, ""]
-    lines.extend(colored_logo)
-    lines.append("")
-    lines.append(colored_bottom)
+    lines: list[str] = [""]
+    lines.extend(_render_logo_block(color))
     lines.append("")
     lines.append(
-        f"{blue_open}↑ New firmware available{reset}    "
-        f"v{current} → {green_open}v{latest_version}{reset}"
+        f"{_BODY_INDENT}{blue}{bold}⬆ New firmware available{reset}"
+        f"   v{current} {gray}→{reset} {green}{bold}v{latest_version}{reset}"
     )
     lines.append("")
-    lines.append(f"{dim_open}{_SEPARATOR}{reset}")
+    lines.append(f"{_BODY_INDENT}{gray}{_SEPARATOR}{reset}")
+    lines.append("")
     lines.append(
-        f"Upgrade guide › {blue_open}{UPGRADE_GUIDE_URL}{reset}"
+        f"{_BODY_INDENT}{dim}Upgrade guide ›{reset}  "
+        f"{blue}{_hyperlink(UPGRADE_GUIDE_URL, color)}{reset}"
     )
     lines.append("")
 
@@ -328,54 +343,44 @@ def render_banner(current: str, latest_version: str) -> str:
 def render_legacy_banner(latest_version: str | None) -> str:
     """Render the upgrade banner for legacy devices.
 
-    Two flavors depending on whether we know the latest version:
-      - latest_version given (sn-known device, but local version unreadable):
+    Two flavors:
+      - latest_version given (sn-known but local version unreadable):
         show "latest available: vX.Y.Z" so user knows the target.
-      - latest_version is None (sn-unknown device, can't query API at all):
-        show a static "please upgrade" message without any version info.
-
-    Both flavors share the same LOGO + ruler + URL frame; only the middle
-    headline and explanatory lines differ.
+      - latest_version is None (sn-unknown, can't query API at all):
+        static "please upgrade" message with no version info.
     """
     color = _colors_enabled()
-    blue_open = _COLOR_BLUE if color else ""
-    green_open = _COLOR_GREEN if color else ""
-    dim_open = _COLOR_DIM if color else ""
+    bold = _COLOR_BOLD if color else ""
+    blue = _COLOR_BLUE if color else ""
+    green = _COLOR_GREEN if color else ""
+    dim = _COLOR_DIM if color else ""
+    gray = _COLOR_GRAY if color else ""
     reset = _COLOR_RESET if color else ""
 
-    gradient_block = [_RULER, *_LOGO_LINES, _RULER]
-    total = len(gradient_block)
-    colored_top = _gradient_line(_RULER, 0, total, color)
-    colored_logo = [
-        _gradient_line(_LOGO_LINES[i], i + 1, total, color)
-        for i in range(len(_LOGO_LINES))
-    ]
-    colored_bottom = _gradient_line(_RULER, total - 1, total, color)
-
-    lines: list[str] = [colored_top, ""]
-    lines.extend(colored_logo)
-    lines.append("")
-    lines.append(colored_bottom)
+    lines: list[str] = [""]
+    lines.extend(_render_logo_block(color))
     lines.append("")
 
     if latest_version is not None:
         lines.append(
-            f"{blue_open}↑ Firmware upgrade recommended{reset}    "
-            f"latest available: {green_open}v{latest_version}{reset}"
+            f"{_BODY_INDENT}{blue}{bold}⬆ Firmware upgrade recommended{reset}"
+            f"   latest available: {green}{bold}v{latest_version}{reset}"
         )
         lines.append("")
-        lines.append("Your device firmware is too old to report its system version.")
-        lines.append("Please follow the upgrade guide to update.")
+        lines.append(f"{_BODY_INDENT}{dim}Your device firmware is too old to report its system version.{reset}")
+        lines.append(f"{_BODY_INDENT}{dim}Please follow the upgrade guide to update.{reset}")
     else:
-        lines.append(f"{blue_open}↑ Firmware upgrade strongly recommended{reset}")
+        lines.append(f"{_BODY_INDENT}{blue}{bold}⬆ Firmware upgrade strongly recommended{reset}")
         lines.append("")
-        lines.append("Your device firmware is too old to be identified by the upgrade service.")
-        lines.append("Please follow the upgrade guide to bring it up to date.")
+        lines.append(f"{_BODY_INDENT}{dim}The upgrade service can't identify your firmware—it's out of date.{reset}")
+        lines.append(f"{_BODY_INDENT}{dim}Please follow the upgrade guide to update.{reset}")
 
     lines.append("")
-    lines.append(f"{dim_open}{_SEPARATOR}{reset}")
+    lines.append(f"{_BODY_INDENT}{gray}{_SEPARATOR}{reset}")
+    lines.append("")
     lines.append(
-        f"Upgrade guide › {blue_open}{UPGRADE_GUIDE_URL}{reset}"
+        f"{_BODY_INDENT}{dim}Upgrade guide ›{reset}  "
+        f"{blue}{_hyperlink(UPGRADE_GUIDE_URL, color)}{reset}"
     )
     lines.append("")
 

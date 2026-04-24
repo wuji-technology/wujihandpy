@@ -334,7 +334,7 @@ def test_banner_contains_versions():
 def test_banner_contains_logo_block_char():
     banner = render_banner("1.2.0", "3.3.0")
     assert "█" in banner  # LOGO 是块字符
-    assert "═" in banner  # 顶底 ruler
+    assert "━" in banner  # 顶底 ruler
 
 
 def test_banner_contains_upgrade_url():
@@ -373,7 +373,7 @@ def test_legacy_banner_has_latest_version():
     assert UPGRADE_GUIDE_URL in banner
     # 仍然有 LOGO 和 ruler
     assert "█" in banner
-    assert "═" in banner
+    assert "━" in banner
 
 
 def test_legacy_banner_omits_release_notes():
@@ -396,7 +396,7 @@ def test_legacy_banner_static_when_latest_is_none():
     assert "latest available" not in banner
     # But shell is intact
     assert "█" in banner
-    assert "═" in banner
+    assert "━" in banner
     assert UPGRADE_GUIDE_URL in banner
 
 
