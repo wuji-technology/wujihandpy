@@ -473,7 +473,7 @@ def _run_check_sync(sn: str, raw_version: int | None) -> None:
             banner = render_legacy_banner(latest_version=latest["version"])
 
         _emit_banner(banner, dedup_key)
-    except Exception as e:  # 安全网
+    except Exception as e:  # safety net
         _log.debug("upgrade check: unexpected error: %s", e)
 
 
@@ -506,7 +506,7 @@ def trigger_check_in_background(sn: str, raw_version: int | None) -> None:
         if not sys.stderr.isatty():
             return
     except Exception:
-        return  # 极少见情况: stderr 是 None 或被替换
+        return  # rare: sys.stderr replaced with something exotic / None
 
     t = threading.Thread(
         target=_run_check_sync,

@@ -81,7 +81,7 @@ def test_no_banner_when_equal():
 
 
 def test_no_banner_when_current_newer():
-    # 开发 / 回滚场景，不吓用户
+    # dev / rollback scenarios -- don't startle the user
     assert should_show_banner("3.3.1", "3.3.0") is False
 
 
@@ -120,7 +120,7 @@ def test_find_latest_all_unparseable():
 
 
 def test_slim_firmwares_extracts_only_version():
-    # 模拟 wuji-admin 返回的 FirmwareItem 原文
+    # raw FirmwareItem as returned by wuji-admin
     raw = [
         {
             "id": "uuid-1",
@@ -151,7 +151,7 @@ def test_slim_firmwares_minimal_manifest():
 
 
 def test_slim_firmwares_skips_invalid_entries():
-    # manifest 缺失或没有 version 的条目直接丢弃
+    # entries missing manifest or manifest.version are dropped
     raw = [
         {"manifest": {"version": "3.3.0"}},
         {"manifest": {}},
@@ -234,10 +234,10 @@ def test_save_cache_creates_parent_dirs(monkeypatch, tmp_path):
 
 
 def test_save_cache_swallows_write_errors(monkeypatch, tmp_path):
-    # 父目录被替换成文件,无法写入
+    # parent directory replaced with a file -- write should fail
     monkeypatch.setenv("HOME", str(tmp_path))
     (tmp_path / ".wuji").write_text("blocking file")
-    # 不应该抛异常
+    # ...but the call must still not raise
     save_cache({"fetched_at": 0, "sn": "TEST_SN", "firmwares": []})
 
 
@@ -261,7 +261,7 @@ def test_fetch_uses_fresh_cache(monkeypatch, tmp_path):
         "sn": "TEST_SN",
         "firmwares": [{"version": "3.3.0", "release_notes_en": [], "release_notes_zh": []}],
     })
-    # 不应该发起 HTTP 请求
+    # must not hit the network when the cache is fresh
     with patch("wujihandpy._upgrade_check.urllib.request.urlopen") as mock_open:
         result = fetch_firmwares("TEST_SN")
     assert mock_open.called is False
@@ -283,7 +283,7 @@ def test_fetch_http_success_writes_cache(monkeypatch, tmp_path):
         result = fetch_firmwares("TEST_SN")
     # Release notes were dropped in slim_firmwares; only version is kept.
     assert result == [{"version": "3.3.0"}]
-    # 缓存写到了磁盘
+    # cache file was written to disk
     assert _cache_path().exists()
 
 
@@ -333,8 +333,8 @@ def test_banner_contains_versions():
 
 def test_banner_contains_logo_block_char():
     banner = render_banner("1.2.0", "3.3.0")
-    assert "█" in banner  # LOGO 是块字符
-    assert "━" in banner  # 顶底 ruler
+    assert "█" in banner  # LOGO uses block characters
+    assert "━" in banner  # top and bottom rulers
 
 
 def test_banner_contains_upgrade_url():
@@ -371,7 +371,7 @@ def test_legacy_banner_has_latest_version():
     assert "3.3.0" in banner
     assert "Firmware upgrade recommended" in banner
     assert UPGRADE_GUIDE_URL in banner
-    # 仍然有 LOGO 和 ruler
+    # LOGO and ruler still present
     assert "█" in banner
     assert "━" in banner
 
@@ -448,7 +448,7 @@ def test_worker_dedups_same_sn(monkeypatch, capsys):
         {"version": "3.3.0", "release_notes_en": [], "release_notes_zh": []},
     ])
     _run_check_sync("SN_DEDUP", 0x7E000201)
-    _run_check_sync("SN_DEDUP", 0x7E000201)  # 二次调用不应再打
+    _run_check_sync("SN_DEDUP", 0x7E000201)  # second call should not print again
     err = capsys.readouterr().err
     assert err.count("New firmware available") == 1
 
@@ -537,7 +537,7 @@ def test_worker_empty_sn_dedups_across_calls(monkeypatch, capsys):
 def test_worker_silent_when_fetch_returns_none(monkeypatch, tmp_path, capsys):
     _reset_sn_dedup()
     monkeypatch.setenv("HOME", str(tmp_path))
-    # 没有缓存 + HTTP 失败
+    # no cache + HTTP failure
     with patch(
         "wujihandpy._upgrade_check.urllib.request.urlopen",
         side_effect=socket.timeout("x"),
@@ -548,11 +548,11 @@ def test_worker_silent_when_fetch_returns_none(monkeypatch, tmp_path, capsys):
 
 def test_trigger_skips_when_not_a_tty(monkeypatch, capsys):
     _reset_sn_dedup()
-    # 默认 pytest capsys 下 stderr 已经不是 TTY,但保险起见显式 mock
+    # capsys already makes stderr non-TTY, but mock explicitly to be safe
     monkeypatch.setattr("sys.stderr.isatty", lambda: False)
     trigger_check_in_background("SN_NOTTY", 0x7E000201)
-    # 线程不会发起,stderr 上什么也没有
-    time.sleep(0.1)  # 给线程一点点时间
+    # no thread should be spawned, stderr stays empty
+    time.sleep(0.1)  # tiny grace period in case a thread did get spawned
     assert capsys.readouterr().err == ""
 
 
