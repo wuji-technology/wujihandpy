@@ -17,26 +17,33 @@ class Hand(_core.Hand):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # The C++ Hand binds operations to the construction thread for
-        # thread-safety. Read SN + firmware version here on the main
-        # thread, then hand the pure values off to a background worker.
+        # The C++ Hand binds operations to the construction thread, so we
+        # read SN + firmware version here on the main thread and hand the
+        # pure values off to a background worker.
         #
-        # IMPORTANT: get_product_sn() is NOT cached — it does a 6-part SDO
-        # read that times out (~3 s) on firmware older than system v1.1.0.
-        # We mirror the C++ gating logic (hand.hpp:check_firmware_version)
-        # to avoid the timeout on legacy devices: read system version
-        # first, only attempt SN read when the version says SN is supported.
-        raw_version: int | None = None
+        # The C++ constructor (Hand::check_firmware_version) already reads
+        # FullSystemFirmwareVersion when the main board version is high
+        # enough; the cached value is exposed via the no-I/O accessor
+        # `get_full_system_firmware_version()`. Returns 0 when the C++
+        # layer never populated it (very old hardware).
         try:
-            raw_version = int(self.read_full_system_firmware_version(timeout=0.5))
+            raw_version: int | None = int(self.get_full_system_firmware_version())
+            if raw_version == 0:
+                raw_version = None
         except Exception:
-            pass
+            raw_version = None
 
+        # SN reporting requires system version >= 1.1.0 (matches the gating
+        # in wujihandcpp/include/wujihandcpp/device/hand.hpp:115).
+        # NOTE: get_product_sn() is currently NOT a cached getter — it
+        # performs 6 fresh SDO reads (see wrapper.hpp:329). Until C++
+        # exposes a cached variant this re-reads values that the C++
+        # constructor already fetched. Acceptable on modern firmware
+        # (~300 ms, gated by version check) but worth a future fix.
         sn = ""
         if raw_version is not None:
             byte_major = raw_version & 0xFF
             byte_minor = (raw_version >> 8) & 0xFF
-            # SN reporting requires system version >= 1.1.0
             if (byte_major, byte_minor) >= (1, 1):
                 try:
                     sn = self.get_product_sn() or ""

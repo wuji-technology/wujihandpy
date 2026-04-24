@@ -113,8 +113,9 @@ CACHE_TTL_SECONDS = 24 * 60 * 60
 
 
 def _cache_path() -> Path:
-    home = Path(os.environ.get("HOME", "~")).expanduser()
-    return home / ".wuji" / "cache" / "wujihandpy" / "upgrade_check.json"
+    # Path.home() consults $HOME first, then falls back to pwd lookup —
+    # mirrors the convention in wujihandcpp/src/logging/logging.hpp.
+    return Path.home() / ".wuji" / "cache" / "wujihandpy" / "upgrade_check.json"
 
 
 def _is_valid_cache(data: object) -> bool:
@@ -155,11 +156,17 @@ def load_cache() -> dict | None:
 
 
 def save_cache(payload: dict) -> None:
-    """Best-effort cache write. Never raises."""
+    """Best-effort atomic cache write. Never raises.
+
+    Writes to a sibling temp file then `os.replace`s into place so a process
+    killed mid-write can't leave a truncated/corrupt cache file behind.
+    """
     path = _cache_path()
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(payload), encoding="utf-8")
+        tmp_path = path.with_name(path.name + ".tmp")
+        tmp_path.write_text(json.dumps(payload), encoding="utf-8")
+        os.replace(tmp_path, path)
     except OSError as e:
         _log.debug("cache write failed: %s", e)
 
@@ -169,8 +176,12 @@ HTTP_TIMEOUT_SECONDS = 3.0
 
 
 def _get_sdk_version() -> str:
+    # Import the version submodule directly rather than the top-level
+    # wujihandpy package to avoid any circular-import surprises (this
+    # module is imported by wujihandpy/__init__.py while it's still
+    # being initialized).
     try:
-        from wujihandpy import __version__
+        from wujihandpy._version import __version__
         return __version__
     except Exception:
         return "unknown"
@@ -411,25 +422,22 @@ def _run_check_sync(sn: str, raw_version: int | None) -> None:
         if not isinstance(sn, str):
             return
 
+        # Pre-check dedup: if we already printed for this SN (or for the
+        # legacy-no-SN case) in this process, bail out without doing any
+        # I/O. We commit the dedup AFTER a successful banner write so
+        # transient failures (e.g., temporary network outage) don't burn
+        # the SN for the rest of the process.
+        dedup_key = sn if sn else _LEGACY_NO_SN_KEY
+        with _lock:
+            if dedup_key in _checked_sns:
+                return
+
         # Branch 1: very old firmware (no SN) -> static legacy banner, no API
         if not sn:
-            with _lock:
-                if _LEGACY_NO_SN_KEY in _checked_sns:
-                    return
-                _checked_sns.add(_LEGACY_NO_SN_KEY)
             _log.debug("upgrade check: empty SN, rendering static legacy banner")
             banner = render_legacy_banner(latest_version=None)
-            try:
-                sys.stderr.write(banner)
-                sys.stderr.flush()
-            except Exception as e:
-                _log.debug("upgrade check: stderr write failed: %s", e)
+            _emit_banner(banner, dedup_key)
             return
-
-        with _lock:
-            if sn in _checked_sns:
-                return
-            _checked_sns.add(sn)
 
         # 2) Decode current version (may be None for legacy devices)
         current: str | None = None
@@ -464,13 +472,25 @@ def _run_check_sync(sn: str, raw_version: int | None) -> None:
             # Legacy device: current version unknown -> generic prompt
             banner = render_legacy_banner(latest_version=latest["version"])
 
-        try:
-            sys.stderr.write(banner)
-            sys.stderr.flush()
-        except Exception as e:
-            _log.debug("upgrade check: stderr write failed: %s", e)
+        _emit_banner(banner, dedup_key)
     except Exception as e:  # 安全网
         _log.debug("upgrade check: unexpected error: %s", e)
+
+
+def _emit_banner(banner: str, dedup_key: str) -> None:
+    """Write the banner to stderr and, only on success, commit the dedup key.
+
+    Splitting write + dedup keeps a transient stderr failure from suppressing
+    future banners for the same key in this process.
+    """
+    try:
+        sys.stderr.write(banner)
+        sys.stderr.flush()
+    except Exception as e:
+        _log.debug("upgrade check: stderr write failed: %s", e)
+        return
+    with _lock:
+        _checked_sns.add(dedup_key)
 
 
 def trigger_check_in_background(sn: str, raw_version: int | None) -> None:
