@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-04-27
+
 ### Changed
 
 - Initialization failure now reports specific disconnected joints (e.g. `finger(2).joint(1)`) instead of generic error message
@@ -112,7 +114,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Requires firmware v3.0.0+
 
-[Unreleased]: https://github.com/wuji-technology/wujihandpy/compare/v1.5.1...HEAD
+[Unreleased]: https://github.com/wuji-technology/wujihandpy/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/wuji-technology/wujihandpy/compare/v1.5.1...v1.6.0
 [1.5.1]: https://github.com/wuji-technology/wujihandpy/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/wuji-technology/wujihandpy/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/wuji-technology/wujihandpy/compare/v1.3.0...v1.4.0
