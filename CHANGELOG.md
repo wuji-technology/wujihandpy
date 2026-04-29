@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Tactile board SDK rewritten for the new wire protocol** (firmware
+  `wh110-firmware/docs/tactile-wire-protocol.md`):
+  - Data frame is now 3088 B (was 1550 B); pressure is `float32` in `[0.0, 1.0]`
+    with `NaN` marking invalid cells (was inverted-polarity `int16`).
+  - `TactileFrame.pressure` is exposed as a `numpy.float32` 24×32 array.
+  - 12 commands added on `TactileBoard`: `get_device_info`, `get_fw_build`,
+    `get_handedness`, `get_diagnostics`, `reset_counters`, `set_streaming`,
+    `reset_device`, `enter_bootloader`, `get_sample_rate_hz`,
+    `set_sample_rate_hz`, `get_streaming_enabled`, `get_device_time`,
+    `sync_host_epoch`. `TactileBoard.handedness()` (frame-derived) is removed
+    in favor of `get_handedness()` (queries the device directly).
+  - `set_disconnect_callback()` replaces the prior "zero-init frame as
+    disconnect signal" hack — `0.0` is now a legitimate pressure value.
+  - New types: `TactileDeviceInfo`, `TactileFwBuild`, `TactileDiagnostics`,
+    `TactileDeviceTime`, `TactileSyncResult`, `TactileStatus`, `TactileError`.
+  - Default per-command timeout raised from spec's recommended 500 ms to
+    2000 ms to absorb a sporadic ~0.5 s host-side cdc-acm stall observed on
+    Linux 6.8 (firmware-side counters confirm zero drops/CRC errors during
+    the stall — bytes simply don't surface from the kernel during the
+    window). Demuxer queue sized at 16 frames (~130 ms @ 120 Hz). Tactile
+    consumers must tolerate occasional sub-second sequence gaps.
+
 ### Added
 
 - **Zenoh Bridge (Python)**: standalone bridge process exposing WujiHand via Zenoh network protocol (`bridge/python/hand_zenoh_bridge.py`)

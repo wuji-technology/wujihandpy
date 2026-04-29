@@ -20,6 +20,9 @@ src/wujihandpy/_version.py
 
 docs/plans/
 
+# HIL test scripts (local-only, run manually against a connected tactile board)
+tests/hil_*.py
+
 # Claude-mem generated files (keep root CLAUDE.md)
 **/CLAUDE.md
 !/CLAUDE.md

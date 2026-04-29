@@ -174,5 +174,21 @@ ssize_t read_exact(int fd, uint8_t* buf, size_t count, uint32_t timeout_ms) {
     return static_cast<ssize_t>(total);
 }
 
+ssize_t write_exact(int fd, const uint8_t* buf, size_t count) {
+    size_t total = 0;
+    while (total < count) {
+        ssize_t n = write(fd, buf + total, count - total);
+        if (n < 0) {
+            if (errno == EINTR) continue;
+            return -1;  // EAGAIN should not occur — fd is blocking after open_cdc()
+        }
+        if (n == 0) {
+            return -1;  // shouldn't happen for a regular fd, treat as failure
+        }
+        total += static_cast<size_t>(n);
+    }
+    return static_cast<ssize_t>(total);
+}
+
 }  // namespace cdc
 }  // namespace wujihandcpp

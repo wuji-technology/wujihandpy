@@ -9,6 +9,8 @@
 #include <thread>
 
 #include "wujihandcpp/data/tactile.hpp"
+#include "wujihandcpp/data/tactile_device.hpp"
+#include "wujihandcpp/protocol/tactile_command.hpp"
 #include "wujihandcpp/utility/api.hpp"
 
 namespace wujihandcpp {
@@ -18,11 +20,14 @@ class WUJIHANDCPP_API ConnectionLostError : public std::runtime_error {
     using std::runtime_error::runtime_error;
 };
 
-/// USB CDC reader for the WujiHand tactile sensor board (G-Board / tboard).
+/// USB CDC driver for the WujiHand tactile sensor board (tboard).
 ///
-/// The board transmits 24x32 pressure frames at 120 FPS over USB CDC
-/// (VID=0x0483, PID=0x5700). This class handles device discovery,
-/// frame synchronization, CRC validation, and streaming.
+/// The board transmits 24x32 f32 pressure frames over USB CDC
+/// (VID=0x0483, PID=0x5700). Default and upper sample rate is 120 Hz; the
+/// effective rate is set via SET_CONFIG `sample_rate_hz` (1–120). This class
+/// handles device discovery, frame synchronization, CRC validation, and
+/// streaming. See `docs/tactile-wire-protocol.md` in the firmware repo for
+/// the wire format and command set.
 ///
 /// Thread safety:
 ///   - is_connected() and handedness() are thread-safe.
@@ -67,21 +72,78 @@ public:
     /// Called on the internal reader thread. Must not block.
     using FrameCallback = std::function<void(const TactileFrame&)>;
 
+    /// Callback fired exactly once when the USB device disconnects (after
+    /// either streaming or a blocking read sees ConnectionLostError).
+    /// Called on the internal reader thread. Must not block.
+    using DisconnectCallback = std::function<void()>;
+
+    /// Register a disconnect callback (replaces any prior one).
+    /// Pass an empty std::function to clear. May be called before connect().
+    void set_disconnect_callback(DisconnectCallback callback);
+
     /// Start continuous frame reading on an internal thread.
-    /// The callback is invoked for every valid frame.
-    /// On USB disconnect, the callback receives a zero-initialized frame
-    /// (crc_valid=false), then streaming stops automatically.
+    /// The frame callback is invoked for every valid frame. On USB
+    /// disconnect, the disconnect callback (if registered) is invoked and
+    /// streaming stops automatically.
     /// @throws std::logic_error if already streaming or read_frame() is active.
     void start_streaming(FrameCallback callback);
 
     /// Stop streaming and join the reader thread.
     void stop_streaming();
 
-    // -- Device info --
+    // -- Identity (spec §3.1) --
 
-    /// Handedness reported by the most recent frame.
-    /// Only valid after at least one frame has been read.
-    TactileHandedness handedness() const;
+    /// Spec §3.1.1 — serial / hw_revision / fw_version from device-resident TBIM.
+    TactileDeviceInfo get_device_info();
+
+    /// Spec §3.1.2 — git short SHA of the running firmware build.
+    TactileFwBuild get_fw_build();
+
+    /// Spec §3.1.3 — handedness from device-resident TBIM (does not require streaming).
+    TactileHandedness get_handedness();
+
+    // -- Diagnostics (spec §3.2) --
+
+    /// Spec §3.2.1 — uptime / counters snapshot.
+    TactileDiagnostics get_diagnostics();
+
+    /// Spec §3.2.2 — zero the four diagnostic counters.
+    void reset_counters();
+
+    // -- Lifecycle (spec §3.3) --
+
+    /// Spec §3.3.1 — toggle the data-frame stream on/off.
+    void set_streaming(bool enable);
+
+    /// Spec §3.3.2 — request a soft reset; the device will re-enumerate.
+    /// SDK handle becomes invalid after this returns; caller must reconnect.
+    void reset_device();
+
+    /// Spec §3.3.3 — jump to bootloader (PID 0x5701) for OTA. The `magic`
+    /// argument must equal `TACTILE_BOOTLOADER_MAGIC`; any other value
+    /// triggers `BadPayload`. SDK handle becomes invalid after this call.
+    void enter_bootloader(uint32_t magic);
+
+    // -- Configuration (spec §3.4) --
+
+    /// Spec §3.4 — current sample rate (always 1..120).
+    uint16_t get_sample_rate_hz();
+
+    /// Spec §3.4 — set sample rate, must be in 1..120.
+    void set_sample_rate_hz(uint16_t hz);
+
+    /// Spec §3.4 — read the streaming-enabled flag (mirrors set_streaming()).
+    bool get_streaming_enabled();
+
+    // -- Time sync (spec §3.5) --
+
+    /// Spec §3.5.1 — device monotonic clock in nanoseconds.
+    TactileDeviceTime get_device_time();
+
+    /// Spec §3.5.2 — exchange host UTC nanoseconds for the device clock at
+    /// the same moment; caller stores the pair to derive UTC from
+    /// subsequent frames' `timestamp_ms`.
+    TactileSyncResult sync_host_epoch(uint64_t host_unix_ns);
 
 private:
     struct Impl;

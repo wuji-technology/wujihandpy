@@ -32,5 +32,9 @@ int open_cdc(const char* tty_path);
 ///         Returns < count if timeout expires.
 ssize_t read_exact(int fd, uint8_t* buf, size_t count, uint32_t timeout_ms);
 
+/// Write exactly `count` bytes, retrying on partial writes / EINTR.
+/// @return number of bytes written (== count) on success, -1 on error/disconnect.
+ssize_t write_exact(int fd, const uint8_t* buf, size_t count);
+
 }  // namespace cdc
 }  // namespace wujihandcpp

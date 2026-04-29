@@ -1,58 +1,94 @@
 #include "wujihandcpp/device/tactile_board.hpp"
 
-#include <algorithm>
 #include <atomic>
-#include <cerrno>
 #include <cstring>
+#include <memory>
 #include <mutex>
+#include <stdexcept>
+#include <string>
 #include <thread>
 #include <unistd.h>
 
 #include "../transport/cdc_transport.hpp"
+#include "tactile_cdc_demuxer.hpp"
 
 namespace wujihandcpp {
 
-// USB identifiers for the tactile sensor board
+// USB identifiers for the tactile sensor board (spec §1).
 static constexpr uint16_t TACTILE_USB_VID = 0x0483;
 static constexpr uint16_t TACTILE_USB_PID = 0x5700;
+
+namespace {
+
+inline uint16_t read_le16(const uint8_t* p) {
+    return static_cast<uint16_t>(p[0] | (p[1] << 8));
+}
+inline uint32_t read_le32(const uint8_t* p) {
+    return static_cast<uint32_t>(p[0])
+         | (static_cast<uint32_t>(p[1]) << 8)
+         | (static_cast<uint32_t>(p[2]) << 16)
+         | (static_cast<uint32_t>(p[3]) << 24);
+}
+inline uint64_t read_le64(const uint8_t* p) {
+    return static_cast<uint64_t>(read_le32(p))
+         | (static_cast<uint64_t>(read_le32(p + 4)) << 32);
+}
+inline void write_le16(uint8_t* p, uint16_t v) {
+    p[0] = static_cast<uint8_t>(v & 0xFF);
+    p[1] = static_cast<uint8_t>(v >> 8);
+}
+inline void write_le32(uint8_t* p, uint32_t v) {
+    p[0] = static_cast<uint8_t>(v);
+    p[1] = static_cast<uint8_t>(v >> 8);
+    p[2] = static_cast<uint8_t>(v >> 16);
+    p[3] = static_cast<uint8_t>(v >> 24);
+}
+inline void write_le64(uint8_t* p, uint64_t v) {
+    write_le32(p, static_cast<uint32_t>(v));
+    write_le32(p + 4, static_cast<uint32_t>(v >> 32));
+}
+
+/// Trim trailing NULs from a fixed-size ASCII field.
+std::string trim_ascii(const uint8_t* p, size_t len) {
+    size_t n = 0;
+    while (n < len && p[n] != 0) ++n;
+    return std::string(reinterpret_cast<const char*>(p), n);
+}
+
+}  // namespace
 
 // ---------------------------------------------------------------------------
 // Impl
 // ---------------------------------------------------------------------------
 
 struct TactileBoard::Impl {
-    std::string serial_filter;   // empty = auto-discover first device
-    std::string tty_path;        // resolved /dev/ttyACMx
-    int fd = -1;                 // serial file descriptor
-
+    std::string serial_filter;
+    std::string tty_path;
+    int fd = -1;
     std::atomic<bool> connected{false};
-    std::atomic<TactileHandedness> last_hand{TactileHandedness::LEFT};
 
-    // Streaming state
-    std::thread reader_thread;
+    // Demuxer owns the reader thread and exposes the data-frame queue +
+    // command/response channel. Recreated on each connect().
+    std::unique_ptr<TactileCdcDemuxer> demuxer;
+
+    // Streaming consumer (one thread that drains demuxer's data queue).
+    std::thread streaming_thread;
     std::atomic<bool> streaming{false};
-    std::atomic<bool> stop_requested{false};
+    std::atomic<bool> stop_streaming_requested{false};
 
-    // Ring buffer for frame synchronization.
-    // We read into this buffer and scan for headers.
-    uint8_t frame_buf[tactile_protocol::FRAME_SIZE]{};
-
-    // -----------------------------------------------------------------------
-    // Device discovery & open
-    // -----------------------------------------------------------------------
+    // Disconnect callback is held here so it survives across connect() cycles
+    // and gets re-registered on each new demuxer.
+    std::mutex disconnect_cb_mu;
+    DisconnectCallback disconnect_cb;
 
     bool open_device() {
         auto devices = cdc::discover_devices(TACTILE_USB_VID, TACTILE_USB_PID);
         if (devices.empty()) return false;
 
-        // Match serial number if specified
         const cdc::DeviceInfo* chosen = nullptr;
         if (!serial_filter.empty()) {
             for (const auto& d : devices) {
-                if (d.serial_number == serial_filter) {
-                    chosen = &d;
-                    break;
-                }
+                if (d.serial_number == serial_filter) { chosen = &d; break; }
             }
             if (!chosen) return false;
         } else {
@@ -63,152 +99,57 @@ struct TactileBoard::Impl {
         fd = cdc::open_cdc(tty_path.c_str());
         if (fd < 0) return false;
 
+        demuxer = std::make_unique<TactileCdcDemuxer>(fd);
+        // Re-install disconnect callback on the fresh demuxer.
+        {
+            std::lock_guard<std::mutex> lock(disconnect_cb_mu);
+            if (disconnect_cb) demuxer->set_disconnect_callback(disconnect_cb);
+        }
+        demuxer->start();
         connected.store(true, std::memory_order_release);
         return true;
     }
 
     void close_device() {
         connected.store(false, std::memory_order_release);
+        if (demuxer) {
+            demuxer->stop();
+            demuxer.reset();
+        }
         if (fd >= 0) {
             close(fd);
             fd = -1;
         }
     }
 
-    // -----------------------------------------------------------------------
-    // Frame synchronization
-    // -----------------------------------------------------------------------
-
-    /// Read a single byte.
-    /// Throws ConnectionLostError on disconnect, returns false on timeout.
-    bool read_byte(uint8_t& byte, uint32_t timeout_ms) {
-        ssize_t n = cdc::read_exact(fd, &byte, 1, timeout_ms);
-        if (n < 0) throw ConnectionLostError("USB CDC device disconnected");
-        return n == 1;
-    }
-
-    /// Read exactly `count` bytes into `buf`.
-    /// Throws ConnectionLostError on disconnect, returns false on timeout.
-    bool read_bytes(uint8_t* buf, size_t count, uint32_t timeout_ms) {
-        ssize_t n = cdc::read_exact(fd, buf, count, timeout_ms);
-        if (n < 0) throw ConnectionLostError("USB CDC device disconnected");
-        return static_cast<size_t>(n) == count;
-    }
-
-    /// Synchronize and read one complete frame.
-    /// Implements the scan-verify-read-CRC algorithm from the protocol spec.
-    ///
-    /// Returns true if a valid frame was placed in frame_buf.
-    /// Throws ConnectionLostError on USB disconnect.
-    /// Returns false on timeout.
-    bool sync_and_read_frame(uint32_t timeout_ms) {
-        // Scan for 0xAA 0x55 header
-        uint8_t prev = 0;
-        for (;;) {
-            uint8_t b;
-            if (!read_byte(b, timeout_ms)) {
-                return false;  // timeout (disconnect already throws)
-            }
-
-            if (prev == tactile_protocol::HEADER_0 && b == tactile_protocol::HEADER_1) {
-                // Found header. Place it in frame_buf.
-                frame_buf[0] = tactile_protocol::HEADER_0;
-                frame_buf[1] = tactile_protocol::HEADER_1;
-                break;
-            }
-            prev = b;
-        }
-
-        // Read the remaining 1548 bytes (total 1550 - 2 header bytes already read)
-        constexpr size_t remaining = tactile_protocol::FRAME_SIZE - 2;
-        if (!read_bytes(frame_buf + 2, remaining, timeout_ms)) {
-            return false;  // timeout (ConnectionLostError already thrown if disconnect)
-        }
-
-        // Verify length field == 1550
-        uint16_t length = static_cast<uint16_t>(
-            frame_buf[tactile_protocol::OFFSET_LENGTH] |
-            (frame_buf[tactile_protocol::OFFSET_LENGTH + 1] << 8));
-        if (length != tactile_protocol::EXPECTED_LENGTH) {
-            // Bad length: this was a false header (0xAA55 in pressure data).
-            // The caller should retry. We return false to signal "no valid frame".
-            return false;
-        }
-
-        // CRC validation: firmware computes over bytes [2, 1548), skipping header
-        uint16_t expected_crc = static_cast<uint16_t>(
-            frame_buf[tactile_protocol::OFFSET_CRC] |
-            (frame_buf[tactile_protocol::OFFSET_CRC + 1] << 8));
-        uint16_t computed_crc = tactile_protocol::crc16_ccitt(
-            frame_buf + tactile_protocol::OFFSET_LENGTH,
-            tactile_protocol::OFFSET_CRC - tactile_protocol::OFFSET_LENGTH);
-
-        if (expected_crc != computed_crc) {
-            // CRC mismatch: could be a false header or corrupted frame.
-            return false;
-        }
-
-        return true;
-    }
-
-    /// Read one valid frame with retries for false headers and CRC failures.
-    TactileFrame read_one_frame(uint32_t timeout_ms) {
-        // Allow up to ~20 sync attempts before giving up (handles false headers).
-        // At 120 FPS, one frame takes ~8.3ms. With 100ms timeout, we can
-        // attempt ~12 frames, which is generous for false-header recovery.
-        constexpr int MAX_SYNC_ATTEMPTS = 20;
-
-        for (int attempt = 0; attempt < MAX_SYNC_ATTEMPTS; ++attempt) {
-            if (sync_and_read_frame(timeout_ms)) {
-                TactileFrame frame = tactile_protocol::parse_frame(frame_buf);
-                last_hand.store(frame.hand, std::memory_order_relaxed);
-                return frame;
-            }
-            // sync_and_read_frame throws ConnectionLostError on disconnect,
-            // so if we're here it's a false header, bad length, or CRC failure.
-            // Continue scanning.
-        }
-
-        throw std::runtime_error("TactileBoard: timeout, no valid frame after "
-                                 + std::to_string(MAX_SYNC_ATTEMPTS) + " sync attempts");
-    }
-
-    // -----------------------------------------------------------------------
-    // Streaming thread
-    // -----------------------------------------------------------------------
-
-    void reader_loop(FrameCallback callback) {
-        while (!stop_requested.load(std::memory_order_acquire)) {
-            TactileFrame frame;
-            try {
-                frame = read_one_frame(100);
-            } catch (const ConnectionLostError&) {
-                close_device();  // Reset connected/fd so connect() can reopen
-                // Notify caller with a zero-initialized frame
-                TactileFrame empty{};
-                try {
-                    callback(empty);
-                } catch (...) {
-                    // Callback exception during disconnect notification: ignore
-                }
-                break;
-            } catch (const std::runtime_error&) {
-                // Timeout or sync failure: retry
+    void streaming_loop(FrameCallback callback) {
+        uint8_t buf[tactile_protocol::FRAME_SIZE];
+        while (!stop_streaming_requested.load(std::memory_order_acquire)) {
+            if (!demuxer || !demuxer->wait_data_frame(buf, 200)) {
+                // Timeout, stop, or disconnect — re-check the flag.
+                if (!connected.load(std::memory_order_acquire)) break;
                 continue;
             }
-            // Callback exceptions must not be swallowed as timeouts
+            TactileFrame frame = tactile_protocol::parse_frame(buf);
             try {
                 callback(frame);
             } catch (...) {
-                break;
+                break;  // user callback raised; exit cleanly
             }
         }
         streaming.store(false, std::memory_order_release);
     }
+
+    /// Issue a command and return its response payload.
+    std::vector<uint8_t> command(TactileCmd cmd, const uint8_t* payload, size_t len,
+                                 uint32_t timeout_ms = TACTILE_DEFAULT_TIMEOUT_MS) {
+        if (!demuxer) throw std::runtime_error("TactileBoard: not connected");
+        return demuxer->command(cmd, payload, len, timeout_ms);
+    }
 };
 
 // ---------------------------------------------------------------------------
-// Public API
+// Public API — connection / streaming
 // ---------------------------------------------------------------------------
 
 TactileBoard::TactileBoard(const char* serial_number)
@@ -239,7 +180,14 @@ TactileFrame TactileBoard::read_frame(uint32_t timeout_ms) {
         throw std::runtime_error("TactileBoard: not connected");
     if (impl_->streaming.load(std::memory_order_acquire))
         throw std::logic_error("TactileBoard: cannot call read_frame() while streaming");
-    return impl_->read_one_frame(timeout_ms);
+
+    uint8_t buf[tactile_protocol::FRAME_SIZE];
+    if (!impl_->demuxer->wait_data_frame(buf, timeout_ms)) {
+        if (!impl_->connected.load(std::memory_order_acquire))
+            throw ConnectionLostError("USB CDC device disconnected");
+        throw std::runtime_error("TactileBoard: read_frame timeout");
+    }
+    return tactile_protocol::parse_frame(buf);
 }
 
 void TactileBoard::start_streaming(FrameCallback callback) {
@@ -248,16 +196,13 @@ void TactileBoard::start_streaming(FrameCallback callback) {
     if (impl_->streaming.load(std::memory_order_acquire))
         throw std::logic_error("TactileBoard: already streaming");
 
-    // Join any previously exited reader thread to avoid std::terminate
-    // on assignment (thread may have exited via ConnectionLostError)
-    if (impl_->reader_thread.joinable()) {
-        impl_->reader_thread.join();
-    }
+    if (impl_->streaming_thread.joinable()) impl_->streaming_thread.join();
 
-    impl_->stop_requested.store(false, std::memory_order_release);
+    impl_->stop_streaming_requested.store(false, std::memory_order_release);
     impl_->streaming.store(true, std::memory_order_release);
     try {
-        impl_->reader_thread = std::thread(&Impl::reader_loop, impl_.get(), std::move(callback));
+        impl_->streaming_thread = std::thread(&Impl::streaming_loop, impl_.get(),
+                                              std::move(callback));
     } catch (...) {
         impl_->streaming.store(false, std::memory_order_release);
         throw;
@@ -265,15 +210,147 @@ void TactileBoard::start_streaming(FrameCallback callback) {
 }
 
 void TactileBoard::stop_streaming() {
-    impl_->stop_requested.store(true, std::memory_order_release);
-    if (impl_->reader_thread.joinable()) {
-        impl_->reader_thread.join();
-    }
+    impl_->stop_streaming_requested.store(true, std::memory_order_release);
+    if (impl_->streaming_thread.joinable()) impl_->streaming_thread.join();
     impl_->streaming.store(false, std::memory_order_release);
 }
 
-TactileHandedness TactileBoard::handedness() const {
-    return impl_->last_hand.load(std::memory_order_relaxed);
+void TactileBoard::set_disconnect_callback(DisconnectCallback callback) {
+    {
+        std::lock_guard<std::mutex> lock(impl_->disconnect_cb_mu);
+        impl_->disconnect_cb = callback;
+    }
+    if (impl_->demuxer) impl_->demuxer->set_disconnect_callback(std::move(callback));
+}
+
+// ---------------------------------------------------------------------------
+// Public API — commands (spec §3)
+// ---------------------------------------------------------------------------
+
+TactileDeviceInfo TactileBoard::get_device_info() {
+    auto resp = impl_->command(TactileCmd::GetDeviceInfo, nullptr, 0);
+    if (resp.size() != 32) {
+        throw std::runtime_error("get_device_info: unexpected payload size");
+    }
+    TactileDeviceInfo info;
+    info.serial = trim_ascii(resp.data(), 24);
+    std::memcpy(info.hw_revision.data(), resp.data() + 24, 4);
+    std::memcpy(info.fw_version.data(), resp.data() + 28, 4);
+    return info;
+}
+
+TactileFwBuild TactileBoard::get_fw_build() {
+    auto resp = impl_->command(TactileCmd::GetFwBuild, nullptr, 0);
+    if (resp.size() != 8) {
+        throw std::runtime_error("get_fw_build: unexpected payload size");
+    }
+    TactileFwBuild build;
+    build.git_short_sha = trim_ascii(resp.data(), 8);
+    return build;
+}
+
+TactileHandedness TactileBoard::get_handedness() {
+    auto resp = impl_->command(TactileCmd::GetHandedness, nullptr, 0);
+    if (resp.size() != 1) {
+        throw std::runtime_error("get_handedness: unexpected payload size");
+    }
+    return static_cast<TactileHandedness>(resp[0]);
+}
+
+TactileDiagnostics TactileBoard::get_diagnostics() {
+    auto resp = impl_->command(TactileCmd::GetDiagnostics, nullptr, 0);
+    if (resp.size() != 18) {
+        throw std::runtime_error("get_diagnostics: unexpected payload size");
+    }
+    TactileDiagnostics d;
+    d.uptime_ms       = read_le32(resp.data() + 0);
+    d.frame_count     = read_le32(resp.data() + 4);
+    d.crc_err_count   = read_le32(resp.data() + 8);
+    d.dropout_count   = read_le32(resp.data() + 12);
+    d.usb_reset_count = read_le16(resp.data() + 16);
+    return d;
+}
+
+void TactileBoard::reset_counters() {
+    impl_->command(TactileCmd::ResetCounters, nullptr, 0);
+}
+
+void TactileBoard::set_streaming(bool enable) {
+    uint8_t payload = enable ? 1 : 0;
+    impl_->command(TactileCmd::SetStreaming, &payload, 1);
+}
+
+void TactileBoard::reset_device() {
+    // Device re-enumerates after sending OK; treat any read failure as success
+    // because the response may be lost in the disconnect race. Use a short
+    // timeout to avoid blocking the caller after the jump.
+    try {
+        impl_->command(TactileCmd::Reset, nullptr, 0, 100);
+    } catch (const std::runtime_error&) {
+        // Expected: device may have reset before we read the reply.
+    }
+}
+
+void TactileBoard::enter_bootloader(uint32_t magic) {
+    uint8_t payload[4];
+    write_le32(payload, magic);
+    try {
+        impl_->command(TactileCmd::EnterBootloader, payload, 4, 100);
+    } catch (const TactileError&) {
+        // Magic mismatch is the only meaningful failure (BadPayload). Surface it.
+        throw;
+    } catch (const std::runtime_error&) {
+        // Device jumped before reply arrived — that's success.
+    }
+}
+
+uint16_t TactileBoard::get_sample_rate_hz() {
+    uint8_t req[2];
+    write_le16(req, static_cast<uint16_t>(TactileConfigKey::SampleRateHz));
+    auto resp = impl_->command(TactileCmd::GetConfig, req, 2);
+    if (resp.size() != 3 || resp[0] != static_cast<uint8_t>(TactileConfigType::U16)) {
+        throw std::runtime_error("get_sample_rate_hz: malformed response");
+    }
+    return read_le16(resp.data() + 1);
+}
+
+void TactileBoard::set_sample_rate_hz(uint16_t hz) {
+    uint8_t req[5];
+    write_le16(req, static_cast<uint16_t>(TactileConfigKey::SampleRateHz));
+    req[2] = static_cast<uint8_t>(TactileConfigType::U16);
+    write_le16(req + 3, hz);
+    impl_->command(TactileCmd::SetConfig, req, 5);
+}
+
+bool TactileBoard::get_streaming_enabled() {
+    uint8_t req[2];
+    write_le16(req, static_cast<uint16_t>(TactileConfigKey::StreamingEnabled));
+    auto resp = impl_->command(TactileCmd::GetConfig, req, 2);
+    if (resp.size() != 2 || resp[0] != static_cast<uint8_t>(TactileConfigType::EnumU8)) {
+        throw std::runtime_error("get_streaming_enabled: malformed response");
+    }
+    return resp[1] != 0;
+}
+
+TactileDeviceTime TactileBoard::get_device_time() {
+    auto resp = impl_->command(TactileCmd::GetDeviceTime, nullptr, 0);
+    if (resp.size() != 8) {
+        throw std::runtime_error("get_device_time: unexpected payload size");
+    }
+    return TactileDeviceTime{read_le64(resp.data())};
+}
+
+TactileSyncResult TactileBoard::sync_host_epoch(uint64_t host_unix_ns) {
+    uint8_t req[8];
+    write_le64(req, host_unix_ns);
+    auto resp = impl_->command(TactileCmd::SyncHostEpoch, req, 8);
+    if (resp.size() != 16) {
+        throw std::runtime_error("sync_host_epoch: unexpected payload size");
+    }
+    TactileSyncResult r;
+    r.device_ns_at_sync = read_le64(resp.data());
+    r.host_ns_echo      = read_le64(resp.data() + 8);
+    return r;
 }
 
 }  // namespace wujihandcpp

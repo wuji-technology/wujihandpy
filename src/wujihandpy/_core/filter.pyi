@@ -4,5 +4,5 @@ __all__: list[str] = ['IFilter', 'LowPass']
 class IFilter:
     pass
 class LowPass(IFilter):
-    def __init__(self, cutoff_freq: typing.SupportsFloat = 10.0) -> None:
+    def __init__(self, cutoff_freq: typing.SupportsFloat | typing.SupportsIndex = 10.0) -> None:
         ...

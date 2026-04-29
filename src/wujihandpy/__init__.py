@@ -4,4 +4,7 @@ from ._core import *
 from ._version import __version__
 
 __all__ = ["__version__", 'Hand', 'Finger', 'Joint', 'IController', 'filter',
-           'TactileBoard', 'TactileFrame', 'TactileHandedness']
+           'TactileBoard', 'TactileFrame', 'TactileHandedness',
+           'TactileDeviceInfo', 'TactileFwBuild', 'TactileDiagnostics',
+           'TactileDeviceTime', 'TactileSyncResult',
+           'TactileStatus', 'TactileError']
