@@ -1,12 +1,10 @@
 #pragma once
 
-#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <memory>
 #include <stdexcept>
 #include <string>
-#include <thread>
 
 #include "wujihandcpp/data/tactile.hpp"
 #include "wujihandcpp/data/tactile_device.hpp"
@@ -30,7 +28,7 @@ class WUJIHANDCPP_API ConnectionLostError : public std::runtime_error {
 /// the wire format and command set.
 ///
 /// Thread safety:
-///   - is_connected() and handedness() are thread-safe.
+///   - is_connected() and get_handedness() are thread-safe.
 ///   - read_frame() and start_streaming() are mutually exclusive.
 ///   - disconnect() can be called from any thread; it stops streaming.
 ///   - After disconnect, connect() can be called again to reconnect.
@@ -68,27 +66,29 @@ public:
 
     // -- Streaming --
 
-    /// Callback type for streaming mode.
-    /// Called on the internal reader thread. Must not block.
+    /// Frame callback. Invoked on the streaming consumer thread. Must not
+    /// block — long work should be dispatched to a worker queue.
     using FrameCallback = std::function<void(const TactileFrame&)>;
 
-    /// Callback fired exactly once when the USB device disconnects (after
-    /// either streaming or a blocking read sees ConnectionLostError).
-    /// Called on the internal reader thread. Must not block.
+    /// Disconnect callback. Fired exactly once when the device drops off
+    /// the bus, on the demuxer reader thread. Must not block. Calling
+    /// disconnect() from inside this callback is supported (the reader
+    /// thread self-detaches).
     using DisconnectCallback = std::function<void()>;
 
     /// Register a disconnect callback (replaces any prior one).
     /// Pass an empty std::function to clear. May be called before connect().
     void set_disconnect_callback(DisconnectCallback callback);
 
-    /// Start continuous frame reading on an internal thread.
-    /// The frame callback is invoked for every valid frame. On USB
-    /// disconnect, the disconnect callback (if registered) is invoked and
-    /// streaming stops automatically.
-    /// @throws std::logic_error if already streaming or read_frame() is active.
+    /// Start continuous frame reading on an internal thread. The frame
+    /// callback is invoked for every frame. On USB disconnect, the
+    /// disconnect callback (if registered) fires and streaming stops.
+    /// @throws std::logic_error if already streaming.
     void start_streaming(FrameCallback callback);
 
-    /// Stop streaming and join the reader thread.
+    /// Stop streaming. Joins the consumer thread normally; if called from
+    /// inside the consumer (e.g. from a frame callback), the thread is
+    /// detached and unwinds asynchronously.
     void stop_streaming();
 
     // -- Identity (spec §3.1) --
@@ -158,12 +158,10 @@ public:
 
 private:
     struct Impl;
-    // shared_ptr (not unique_ptr) so the streaming thread's lambda can hold
-    // its own ref. That keeps Impl alive past TactileBoard destruction —
-    // necessary when the user destroys the board (or calls disconnect /
-    // stop_streaming) from inside a frame callback running ON the streaming
-    // thread: we cannot self-join, so we detach and let the thread tear
-    // down naturally as it drops the last Impl ref.
+    // shared_ptr so the streaming-thread lambda can hold its own ref.
+    // When the board is destroyed from inside a frame callback running on
+    // the streaming thread, disconnect() detaches instead of self-joining
+    // and the thread keeps Impl alive until it unwinds.
     std::shared_ptr<Impl> impl_;
 };
 

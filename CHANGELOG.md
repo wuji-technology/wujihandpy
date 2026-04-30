@@ -14,12 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Data frame is now 3088 B (was 1550 B); pressure is `float32` in `[0.0, 1.0]`
     with `NaN` marking invalid cells (was inverted-polarity `int16`).
   - `TactileFrame.pressure` is exposed as a `numpy.float32` 24×32 array.
-  - 12 commands added on `TactileBoard`: `get_device_info`, `get_fw_build`,
+  - New commands on `TactileBoard`: `get_device_info`, `get_fw_build`,
     `get_handedness`, `get_diagnostics`, `reset_counters`, `set_streaming`,
     `reset_device`, `enter_bootloader`, `get_sample_rate_hz`,
     `set_sample_rate_hz`, `get_streaming_enabled`, `get_device_time`,
-    `sync_host_epoch`. `TactileBoard.handedness()` (frame-derived) is removed
-    in favor of `get_handedness()` (queries the device directly).
+    `sync_host_epoch`. The frame-derived `handedness()` is replaced by
+    `get_handedness()` (queries the device directly).
   - `set_disconnect_callback()` replaces the prior "zero-init frame as
     disconnect signal" hack — `0.0` is now a legitimate pressure value.
   - New types: `TactileDeviceInfo`, `TactileFwBuild`, `TactileDiagnostics`,

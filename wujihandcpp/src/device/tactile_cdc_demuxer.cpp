@@ -45,10 +45,6 @@ TactileCdcDemuxer::~TactileCdcDemuxer() {
 }
 
 void TactileCdcDemuxer::start() {
-    stop_requested_.store(false, std::memory_order_release);
-    disconnected_.store(false, std::memory_order_release);
-    closed_.store(false, std::memory_order_release);
-    disconnect_cb_fired_.store(false, std::memory_order_release);
     // Capture shared_from_this() so the reader thread keeps the demuxer
     // alive for as long as the loop runs. Required for the self-detach path
     // in stop(): if stop() is called from inside the reader thread (via the
@@ -61,40 +57,27 @@ void TactileCdcDemuxer::start() {
 }
 
 void TactileCdcDemuxer::stop() {
-    // Mark closed BEFORE waking waiters so a thread woken by the CV sees the
-    // new state on its predicate re-check and throws NotConnected instead of
-    // racing back to sleep and timing out 2 s later.
-    //
-    // NOTE: this does NOT acquire command_mu_ before flipping closed_, so a
-    // command call that already passed its closed_/disconnected_ check at
-    // the top of single_command() may still complete its write_exact()
-    // before observing closed_=true. Documented as "at most one
-    // teardown-race write": the bytes go to a device whose host is being
-    // torn down — no UB, no data corruption, and the response (if any) is
-    // discarded by the kernel when fd is closed. Acquiring command_mu_
-    // here would block stop() up to one command timeout (~2 s) for a
-    // benign edge case, which we judged not worth the latency cost.
-    closed_.store(true, std::memory_order_release);
+    // A caller mid-write that already passed the disconnected_/stop_requested_
+    // check in single_command() may still complete its write_exact() before
+    // observing the new state — at most one "teardown-race write" leaks out.
+    // Bytes go to a device whose host is being torn down; the response (if
+    // any) is discarded when the kernel closes the fd. Acquiring command_mu_
+    // here to fully prevent it would block stop() up to one command timeout
+    // (~2 s) for a benign edge case, which we judged not worth the latency.
     stop_requested_.store(true, std::memory_order_release);
-
-    // Wake any data-frame consumer.
-    {
-        std::lock_guard<std::mutex> lock(frame_mu_);
-        frame_cv_.notify_all();
-    }
-    // Wake any in-flight command waiter.
-    {
-        std::lock_guard<std::mutex> lock(pending_mu_);
-        pending_cv_.notify_all();
-    }
+    // Take the predicate mutexes briefly before notifying. Without this, a
+    // waiter that evaluated its predicate just before stop_requested_ was
+    // set, but that hasn't yet added itself to the CV wait queue, would
+    // miss the notification and sleep until its timeout.
+    { std::lock_guard<std::mutex> lock(frame_mu_); frame_cv_.notify_all(); }
+    { std::lock_guard<std::mutex> lock(pending_mu_); pending_cv_.notify_all(); }
     if (thread_.joinable()) {
         if (thread_.get_id() == std::this_thread::get_id()) {
-            // Called from inside the reader thread — typically because a
-            // user-installed disconnect callback synchronously tore down
-            // the SDK handle (board.disconnect(), or destroyed the
-            // TactileBoard). Joining ourselves would std::terminate; detach
-            // and let the reader loop unwind naturally. The shared_ptr<self>
-            // captured in start() keeps `*this` alive until reader_loop
+            // Called from inside the reader thread (typically because a
+            // user disconnect callback synchronously tore down the SDK
+            // handle). Joining ourselves would std::terminate; detach and
+            // let the reader loop unwind naturally. The shared_ptr<self>
+            // captured in start() keeps *this alive until reader_loop
             // returns, after which the last ref drops and ~TactileCdcDemuxer
             // closes the fd.
             thread_.detach();
@@ -167,15 +150,10 @@ std::vector<uint8_t> TactileCdcDemuxer::single_command(TactileCmd cmd, const uin
     if (payload_len > MAX_REQUEST_PAYLOAD) {
         throw std::runtime_error("TactileCdcDemuxer: command payload too large");
     }
-    // Two distinct shutdown signals here: closed_ means stop() was called
-    // (lifecycle teardown — e.g. disconnect() concurrent with this in-flight
-    // command snapshot), while disconnected_ means the device dropped off
-    // the bus. Both must short-circuit the write so a caller holding a stale
-    // demuxer snapshot never sends bytes after the lifecycle owner thought
-    // the channel was torn down.
-    if (closed_.load(std::memory_order_acquire)
-        || disconnected_.load(std::memory_order_acquire)) {
-        throw TactileNotConnectedError("TactileCdcDemuxer: device disconnected");
+    // Short-circuit if the channel is already torn down — a stale demuxer
+    // snapshot must not send bytes after the lifecycle owner closed it.
+    if (is_closed()) {
+        throw TactileNotConnectedError("TactileCdcDemuxer: channel closed");
     }
 
     // Build command frame (spec §2.2): sync(2) + length(2) + cmd(2) + seq(2)
@@ -219,19 +197,20 @@ std::vector<uint8_t> TactileCdcDemuxer::single_command(TactileCmd cmd, const uin
         [this]() {
             return pending_filled_
                 || disconnected_.load(std::memory_order_acquire)
-                || closed_.load(std::memory_order_acquire);
+                || stop_requested_.load(std::memory_order_acquire);
         });
     pending_active_ = false;
 
+    // Distinguish "device dropped during request" from "lifecycle owner
+    // tore the channel down" so callers can react differently (e.g. retry
+    // after reconnect vs. surface the teardown).
     if (disconnected_.load(std::memory_order_acquire)) {
         throw TactileDisconnectedDuringRequestError(
             "TactileCdcDemuxer: disconnected while awaiting response");
     }
-    if (closed_.load(std::memory_order_acquire) && !pending_filled_) {
-        // stop() arrived before the response — the lifecycle owner asked us
-        // to shut down. Surface this distinctly from "device disconnected".
+    if (stop_requested_.load(std::memory_order_acquire) && !pending_filled_) {
         throw TactileNotConnectedError(
-            "TactileCdcDemuxer: closed while awaiting response");
+            "TactileCdcDemuxer: channel closed while awaiting response");
     }
     if (!got || !pending_filled_) {
         throw TactileResponseTimeoutError("TactileCdcDemuxer: response timeout");
@@ -315,28 +294,20 @@ bool TactileCdcDemuxer::read_drain(size_t count, uint32_t timeout_ms) {
 }
 
 void TactileCdcDemuxer::handle_disconnect() {
+    // disconnected_.exchange(true) gates everything below to fire exactly
+    // once, even if multiple read paths see EIO concurrently.
     if (disconnected_.exchange(true, std::memory_order_acq_rel)) return;
-    // EIO/HUP also closes the channel for command purposes; flip closed_ so
-    // any later in-flight command snapshot refuses the write rather than
-    // spending its full timeout waiting on a dead fd.
-    closed_.store(true, std::memory_order_release);
+    // Same predicate-mutex dance as stop(): hold each mutex briefly so a
+    // waiter that just evaluated its predicate cannot miss this wakeup.
+    { std::lock_guard<std::mutex> lock(frame_mu_); frame_cv_.notify_all(); }
+    { std::lock_guard<std::mutex> lock(pending_mu_); pending_cv_.notify_all(); }
+    DisconnectCallback cb;
     {
-        std::lock_guard<std::mutex> lock(frame_mu_);
-        frame_cv_.notify_all();
+        std::lock_guard<std::mutex> lock(disconnect_cb_mu_);
+        cb = disconnect_cb_;
     }
-    {
-        std::lock_guard<std::mutex> lock(pending_mu_);
-        pending_cv_.notify_all();
-    }
-    if (!disconnect_cb_fired_.exchange(true, std::memory_order_acq_rel)) {
-        DisconnectCallback cb;
-        {
-            std::lock_guard<std::mutex> lock(disconnect_cb_mu_);
-            cb = disconnect_cb_;
-        }
-        if (cb) {
-            try { cb(); } catch (...) {}
-        }
+    if (cb) {
+        try { cb(); } catch (...) {}
     }
 }
 

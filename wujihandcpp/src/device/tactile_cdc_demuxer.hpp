@@ -23,11 +23,11 @@ namespace wujihandcpp {
 /// incoming frame by sync byte (spec §2.1):
 ///   - `AA 55` data frames     → bounded queue consumed by `wait_data_frame()`
 ///   - `AA 57` response frames → matched by `seq` to the in-flight `command()`
-///   - `AA 56` (host→device)   → drained as protocol violation, warning logged
+///   - `AA 56` (host→device)   → drained (protocol violation; not expected on RX)
 ///
 /// Command requests are strictly serial (spec §2.4): only one `command()` call
-/// is in flight at a time. On disconnect, all waiters are woken with a
-/// disconnected status and the registered disconnect callback is invoked once.
+/// is in flight at a time. On disconnect, all waiters are woken and the
+/// registered disconnect callback is invoked once.
 ///
 /// Lifetime: MUST be created via std::make_shared. The reader thread captures
 /// a shared_ptr via shared_from_this() in start() so the demuxer remains
@@ -40,8 +40,7 @@ public:
     using DisconnectCallback = std::function<void()>;
 
     /// Construct a demuxer that takes ownership of `fd`. The fd is closed
-    /// in the destructor (after the reader thread joins) so callers must
-    /// not close it themselves.
+    /// in the destructor so callers must not close it themselves.
     explicit TactileCdcDemuxer(int fd);
     ~TactileCdcDemuxer();
 
@@ -51,15 +50,20 @@ public:
     /// Start the reader thread. Must not be called twice.
     void start();
 
-    /// Mark the command channel closed and stop the reader thread. Idempotent.
-    /// After stop() returns, no further commands can be dispatched (including
-    /// any in-flight wait will be aborted). Does NOT close the fd; the
-    /// destructor handles that after the reader thread joins.
+    /// Stop the reader thread. Idempotent. After stop() returns no further
+    /// commands can be dispatched and any in-flight wait is aborted.
+    /// Normally joins the reader thread; if called from the reader thread
+    /// itself (e.g. via a user disconnect callback) the thread is detached
+    /// and the captured self-shared_ptr keeps the demuxer alive until the
+    /// loop unwinds.
     void stop();
 
-    /// True if the demuxer has been stopped and no further commands may be
-    /// dispatched. (Disconnect/EIO also flips this.)
-    bool is_closed() const { return closed_.load(std::memory_order_acquire); }
+    /// True if no further commands may be dispatched, either because stop()
+    /// was called or because the device dropped off the bus.
+    bool is_closed() const {
+        return stop_requested_.load(std::memory_order_acquire)
+            || disconnected_.load(std::memory_order_acquire);
+    }
 
     /// Block waiting for the next data frame.
     /// @return true if a frame was placed in `out`; false on timeout / stop / disconnect.
@@ -98,15 +102,11 @@ private:
 
     int fd_;
     std::thread thread_;
+    // stop_requested_ = lifecycle owner asked us to shut down (stop() called).
+    // disconnected_   = device dropped off the bus (EIO/HUP from read).
+    // Either one short-circuits the command path and aborts in-flight waiters.
     std::atomic<bool> stop_requested_{false};
     std::atomic<bool> disconnected_{false};
-    // Set by stop() OR by handle_disconnect(). Once true, single_command()
-    // refuses to write to the fd; in-flight waiters are woken and throw
-    // TactileNotConnectedError (rather than the misleading "response
-    // timeout" they would otherwise hit). Using a separate flag from
-    // disconnected_ keeps the "device went away mid-call" vs. "handle was
-    // explicitly torn down" diagnostics distinguishable.
-    std::atomic<bool> closed_{false};
 
     // Data frame queue (bounded, drop-oldest). 16 slots = ~130 ms at 120 Hz,
     // enough to absorb scheduler hiccups in the consumer thread without
@@ -141,7 +141,6 @@ private:
 
     std::mutex disconnect_cb_mu_;
     DisconnectCallback disconnect_cb_;
-    std::atomic<bool> disconnect_cb_fired_{false};
 };
 
 }  // namespace wujihandcpp

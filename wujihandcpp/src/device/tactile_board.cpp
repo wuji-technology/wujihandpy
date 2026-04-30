@@ -7,7 +7,6 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
-#include <unistd.h>
 
 #include "../transport/cdc_transport.hpp"
 #include "tactile_cdc_demuxer.hpp"
@@ -124,12 +123,10 @@ struct TactileBoard::Impl {
 
         // Internal disconnect wrapper: flip `connected` BEFORE invoking the
         // user callback so anything checking is_connected() (including
-        // streaming_loop) sees the new state immediately. Captures `this`,
-        // which is safe — Impl outlives any demuxer it ever held (Impl is
-        // owned by TactileBoard via unique_ptr; demuxer cannot be invoked
-        // after TactileBoard is destroyed because TactileBoard's destructor
-        // calls disconnect() which drops the demuxer ref and waits for the
-        // reader thread to exit).
+        // streaming_loop) sees the new state immediately. Captures `this`
+        // (= Impl*); ~TactileBoard runs disconnect() which drops the
+        // demuxer's ref before Impl is freed, so the demuxer can never
+        // invoke this lambda after Impl is gone.
         new_demuxer->set_disconnect_callback([this]() {
             connected.store(false, std::memory_order_release);
             DisconnectCallback cb;
@@ -453,24 +450,19 @@ void TactileBoard::reset_device() {
 void TactileBoard::enter_bootloader(uint32_t magic) {
     uint8_t payload[4];
     write_le32(payload, magic);
-    bool jumped = true;
     try {
         impl_->command(TactileCmd::EnterBootloader, payload, 4, 100);
     } catch (const TactileResponseTimeoutError&) {
         // Device jumped to bootloader before the reply landed.
     } catch (const TactileDisconnectedDuringRequestError&) {
         // Device dropped USB during/after the write — same success path.
-    } catch (...) {
-        // TactileError(BadPayload) for magic mismatch, NotConnected,
-        // WriteFailed — all are caller-visible failures.
-        jumped = false;
-        throw;
     }
-    if (jumped) {
-        // App firmware is gone; the device will re-enumerate as PID 0x5701
-        // (bootloader). The caller must reconnect to a different device.
-        disconnect();
-    }
+    // Reaching this point means we got OK, hit a timeout, or saw the device
+    // drop — all "bootloader is now running" outcomes. Other exceptions
+    // (BadPayload for wrong magic, NotConnected, WriteFailed) propagate from
+    // command() and skip this teardown. The device re-enumerates as PID
+    // 0x5701; the caller must connect to that handle.
+    disconnect();
 }
 
 uint16_t TactileBoard::get_sample_rate_hz() {

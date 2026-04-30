@@ -1,6 +1,5 @@
 #pragma once
 
-#include <pybind11/functional.h>
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
@@ -40,7 +39,6 @@ inline void init_module(py::module_& m) {
         .def_readonly("hand", &TactileFrame::hand)
         .def_readonly("sequence", &TactileFrame::sequence)
         .def_readonly("timestamp_ms", &TactileFrame::timestamp_ms)
-        .def_readonly("crc_valid", &TactileFrame::crc_valid)
         .def_property_readonly("pressure", [](const TactileFrame& f) {
             // Return a 24x32 float32 numpy array. memcpy preserves NaN bit
             // patterns; callers detect invalid cells via numpy.isnan().

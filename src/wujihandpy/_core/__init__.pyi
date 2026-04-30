@@ -710,9 +710,6 @@ class TactileError(Exception):
     pass
 class TactileFrame:
     @property
-    def crc_valid(self) -> bool:
-        ...
-    @property
     def hand(self) -> TactileHandedness:
         ...
     @property

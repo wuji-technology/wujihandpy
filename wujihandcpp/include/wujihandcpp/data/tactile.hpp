@@ -14,12 +14,14 @@ enum class TactileHandedness : uint8_t { LEFT = 0, RIGHT = 1 };
 ///   0.0 = no contact, 1.0 = maximum contact.
 /// NaN marks an invalid cell (zone 0 — not part of any finger or palm region);
 /// callers must skip such cells via `std::isnan` / `numpy.isnan()`.
+///
+/// CRC validation happens in the demuxer before the frame is delivered;
+/// callers never see a bad-CRC frame.
 struct TactileFrame {
     TactileHandedness hand{};      ///< Left or right hand
     uint16_t sequence{};           ///< Frame counter (wraps at 65535)
     uint32_t timestamp_ms{};       ///< Milliseconds since device boot
     float pressure[24][32]{};      ///< Pressure matrix, [0.0, 1.0]; NaN = invalid cell
-    bool crc_valid{};              ///< Whether CRC16 check passed
 };
 
 namespace tactile_protocol {
@@ -69,34 +71,24 @@ inline uint16_t crc16_ccitt(const uint8_t* data, size_t length) {
     return crc;
 }
 
-/// Parse a raw 3088-byte frame into TactileFrame.
-/// Returns a TactileFrame with crc_valid set accordingly.
+/// Parse a raw 3088-byte frame into TactileFrame. CRC is validated by the
+/// demuxer before parse_frame() is called.
 inline TactileFrame parse_frame(const uint8_t* raw) {
     TactileFrame frame{};
 
-    // Hand
     frame.hand = static_cast<TactileHandedness>(raw[OFFSET_HAND]);
 
-    // Tactile data (24 x 32 f32 LE). memcpy preserves NaN bit patterns
-    // and is safe regardless of source alignment.
+    // memcpy preserves NaN bit patterns and is safe regardless of alignment.
     std::memcpy(&frame.pressure[0][0], raw + OFFSET_TACTILE_DATA, TACTILE_DATA_SIZE);
 
-    // Sequence (little-endian u16)
     frame.sequence = static_cast<uint16_t>(
         raw[OFFSET_SEQUENCE] | (raw[OFFSET_SEQUENCE + 1] << 8));
 
-    // Timestamp (little-endian u32)
     frame.timestamp_ms =
         static_cast<uint32_t>(raw[OFFSET_TIMESTAMP]) |
         (static_cast<uint32_t>(raw[OFFSET_TIMESTAMP + 1]) << 8) |
         (static_cast<uint32_t>(raw[OFFSET_TIMESTAMP + 2]) << 16) |
         (static_cast<uint32_t>(raw[OFFSET_TIMESTAMP + 3]) << 24);
-
-    // CRC: firmware computes over bytes [2, 3086), skipping the sync header.
-    uint16_t expected_crc = static_cast<uint16_t>(
-        raw[OFFSET_CRC] | (raw[OFFSET_CRC + 1] << 8));
-    uint16_t computed_crc = crc16_ccitt(raw + OFFSET_LENGTH, OFFSET_CRC - OFFSET_LENGTH);
-    frame.crc_valid = (expected_crc == computed_crc);
 
     return frame;
 }
