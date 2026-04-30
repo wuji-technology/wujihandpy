@@ -87,6 +87,15 @@ struct TactileBoard::Impl {
     std::atomic<bool> streaming{false};
     std::atomic<bool> stop_streaming_requested{false};
 
+    // Bumped by every successful start_streaming(). Each spawned thread
+    // captures the value it was started with; on exit it only clears the
+    // `streaming` flag if the current generation still matches its own.
+    // This closes the window where a self-detached old streaming thread
+    // exits AFTER a disconnect→reconnect→start_streaming cycle has spawned
+    // a fresh thread, and would otherwise clobber that fresh thread's
+    // `streaming=true` back to false.
+    std::atomic<uint64_t> streaming_generation{0};
+
     // User-facing disconnect callback. Held here so it survives across
     // connect() cycles and is re-installed (wrapped) on each new demuxer.
     std::mutex disconnect_cb_mu;
@@ -146,7 +155,8 @@ struct TactileBoard::Impl {
         return demuxer;
     }
 
-    void streaming_loop(std::shared_ptr<TactileCdcDemuxer> dx,
+    void streaming_loop(uint64_t my_gen,
+                        std::shared_ptr<TactileCdcDemuxer> dx,
                         FrameCallback callback) {
         uint8_t buf[tactile_protocol::FRAME_SIZE];
         while (!stop_streaming_requested.load(std::memory_order_acquire)) {
@@ -171,13 +181,16 @@ struct TactileBoard::Impl {
                 break;  // user callback raised; exit the consumer
             }
         }
-        // NOTE: this clears the streaming flag in the SHARED Impl. If a
-        // disconnect()→connect()→start_streaming() cycle has already kicked
-        // off a NEW streaming thread on the same Impl while we were exiting,
-        // we will momentarily clobber its `streaming=true`. The window is
-        // bounded by the 200 ms wait above; a future generation token would
-        // close it but is out of scope for the present fix.
-        streaming.store(false, std::memory_order_release);
+        // Generation guard: only clear the shared `streaming` flag if we are
+        // still the current generation. If a disconnect→reconnect cycle
+        // started a fresh streaming thread while we (an old, possibly
+        // detached, thread) were unwinding, clobbering its `streaming=true`
+        // would leave the SDK reporting "not streaming" while a thread is
+        // actively consuming frames.
+        uint64_t cur_gen = streaming_generation.load(std::memory_order_acquire);
+        if (cur_gen == my_gen) {
+            streaming.store(false, std::memory_order_release);
+        }
     }
 
     /// Issue a command and return its response payload.
@@ -263,6 +276,7 @@ TactileFrame TactileBoard::read_frame(uint32_t timeout_ms) {
 void TactileBoard::start_streaming(FrameCallback callback) {
     std::shared_ptr<TactileCdcDemuxer> dx;
     std::thread old_thread;
+    uint64_t my_gen;
     {
         std::lock_guard<std::mutex> lock(impl_->lifecycle_mu);
         if (!impl_->connected.load(std::memory_order_acquire))
@@ -274,6 +288,14 @@ void TactileBoard::start_streaming(FrameCallback callback) {
         // user-callback exception; harvest it for joining outside the lock.
         old_thread = std::move(impl_->streaming_thread);
         impl_->stop_streaming_requested.store(false, std::memory_order_release);
+        // Bump the generation BEFORE flipping streaming=true. Any old
+        // detached thread that exits between these two stores will read the
+        // already-bumped generation, see the mismatch with its captured
+        // value, and skip the streaming-flag clear that would otherwise
+        // clobber us. Bumping after the streaming store would re-open the
+        // race we are closing here.
+        my_gen = impl_->streaming_generation.fetch_add(
+            1, std::memory_order_acq_rel) + 1;
         impl_->streaming.store(true, std::memory_order_release);
     }
     if (old_thread.joinable()) old_thread.join();
@@ -302,8 +324,9 @@ void TactileBoard::start_streaming(FrameCallback callback) {
         impl_->streaming_thread = std::thread(
             [impl = std::move(impl_keepalive),
              dx_local = std::move(dx),
-             cb = std::move(callback)]() mutable {
-                impl->streaming_loop(std::move(dx_local), std::move(cb));
+             cb = std::move(callback),
+             my_gen]() mutable {
+                impl->streaming_loop(my_gen, std::move(dx_local), std::move(cb));
             });
     } catch (...) {
         impl_->streaming.store(false, std::memory_order_release);

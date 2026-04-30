@@ -49,13 +49,31 @@ void TactileCdcDemuxer::start() {
     disconnected_.store(false, std::memory_order_release);
     closed_.store(false, std::memory_order_release);
     disconnect_cb_fired_.store(false, std::memory_order_release);
-    thread_ = std::thread(&TactileCdcDemuxer::reader_loop, this);
+    // Capture shared_from_this() so the reader thread keeps the demuxer
+    // alive for as long as the loop runs. Required for the self-detach path
+    // in stop(): if stop() is called from inside the reader thread (via the
+    // user-installed disconnect callback, which we invoke synchronously),
+    // we cannot join ourselves and must detach. After detach the lifecycle
+    // owner may drop its shared_ptr, but the captured `self` here keeps the
+    // demuxer alive until reader_loop returns.
+    auto self = shared_from_this();
+    thread_ = std::thread([self]() { self->reader_loop(); });
 }
 
 void TactileCdcDemuxer::stop() {
     // Mark closed BEFORE waking waiters so a thread woken by the CV sees the
     // new state on its predicate re-check and throws NotConnected instead of
     // racing back to sleep and timing out 2 s later.
+    //
+    // NOTE: this does NOT acquire command_mu_ before flipping closed_, so a
+    // command call that already passed its closed_/disconnected_ check at
+    // the top of single_command() may still complete its write_exact()
+    // before observing closed_=true. Documented as "at most one
+    // teardown-race write": the bytes go to a device whose host is being
+    // torn down — no UB, no data corruption, and the response (if any) is
+    // discarded by the kernel when fd is closed. Acquiring command_mu_
+    // here would block stop() up to one command timeout (~2 s) for a
+    // benign edge case, which we judged not worth the latency cost.
     closed_.store(true, std::memory_order_release);
     stop_requested_.store(true, std::memory_order_release);
 
@@ -69,7 +87,21 @@ void TactileCdcDemuxer::stop() {
         std::lock_guard<std::mutex> lock(pending_mu_);
         pending_cv_.notify_all();
     }
-    if (thread_.joinable()) thread_.join();
+    if (thread_.joinable()) {
+        if (thread_.get_id() == std::this_thread::get_id()) {
+            // Called from inside the reader thread — typically because a
+            // user-installed disconnect callback synchronously tore down
+            // the SDK handle (board.disconnect(), or destroyed the
+            // TactileBoard). Joining ourselves would std::terminate; detach
+            // and let the reader loop unwind naturally. The shared_ptr<self>
+            // captured in start() keeps `*this` alive until reader_loop
+            // returns, after which the last ref drops and ~TactileCdcDemuxer
+            // closes the fd.
+            thread_.detach();
+        } else {
+            thread_.join();
+        }
+    }
 }
 
 void TactileCdcDemuxer::set_disconnect_callback(DisconnectCallback cb) {

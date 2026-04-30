@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <deque>
 #include <functional>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <thread>
@@ -27,7 +28,14 @@ namespace wujihandcpp {
 /// Command requests are strictly serial (spec §2.4): only one `command()` call
 /// is in flight at a time. On disconnect, all waiters are woken with a
 /// disconnected status and the registered disconnect callback is invoked once.
-class TactileCdcDemuxer {
+///
+/// Lifetime: MUST be created via std::make_shared. The reader thread captures
+/// a shared_ptr via shared_from_this() in start() so the demuxer remains
+/// alive until the reader loop exits — required for the self-detach path in
+/// stop() (where stop() is called from inside a user-installed disconnect
+/// callback running on the reader thread itself, and joining would
+/// std::terminate).
+class TactileCdcDemuxer : public std::enable_shared_from_this<TactileCdcDemuxer> {
 public:
     using DisconnectCallback = std::function<void()>;
 
