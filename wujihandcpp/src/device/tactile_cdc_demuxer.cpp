@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <cstring>
+#include <unistd.h>
 
 #include "../transport/cdc_transport.hpp"
 
@@ -37,6 +38,10 @@ TactileCdcDemuxer::TactileCdcDemuxer(int fd) : fd_(fd) {}
 
 TactileCdcDemuxer::~TactileCdcDemuxer() {
     stop();
+    if (fd_ >= 0) {
+        ::close(fd_);
+        fd_ = -1;
+    }
 }
 
 void TactileCdcDemuxer::start() {
@@ -105,7 +110,7 @@ std::vector<uint8_t> TactileCdcDemuxer::single_command(TactileCmd cmd, const uin
         throw std::runtime_error("TactileCdcDemuxer: command payload too large");
     }
     if (disconnected_.load(std::memory_order_acquire)) {
-        throw std::runtime_error("TactileCdcDemuxer: device disconnected");
+        throw TactileNotConnectedError("TactileCdcDemuxer: device disconnected");
     }
 
     // Build command frame (spec §2.2): sync(2) + length(2) + cmd(2) + seq(2)
@@ -124,11 +129,14 @@ std::vector<uint8_t> TactileCdcDemuxer::single_command(TactileCmd cmd, const uin
     write_le16(buf + 8 + payload_len, crc);
 
     // Arm the in-flight slot before sending so the reader can deliver as
-    // soon as the response lands.
+    // soon as the response lands. Match on (seq, cmd_id) — seq alone wraps
+    // every 65535 commands and a delayed stale response could otherwise
+    // satisfy the wrong waiter (~109 min at 10 Hz of diagnostics polling).
     {
         std::lock_guard<std::mutex> lock(pending_mu_);
         pending_active_ = true;
         pending_seq_ = seq;
+        pending_cmd_ = cmd;
         pending_filled_ = false;
         pending_payload_.clear();
     }
@@ -136,7 +144,8 @@ std::vector<uint8_t> TactileCdcDemuxer::single_command(TactileCmd cmd, const uin
     if (cdc::write_exact(fd_, buf, length) != static_cast<ssize_t>(length)) {
         std::lock_guard<std::mutex> lock(pending_mu_);
         pending_active_ = false;
-        throw std::runtime_error("TactileCdcDemuxer: write failed (device disconnected?)");
+        throw TactileWriteFailedError(
+            "TactileCdcDemuxer: write failed (device disconnected?)");
     }
 
     // Wait for the matching response.
@@ -150,10 +159,11 @@ std::vector<uint8_t> TactileCdcDemuxer::single_command(TactileCmd cmd, const uin
     pending_active_ = false;
 
     if (disconnected_.load(std::memory_order_acquire)) {
-        throw std::runtime_error("TactileCdcDemuxer: disconnected while awaiting response");
+        throw TactileDisconnectedDuringRequestError(
+            "TactileCdcDemuxer: disconnected while awaiting response");
     }
     if (!got || !pending_filled_) {
-        throw std::runtime_error("TactileCdcDemuxer: response timeout");
+        throw TactileResponseTimeoutError("TactileCdcDemuxer: response timeout");
     }
 
     TactileStatus status = pending_status_;
@@ -180,29 +190,37 @@ void TactileCdcDemuxer::handle_response_frame(const uint8_t* buf, uint16_t lengt
     //   2..4 length, 4..6 cmd_id, 6..8 seq, 8 status, 9..(L-2) payload, (L-2)..L crc.
     if (length < RESPONSE_FIXED_OVERHEAD) return;  // malformed; drop
     uint16_t crc_pos = length - 2;
+    uint16_t resp_cmd_raw = read_le16(buf + 4);
+    uint16_t resp_seq = read_le16(buf + 6);
     uint16_t expected_crc = read_le16(buf + crc_pos);
     uint16_t computed_crc = tactile_protocol::crc16_ccitt(buf + 2, crc_pos - 2);
+
     if (expected_crc != computed_crc) {
-        // Surface as BadCrc so the in-flight caller can retry.
+        // Surface as BadCrc so the in-flight caller can retry. Match BOTH
+        // cmd_id and seq — a stale corrupted echo from a prior command that
+        // happens to share `seq` (after u16 wrap) must not poison a newer
+        // unrelated command's wait.
         std::lock_guard<std::mutex> lock(pending_mu_);
-        if (pending_active_) {
-            uint16_t resp_seq = read_le16(buf + 6);
-            if (resp_seq == pending_seq_) {
-                pending_status_ = TactileStatus::BadCrc;
-                pending_payload_.clear();
-                pending_filled_ = true;
-                pending_cv_.notify_one();
-            }
+        if (pending_active_
+            && resp_seq == pending_seq_
+            && resp_cmd_raw == static_cast<uint16_t>(pending_cmd_)) {
+            pending_status_ = TactileStatus::BadCrc;
+            pending_payload_.clear();
+            pending_filled_ = true;
+            pending_cv_.notify_one();
         }
         return;
     }
 
-    uint16_t resp_seq = read_le16(buf + 6);
     uint8_t status_byte = buf[8];
     size_t payload_len = static_cast<size_t>(crc_pos) - 9;
 
     std::lock_guard<std::mutex> lock(pending_mu_);
-    if (!pending_active_ || resp_seq != pending_seq_) return;  // stale / unsolicited
+    if (!pending_active_
+        || resp_seq != pending_seq_
+        || resp_cmd_raw != static_cast<uint16_t>(pending_cmd_)) {
+        return;  // stale / unsolicited / cmd_id mismatch
+    }
     pending_status_ = static_cast<TactileStatus>(status_byte);
     pending_payload_.assign(buf + 9, buf + 9 + payload_len);
     pending_filled_ = true;

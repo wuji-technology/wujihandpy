@@ -30,6 +30,9 @@ class TactileCdcDemuxer {
 public:
     using DisconnectCallback = std::function<void()>;
 
+    /// Construct a demuxer that takes ownership of `fd`. The fd is closed
+    /// in the destructor (after the reader thread joins) so callers must
+    /// not close it themselves.
     explicit TactileCdcDemuxer(int fd);
     ~TactileCdcDemuxer();
 
@@ -39,7 +42,8 @@ public:
     /// Start the reader thread. Must not be called twice.
     void start();
 
-    /// Stop the reader thread and wake all waiters. Idempotent.
+    /// Stop the reader thread and wake all waiters. Idempotent. Does NOT
+    /// close the fd; the destructor handles that after stop().
     void stop();
 
     /// Block waiting for the next data frame.
@@ -95,6 +99,7 @@ private:
     std::condition_variable pending_cv_;
     bool pending_active_ = false;
     uint16_t pending_seq_ = 0;
+    TactileCmd pending_cmd_ = TactileCmd::GetDeviceInfo;  // matched alongside seq
     bool pending_filled_ = false;
     TactileStatus pending_status_ = TactileStatus::Ok;
     std::vector<uint8_t> pending_payload_;

@@ -73,4 +73,30 @@ private:
     TactileStatus status_;
 };
 
+/// Caller invoked a command but the SDK is not connected (or was already
+/// disconnected by an unrelated path before the call started).
+class TactileNotConnectedError : public std::runtime_error {
+    using std::runtime_error::runtime_error;
+};
+
+/// The host could not write the command bytes to the CDC fd. Usually means
+/// the device dropped off the bus between connect() and the call.
+class TactileWriteFailedError : public std::runtime_error {
+    using std::runtime_error::runtime_error;
+};
+
+/// The command went out on the wire but no response arrived within the
+/// per-call timeout. The device is still considered connected; the command
+/// may or may not have taken effect on the device side.
+class TactileResponseTimeoutError : public std::runtime_error {
+    using std::runtime_error::runtime_error;
+};
+
+/// The command went out on the wire and the device disconnected before a
+/// response could be returned. For commands that intentionally tear down
+/// the USB device (RESET, ENTER_BOOTLOADER) this is the success path.
+class TactileDisconnectedDuringRequestError : public std::runtime_error {
+    using std::runtime_error::runtime_error;
+};
+
 }  // namespace wujihandcpp

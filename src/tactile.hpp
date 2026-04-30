@@ -74,11 +74,26 @@ inline void init_module(py::module_& m) {
         .def_readonly("host_ns_echo", &TactileSyncResult::host_ns_echo);
 
     // --- TactileBoard device ---
-    py::class_<TactileBoard>(m, "TactileBoard")
+    //
+    // Held by shared_ptr with a custom GIL-releasing deleter so that when
+    // Python GC destroys the wrapper while a streaming thread is exiting,
+    // the destructor does not block on a thread that needs the GIL to
+    // destroy its captured Python callback (see deleter pattern below).
+    py::class_<TactileBoard, std::shared_ptr<TactileBoard>>(m, "TactileBoard")
         .def(py::init([](std::optional<std::string> serial_number) {
             const char* sn = serial_number.has_value()
                 ? serial_number.value().c_str() : nullptr;
-            return std::make_unique<TactileBoard>(sn);
+            return std::shared_ptr<TactileBoard>(
+                new TactileBoard(sn),
+                [](TactileBoard* p) {
+                    // Release the GIL before running ~TactileBoard, which
+                    // calls disconnect() and joins the streaming /
+                    // demuxer-reader threads. Either of those threads may
+                    // need to acquire the GIL to destroy a captured
+                    // py::function — without this release we deadlock.
+                    py::gil_scoped_release release;
+                    delete p;
+                });
         }), py::arg("serial_number") = py::none())
 
         // Connection
@@ -107,7 +122,7 @@ inline void init_module(py::module_& m) {
                     py::gil_scoped_acquire acquire;
                     delete cb;
                 });
-            self.start_streaming([cb = std::move(callback_ptr)](const TactileFrame& frame) {
+            auto cpp_cb = [cb = std::move(callback_ptr)](const TactileFrame& frame) {
                 py::gil_scoped_acquire acquire;
                 try {
                     (*cb)(frame);
@@ -117,7 +132,13 @@ inline void init_module(py::module_& m) {
                     throw std::runtime_error(
                         "TactileBoard: Python frame callback raised an exception");
                 }
-            });
+            };
+            // Release the GIL across self.start_streaming(...) — internally
+            // it joins any previously-exited streaming thread, and that
+            // thread's destruction needs the GIL to drop its captured
+            // py::function. Holding the GIL here would deadlock.
+            py::gil_scoped_release release;
+            self.start_streaming(std::move(cpp_cb));
         }, py::arg("callback"))
 
         .def("stop_streaming", [](TactileBoard& self) {
@@ -132,7 +153,7 @@ inline void init_module(py::module_& m) {
                     py::gil_scoped_acquire acquire;
                     delete cb;
                 });
-            self.set_disconnect_callback([cb = std::move(callback_ptr)]() {
+            auto cpp_cb = [cb = std::move(callback_ptr)]() {
                 py::gil_scoped_acquire acquire;
                 try {
                     (*cb)();
@@ -142,7 +163,11 @@ inline void init_module(py::module_& m) {
                     // Disconnect callback exceptions are intentionally swallowed
                     // (see C++ TactileBoard::set_disconnect_callback contract).
                 }
-            });
+            };
+            // Release the GIL — set_disconnect_callback may drop the
+            // previous callback's shared_ptr, whose deleter needs the GIL.
+            py::gil_scoped_release release;
+            self.set_disconnect_callback(std::move(cpp_cb));
         }, py::arg("callback"))
 
         // Identity (spec §3.1)
