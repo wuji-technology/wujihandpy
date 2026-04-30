@@ -107,6 +107,17 @@ public:
     /// Spec §3.2.1 — uptime / counters snapshot.
     TactileDiagnostics get_diagnostics();
 
+    /// Non-blocking variant of get_diagnostics(). If the SDK command channel
+    /// is currently busy (another command in flight on a different thread),
+    /// returns false WITHOUT queueing or blocking. Otherwise behaves like
+    /// get_diagnostics(): on success writes into `out` and returns true; on
+    /// timeout / disconnect / non-Ok status throws as get_diagnostics() does.
+    ///
+    /// Intended for periodic pollers (e.g. a ROS diagnostics timer) that
+    /// must yield to higher-priority caller-issued commands instead of
+    /// queueing behind them on the per-channel serializer.
+    bool try_get_diagnostics(TactileDiagnostics& out);
+
     /// Spec §3.2.2 — zero the four diagnostic counters.
     void reset_counters();
 
@@ -147,7 +158,13 @@ public:
 
 private:
     struct Impl;
-    std::unique_ptr<Impl> impl_;
+    // shared_ptr (not unique_ptr) so the streaming thread's lambda can hold
+    // its own ref. That keeps Impl alive past TactileBoard destruction —
+    // necessary when the user destroys the board (or calls disconnect /
+    // stop_streaming) from inside a frame callback running ON the streaming
+    // thread: we cannot self-join, so we detach and let the thread tear
+    // down naturally as it drops the last Impl ref.
+    std::shared_ptr<Impl> impl_;
 };
 
 }  // namespace wujihandcpp

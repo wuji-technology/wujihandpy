@@ -47,11 +47,16 @@ TactileCdcDemuxer::~TactileCdcDemuxer() {
 void TactileCdcDemuxer::start() {
     stop_requested_.store(false, std::memory_order_release);
     disconnected_.store(false, std::memory_order_release);
+    closed_.store(false, std::memory_order_release);
     disconnect_cb_fired_.store(false, std::memory_order_release);
     thread_ = std::thread(&TactileCdcDemuxer::reader_loop, this);
 }
 
 void TactileCdcDemuxer::stop() {
+    // Mark closed BEFORE waking waiters so a thread woken by the CV sees the
+    // new state on its predicate re-check and throws NotConnected instead of
+    // racing back to sleep and timing out 2 s later.
+    closed_.store(true, std::memory_order_release);
     stop_requested_.store(true, std::memory_order_release);
 
     // Wake any data-frame consumer.
@@ -104,12 +109,40 @@ std::vector<uint8_t> TactileCdcDemuxer::command(TactileCmd cmd, const uint8_t* p
     }
 }
 
+std::optional<std::vector<uint8_t>>
+TactileCdcDemuxer::try_command(TactileCmd cmd, const uint8_t* payload,
+                               size_t payload_len, uint32_t timeout_ms) {
+    // Non-blocking acquire of the command serializer. If another caller
+    // currently holds it, return nullopt — the caller decides whether to
+    // skip this iteration or retry. This is the SDK-side hook that lets the
+    // ROS diagnostics timer yield to user-issued service calls instead of
+    // queueing behind them on a slow command.
+    std::unique_lock<std::mutex> serial(command_mu_, std::try_to_lock);
+    if (!serial.owns_lock()) return std::nullopt;
+
+    try {
+        return single_command(cmd, payload, payload_len, timeout_ms);
+    } catch (const TactileError& e) {
+        if (e.status() == TactileStatus::BadCrc) {
+            return single_command(cmd, payload, payload_len, timeout_ms);
+        }
+        throw;
+    }
+}
+
 std::vector<uint8_t> TactileCdcDemuxer::single_command(TactileCmd cmd, const uint8_t* payload,
                                                        size_t payload_len, uint32_t timeout_ms) {
     if (payload_len > MAX_REQUEST_PAYLOAD) {
         throw std::runtime_error("TactileCdcDemuxer: command payload too large");
     }
-    if (disconnected_.load(std::memory_order_acquire)) {
+    // Two distinct shutdown signals here: closed_ means stop() was called
+    // (lifecycle teardown — e.g. disconnect() concurrent with this in-flight
+    // command snapshot), while disconnected_ means the device dropped off
+    // the bus. Both must short-circuit the write so a caller holding a stale
+    // demuxer snapshot never sends bytes after the lifecycle owner thought
+    // the channel was torn down.
+    if (closed_.load(std::memory_order_acquire)
+        || disconnected_.load(std::memory_order_acquire)) {
         throw TactileNotConnectedError("TactileCdcDemuxer: device disconnected");
     }
 
@@ -154,13 +187,19 @@ std::vector<uint8_t> TactileCdcDemuxer::single_command(TactileCmd cmd, const uin
         [this]() {
             return pending_filled_
                 || disconnected_.load(std::memory_order_acquire)
-                || stop_requested_.load(std::memory_order_acquire);
+                || closed_.load(std::memory_order_acquire);
         });
     pending_active_ = false;
 
     if (disconnected_.load(std::memory_order_acquire)) {
         throw TactileDisconnectedDuringRequestError(
             "TactileCdcDemuxer: disconnected while awaiting response");
+    }
+    if (closed_.load(std::memory_order_acquire) && !pending_filled_) {
+        // stop() arrived before the response — the lifecycle owner asked us
+        // to shut down. Surface this distinctly from "device disconnected".
+        throw TactileNotConnectedError(
+            "TactileCdcDemuxer: closed while awaiting response");
     }
     if (!got || !pending_filled_) {
         throw TactileResponseTimeoutError("TactileCdcDemuxer: response timeout");
@@ -245,6 +284,10 @@ bool TactileCdcDemuxer::read_drain(size_t count, uint32_t timeout_ms) {
 
 void TactileCdcDemuxer::handle_disconnect() {
     if (disconnected_.exchange(true, std::memory_order_acq_rel)) return;
+    // EIO/HUP also closes the channel for command purposes; flip closed_ so
+    // any later in-flight command snapshot refuses the write rather than
+    // spending its full timeout waiting on a dead fd.
+    closed_.store(true, std::memory_order_release);
     {
         std::lock_guard<std::mutex> lock(frame_mu_);
         frame_cv_.notify_all();

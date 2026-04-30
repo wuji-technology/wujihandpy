@@ -7,6 +7,7 @@
 #include <deque>
 #include <functional>
 #include <mutex>
+#include <optional>
 #include <thread>
 #include <vector>
 
@@ -42,9 +43,15 @@ public:
     /// Start the reader thread. Must not be called twice.
     void start();
 
-    /// Stop the reader thread and wake all waiters. Idempotent. Does NOT
-    /// close the fd; the destructor handles that after stop().
+    /// Mark the command channel closed and stop the reader thread. Idempotent.
+    /// After stop() returns, no further commands can be dispatched (including
+    /// any in-flight wait will be aborted). Does NOT close the fd; the
+    /// destructor handles that after the reader thread joins.
     void stop();
+
+    /// True if the demuxer has been stopped and no further commands may be
+    /// dispatched. (Disconnect/EIO also flips this.)
+    bool is_closed() const { return closed_.load(std::memory_order_acquire); }
 
     /// Block waiting for the next data frame.
     /// @return true if a frame was placed in `out`; false on timeout / stop / disconnect.
@@ -57,6 +64,17 @@ public:
     /// @throws std::runtime_error on disconnect mid-request.
     std::vector<uint8_t> command(TactileCmd cmd, const uint8_t* payload, size_t payload_len,
                                  uint32_t timeout_ms = TACTILE_DEFAULT_TIMEOUT_MS);
+
+    /// Like command() but returns std::nullopt instead of blocking when the
+    /// per-channel command mutex is already held by another caller. Used by
+    /// the ROS driver's diagnostics timer so it can yield to user-issued
+    /// services instead of queueing behind them on the SDK serializer.
+    /// @throws TactileError on non-Ok status (after BadCrc retry).
+    /// @throws TactileResponseTimeoutError on timeout.
+    /// @throws TactileNotConnectedError / TactileDisconnectedDuringRequestError on disconnect.
+    std::optional<std::vector<uint8_t>>
+    try_command(TactileCmd cmd, const uint8_t* payload, size_t payload_len,
+                uint32_t timeout_ms = TACTILE_DEFAULT_TIMEOUT_MS);
 
     /// Replace the disconnect callback. Empty std::function clears it.
     void set_disconnect_callback(DisconnectCallback cb);
@@ -74,6 +92,13 @@ private:
     std::thread thread_;
     std::atomic<bool> stop_requested_{false};
     std::atomic<bool> disconnected_{false};
+    // Set by stop() OR by handle_disconnect(). Once true, single_command()
+    // refuses to write to the fd; in-flight waiters are woken and throw
+    // TactileNotConnectedError (rather than the misleading "response
+    // timeout" they would otherwise hit). Using a separate flag from
+    // disconnected_ keeps the "device went away mid-call" vs. "handle was
+    // explicitly torn down" diagnostics distinguishable.
+    std::atomic<bool> closed_{false};
 
     // Data frame queue (bounded, drop-oldest). 16 slots = ~130 ms at 120 Hz,
     // enough to absorb scheduler hiccups in the consumer thread without

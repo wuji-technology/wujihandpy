@@ -150,10 +150,18 @@ struct TactileBoard::Impl {
                         FrameCallback callback) {
         uint8_t buf[tactile_protocol::FRAME_SIZE];
         while (!stop_streaming_requested.load(std::memory_order_acquire)) {
-            // Disconnect flips `connected` before the demuxer wakes us, so
-            // re-check it on every wakeup (timeout/stop/disconnect path).
+            // Three independent shutdown signals are checked here:
+            //   - is_closed(): the demuxer this thread was started on has
+            //     been torn down (e.g. disconnect()→reconnect() created a
+            //     fresh demuxer; we, the OLD thread, must exit so we do not
+            //     burn CPU spinning on a closed channel)
+            //   - !connected: the board is not connected (handles the case
+            //     where the wakeup was an EIO)
+            //   - wait timeout: keep spinning (loop back to stop_requested)
+            if (dx->is_closed()) break;
             if (!dx->wait_data_frame(buf, 200)) {
                 if (!connected.load(std::memory_order_acquire)) break;
+                if (dx->is_closed()) break;
                 continue;
             }
             TactileFrame frame = tactile_protocol::parse_frame(buf);
@@ -163,6 +171,12 @@ struct TactileBoard::Impl {
                 break;  // user callback raised; exit the consumer
             }
         }
+        // NOTE: this clears the streaming flag in the SHARED Impl. If a
+        // disconnect()→connect()→start_streaming() cycle has already kicked
+        // off a NEW streaming thread on the same Impl while we were exiting,
+        // we will momentarily clobber its `streaming=true`. The window is
+        // bounded by the 200 ms wait above; a future generation token would
+        // close it but is out of scope for the present fix.
         streaming.store(false, std::memory_order_release);
     }
 
@@ -180,7 +194,7 @@ struct TactileBoard::Impl {
 // ---------------------------------------------------------------------------
 
 TactileBoard::TactileBoard(const char* serial_number)
-    : impl_(std::make_unique<Impl>()) {
+    : impl_(std::make_shared<Impl>()) {
     if (serial_number) impl_->serial_filter = serial_number;
 }
 
@@ -200,16 +214,28 @@ void TactileBoard::disconnect() {
     // (which only hold the lock to snapshot, not for the blocking call) are
     // not blocked waiting for the streaming thread to drain its callback.
     std::shared_ptr<TactileCdcDemuxer> dx;
-    std::thread thread_to_join;
+    std::thread thread_to_handle;
     {
         std::lock_guard<std::mutex> lock(impl_->lifecycle_mu);
         impl_->connected.store(false, std::memory_order_release);
         impl_->stop_streaming_requested.store(true, std::memory_order_release);
         dx = std::move(impl_->demuxer);
-        thread_to_join = std::move(impl_->streaming_thread);
+        thread_to_handle = std::move(impl_->streaming_thread);
     }
     if (dx) dx->stop();  // wake any waiter on data queue / pending response
-    if (thread_to_join.joinable()) thread_to_join.join();
+    if (thread_to_handle.joinable()) {
+        if (thread_to_handle.get_id() == std::this_thread::get_id()) {
+            // Called from the streaming thread itself (e.g. user destroyed
+            // the TactileBoard or invoked disconnect() from inside a frame
+            // callback). Joining would self-deadlock and ~thread() would
+            // std::terminate. Detach and let the thread exit naturally —
+            // its lambda holds a shared_ptr<Impl>, so Impl + demuxer stay
+            // alive until the thread's stack unwinds.
+            thread_to_handle.detach();
+        } else {
+            thread_to_handle.join();
+        }
+    }
     impl_->streaming.store(false, std::memory_order_release);
     // dx goes out of scope here (or in some lingering command() call); the
     // last ref drop runs ~TactileCdcDemuxer which close()s the fd.
@@ -251,10 +277,34 @@ void TactileBoard::start_streaming(FrameCallback callback) {
         impl_->streaming.store(true, std::memory_order_release);
     }
     if (old_thread.joinable()) old_thread.join();
+
+    // Re-acquire the lifecycle lock and re-validate state. While we were
+    // joining `old_thread` outside the lock a concurrent disconnect() may
+    // have torn down the demuxer; if so, abort cleanly instead of starting
+    // a new streaming thread that would race against the teardown and
+    // immediately exit on stop_requested. Compare demuxer identity (not just
+    // non-null) so a connect→disconnect→reconnect cycle that produced a
+    // fresh demuxer also fails this check.
+    std::lock_guard<std::mutex> lock(impl_->lifecycle_mu);
+    if (!impl_->connected.load(std::memory_order_acquire)
+        || impl_->demuxer != dx
+        || impl_->stop_streaming_requested.load(std::memory_order_acquire)) {
+        impl_->streaming.store(false, std::memory_order_release);
+        throw std::runtime_error(
+            "TactileBoard: disconnected before streaming could start");
+    }
     try {
-        std::lock_guard<std::mutex> lock(impl_->lifecycle_mu);
+        // Capture shared_ptr<Impl> by value so the thread's lambda keeps
+        // Impl alive for its own lifetime — required for the self-detach
+        // path in disconnect()/stop_streaming() (see Impl ownership note in
+        // the public header).
+        auto impl_keepalive = impl_;
         impl_->streaming_thread = std::thread(
-            &Impl::streaming_loop, impl_.get(), std::move(dx), std::move(callback));
+            [impl = std::move(impl_keepalive),
+             dx_local = std::move(dx),
+             cb = std::move(callback)]() mutable {
+                impl->streaming_loop(std::move(dx_local), std::move(cb));
+            });
     } catch (...) {
         impl_->streaming.store(false, std::memory_order_release);
         throw;
@@ -262,13 +312,20 @@ void TactileBoard::start_streaming(FrameCallback callback) {
 }
 
 void TactileBoard::stop_streaming() {
-    std::thread thread_to_join;
+    std::thread thread_to_handle;
     {
         std::lock_guard<std::mutex> lock(impl_->lifecycle_mu);
         impl_->stop_streaming_requested.store(true, std::memory_order_release);
-        thread_to_join = std::move(impl_->streaming_thread);
+        thread_to_handle = std::move(impl_->streaming_thread);
     }
-    if (thread_to_join.joinable()) thread_to_join.join();
+    if (thread_to_handle.joinable()) {
+        if (thread_to_handle.get_id() == std::this_thread::get_id()) {
+            // Self-detach (see disconnect() for rationale).
+            thread_to_handle.detach();
+        } else {
+            thread_to_handle.join();
+        }
+    }
     impl_->streaming.store(false, std::memory_order_release);
 }
 
@@ -313,8 +370,8 @@ TactileHandedness TactileBoard::get_handedness() {
     return static_cast<TactileHandedness>(resp[0]);
 }
 
-TactileDiagnostics TactileBoard::get_diagnostics() {
-    auto resp = impl_->command(TactileCmd::GetDiagnostics, nullptr, 0);
+namespace {
+TactileDiagnostics decode_diagnostics(const std::vector<uint8_t>& resp) {
     if (resp.size() != 18) {
         throw std::runtime_error("get_diagnostics: unexpected payload size");
     }
@@ -325,6 +382,21 @@ TactileDiagnostics TactileBoard::get_diagnostics() {
     d.dropout_count   = read_le32(resp.data() + 12);
     d.usb_reset_count = read_le16(resp.data() + 16);
     return d;
+}
+}  // namespace
+
+TactileDiagnostics TactileBoard::get_diagnostics() {
+    auto resp = impl_->command(TactileCmd::GetDiagnostics, nullptr, 0);
+    return decode_diagnostics(resp);
+}
+
+bool TactileBoard::try_get_diagnostics(TactileDiagnostics& out) {
+    auto dx = impl_->snapshot_demuxer();
+    if (!dx) throw TactileNotConnectedError("TactileBoard: not connected");
+    auto resp = dx->try_command(TactileCmd::GetDiagnostics, nullptr, 0);
+    if (!resp.has_value()) return false;  // command channel busy; caller skips
+    out = decode_diagnostics(*resp);
+    return true;
 }
 
 void TactileBoard::reset_counters() {
