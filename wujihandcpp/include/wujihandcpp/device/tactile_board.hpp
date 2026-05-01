@@ -12,6 +12,7 @@
 #include "wujihandcpp/utility/api.hpp"
 
 namespace wujihandcpp {
+namespace tactile {
 
 /// Exception thrown when USB CDC connection is lost during read
 class WUJIHANDCPP_API ConnectionLostError : public std::runtime_error {
@@ -32,16 +33,16 @@ class WUJIHANDCPP_API ConnectionLostError : public std::runtime_error {
 ///   - read_frame() and start_streaming() are mutually exclusive.
 ///   - disconnect() can be called from any thread; it stops streaming.
 ///   - After disconnect, connect() can be called again to reconnect.
-class WUJIHANDCPP_API TactileBoard {
+class WUJIHANDCPP_API Board {
 public:
-    /// Construct a TactileBoard.
+    /// Construct a Board.
     /// @param serial_number  If non-null, match this USB serial number.
     ///                       If null, use the first device with PID=0x5700.
-    explicit TactileBoard(const char* serial_number = nullptr);
-    ~TactileBoard();
+    explicit Board(const char* serial_number = nullptr);
+    ~Board();
 
-    TactileBoard(const TactileBoard&) = delete;
-    TactileBoard& operator=(const TactileBoard&) = delete;
+    Board(const Board&) = delete;
+    Board& operator=(const Board&) = delete;
 
     // -- Connection management --
 
@@ -62,13 +63,13 @@ public:
     /// @param timeout_ms  Max wait time in milliseconds.
     /// @throws ConnectionLostError  if the USB device disconnects.
     /// @throws std::runtime_error   if timeout expires with no valid frame.
-    TactileFrame read_frame(uint32_t timeout_ms = 100);
+    Frame read_frame(uint32_t timeout_ms = 100);
 
     // -- Streaming --
 
     /// Frame callback. Invoked on the streaming consumer thread. Must not
     /// block — long work should be dispatched to a worker queue.
-    using FrameCallback = std::function<void(const TactileFrame&)>;
+    using FrameCallback = std::function<void(const Frame&)>;
 
     /// Disconnect callback. Fired exactly once when the device drops off
     /// the bus, on the demuxer reader thread. Must not block. Calling
@@ -94,18 +95,18 @@ public:
     // -- Identity (spec §3.1) --
 
     /// Spec §3.1.1 — serial / hw_revision / fw_version from device-resident TBIM.
-    TactileDeviceInfo get_device_info();
+    DeviceInfo get_device_info();
 
     /// Spec §3.1.2 — git short SHA of the running firmware build.
-    TactileFwBuild get_fw_build();
+    FwBuild get_fw_build();
 
     /// Spec §3.1.3 — handedness from device-resident TBIM (does not require streaming).
-    TactileHandedness get_handedness();
+    Handedness get_handedness();
 
     // -- Diagnostics (spec §3.2) --
 
     /// Spec §3.2.1 — uptime / counters snapshot.
-    TactileDiagnostics get_diagnostics();
+    Diagnostics get_diagnostics();
 
     /// Non-blocking variant of get_diagnostics(). If the SDK command channel
     /// is currently busy (another command in flight on a different thread),
@@ -116,7 +117,7 @@ public:
     /// Intended for periodic pollers (e.g. a ROS diagnostics timer) that
     /// must yield to higher-priority caller-issued commands instead of
     /// queueing behind them on the per-channel serializer.
-    bool try_get_diagnostics(TactileDiagnostics& out);
+    bool try_get_diagnostics(Diagnostics& out);
 
     /// Spec §3.2.2 — zero the four diagnostic counters.
     void reset_counters();
@@ -131,7 +132,7 @@ public:
     void reset_device();
 
     /// Spec §3.3.3 — jump to bootloader (PID 0x5701) for OTA. The `magic`
-    /// argument must equal `TACTILE_BOOTLOADER_MAGIC`; any other value
+    /// argument must equal `tactile::BOOTLOADER_MAGIC`; any other value
     /// triggers `BadPayload`. SDK handle becomes invalid after this call.
     void enter_bootloader(uint32_t magic);
 
@@ -149,12 +150,12 @@ public:
     // -- Time sync (spec §3.5) --
 
     /// Spec §3.5.1 — device monotonic clock in nanoseconds.
-    TactileDeviceTime get_device_time();
+    DeviceTime get_device_time();
 
     /// Spec §3.5.2 — exchange host UTC nanoseconds for the device clock at
     /// the same moment; caller stores the pair to derive UTC from
     /// subsequent frames' `timestamp_ms`.
-    TactileSyncResult sync_host_epoch(uint64_t host_unix_ns);
+    SyncResult sync_host_epoch(uint64_t host_unix_ns);
 
 private:
     struct Impl;
@@ -165,4 +166,5 @@ private:
     std::shared_ptr<Impl> impl_;
 };
 
+}  // namespace tactile
 }  // namespace wujihandcpp

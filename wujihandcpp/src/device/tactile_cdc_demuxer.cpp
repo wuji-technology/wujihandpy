@@ -7,6 +7,7 @@
 #include "../transport/cdc_transport.hpp"
 
 namespace wujihandcpp {
+namespace tactile {
 
 namespace {
 
@@ -35,9 +36,9 @@ inline void write_le16(uint8_t* p, uint16_t v) {
 
 }  // namespace
 
-TactileCdcDemuxer::TactileCdcDemuxer(int fd) : fd_(fd) {}
+CdcDemuxer::CdcDemuxer(int fd) : fd_(fd) {}
 
-TactileCdcDemuxer::~TactileCdcDemuxer() {
+CdcDemuxer::~CdcDemuxer() {
     stop();
     if (fd_ >= 0) {
         ::close(fd_);
@@ -45,7 +46,7 @@ TactileCdcDemuxer::~TactileCdcDemuxer() {
     }
 }
 
-void TactileCdcDemuxer::start() {
+void CdcDemuxer::start() {
     // Capture shared_from_this() so the reader thread keeps the demuxer
     // alive for as long as the loop runs. Required for the self-detach path
     // in stop(): if stop() is called from inside the reader thread (via the
@@ -57,7 +58,7 @@ void TactileCdcDemuxer::start() {
     thread_ = std::thread([self]() { self->reader_loop(); });
 }
 
-void TactileCdcDemuxer::stop() {
+void CdcDemuxer::stop() {
     // A caller mid-write that already passed the disconnected_/stop_requested_
     // check in single_command() may still complete its write_exact() before
     // observing the new state — at most one "teardown-race write" leaks out.
@@ -79,7 +80,7 @@ void TactileCdcDemuxer::stop() {
             // handle). Joining ourselves would std::terminate; detach and
             // let the reader loop unwind naturally. The shared_ptr<self>
             // captured in start() keeps *this alive until reader_loop
-            // returns, after which the last ref drops and ~TactileCdcDemuxer
+            // returns, after which the last ref drops and ~CdcDemuxer
             // closes the fd.
             thread_.detach();
         } else {
@@ -88,13 +89,13 @@ void TactileCdcDemuxer::stop() {
     }
 }
 
-void TactileCdcDemuxer::set_disconnect_callback(DisconnectCallback cb) {
+void CdcDemuxer::set_disconnect_callback(DisconnectCallback cb) {
     std::lock_guard<std::mutex> lock(disconnect_cb_mu_);
     disconnect_cb_ = std::move(cb);
 }
 
-bool TactileCdcDemuxer::wait_data_frame(uint8_t out[tactile_protocol::FRAME_SIZE],
-                                        uint32_t timeout_ms) {
+bool CdcDemuxer::wait_data_frame(uint8_t out[protocol::FRAME_SIZE],
+                                 uint32_t timeout_ms) {
     std::unique_lock<std::mutex> lock(frame_mu_);
     bool got = frame_cv_.wait_for(lock, std::chrono::milliseconds(timeout_ms),
         [this]() {
@@ -103,13 +104,13 @@ bool TactileCdcDemuxer::wait_data_frame(uint8_t out[tactile_protocol::FRAME_SIZE
                 || disconnected_.load(std::memory_order_acquire);
         });
     if (!got || frame_queue_.empty()) return false;
-    std::memcpy(out, frame_queue_.front().data(), tactile_protocol::FRAME_SIZE);
+    std::memcpy(out, frame_queue_.front().data(), protocol::FRAME_SIZE);
     frame_queue_.pop_front();
     return true;
 }
 
-std::vector<uint8_t> TactileCdcDemuxer::command(TactileCmd cmd, const uint8_t* payload,
-                                                size_t payload_len, uint32_t timeout_ms) {
+std::vector<uint8_t> CdcDemuxer::command(Cmd cmd, const uint8_t* payload,
+                                         size_t payload_len, uint32_t timeout_ms) {
     // Spec §2.4: requests are strictly serial. Hold this mutex through
     // build → send → wait so concurrent callers queue.
     std::lock_guard<std::mutex> serial(command_mu_);
@@ -117,8 +118,8 @@ std::vector<uint8_t> TactileCdcDemuxer::command(TactileCmd cmd, const uint8_t* p
     // Single retry on BadCrc, surfacing every other status to the caller.
     try {
         return single_command(cmd, payload, payload_len, timeout_ms);
-    } catch (const TactileError& e) {
-        if (e.status() == TactileStatus::BadCrc) {
+    } catch (const Error& e) {
+        if (e.status() == Status::BadCrc) {
             return single_command(cmd, payload, payload_len, timeout_ms);
         }
         throw;
@@ -126,8 +127,8 @@ std::vector<uint8_t> TactileCdcDemuxer::command(TactileCmd cmd, const uint8_t* p
 }
 
 std::optional<std::vector<uint8_t>>
-TactileCdcDemuxer::try_command(TactileCmd cmd, const uint8_t* payload,
-                               size_t payload_len, uint32_t timeout_ms) {
+CdcDemuxer::try_command(Cmd cmd, const uint8_t* payload,
+                        size_t payload_len, uint32_t timeout_ms) {
     // Non-blocking acquire of the command serializer. If another caller
     // currently holds it, return nullopt — the caller decides whether to
     // skip this iteration or retry. This is the SDK-side hook that lets the
@@ -138,28 +139,28 @@ TactileCdcDemuxer::try_command(TactileCmd cmd, const uint8_t* payload,
 
     try {
         return single_command(cmd, payload, payload_len, timeout_ms);
-    } catch (const TactileError& e) {
-        if (e.status() == TactileStatus::BadCrc) {
+    } catch (const Error& e) {
+        if (e.status() == Status::BadCrc) {
             return single_command(cmd, payload, payload_len, timeout_ms);
         }
         throw;
     }
 }
 
-std::vector<uint8_t> TactileCdcDemuxer::single_command(TactileCmd cmd, const uint8_t* payload,
-                                                       size_t payload_len, uint32_t timeout_ms) {
+std::vector<uint8_t> CdcDemuxer::single_command(Cmd cmd, const uint8_t* payload,
+                                                size_t payload_len, uint32_t timeout_ms) {
     if (payload_len > MAX_REQUEST_PAYLOAD) {
-        throw std::runtime_error("TactileCdcDemuxer: command payload too large");
+        throw std::runtime_error("CdcDemuxer: command payload too large");
     }
     // Short-circuit if the channel is already torn down — a stale demuxer
     // snapshot must not send bytes after the lifecycle owner closed it.
     if (is_closed()) {
-        throw TactileNotConnectedError("TactileCdcDemuxer: channel closed");
+        throw NotConnectedError("CdcDemuxer: channel closed");
     }
 
     // Build command frame (spec §2.2): sync(2) + length(2) + cmd(2) + seq(2)
     // + payload(N) + crc(2). CRC covers bytes [2, 8+N).
-    uint8_t buf[TACTILE_FRAME_MAX];
+    uint8_t buf[FRAME_MAX];
     const uint16_t length = static_cast<uint16_t>(10 + payload_len);
     const uint16_t seq = next_seq_.fetch_add(1, std::memory_order_relaxed);
 
@@ -169,7 +170,7 @@ std::vector<uint8_t> TactileCdcDemuxer::single_command(TactileCmd cmd, const uin
     write_le16(buf + 4, static_cast<uint16_t>(cmd));
     write_le16(buf + 6, seq);
     if (payload_len > 0) std::memcpy(buf + 8, payload, payload_len);
-    uint16_t crc = tactile_protocol::crc16_ccitt(buf + 2, 6 + payload_len);
+    uint16_t crc = protocol::crc16_ccitt(buf + 2, 6 + payload_len);
     write_le16(buf + 8 + payload_len, crc);
 
     // Arm the in-flight slot before sending so the reader can deliver as
@@ -188,8 +189,8 @@ std::vector<uint8_t> TactileCdcDemuxer::single_command(TactileCmd cmd, const uin
     if (cdc::write_exact(fd_, buf, length) != static_cast<ssize_t>(length)) {
         std::lock_guard<std::mutex> lock(pending_mu_);
         pending_active_ = false;
-        throw TactileWriteFailedError(
-            "TactileCdcDemuxer: write failed (device disconnected?)");
+        throw WriteFailedError(
+            "CdcDemuxer: write failed (device disconnected?)");
     }
 
     // Wait for the matching response.
@@ -206,37 +207,37 @@ std::vector<uint8_t> TactileCdcDemuxer::single_command(TactileCmd cmd, const uin
     // tore the channel down" so callers can react differently (e.g. retry
     // after reconnect vs. surface the teardown).
     if (disconnected_.load(std::memory_order_acquire)) {
-        throw TactileDisconnectedDuringRequestError(
-            "TactileCdcDemuxer: disconnected while awaiting response");
+        throw DisconnectedDuringRequestError(
+            "CdcDemuxer: disconnected while awaiting response");
     }
     if (stop_requested_.load(std::memory_order_acquire) && !pending_filled_) {
-        throw TactileNotConnectedError(
-            "TactileCdcDemuxer: channel closed while awaiting response");
+        throw NotConnectedError(
+            "CdcDemuxer: channel closed while awaiting response");
     }
     if (!got || !pending_filled_) {
-        throw TactileResponseTimeoutError("TactileCdcDemuxer: response timeout");
+        throw ResponseTimeoutError("CdcDemuxer: response timeout");
     }
 
-    TactileStatus status = pending_status_;
+    Status status = pending_status_;
     std::vector<uint8_t> payload_out = std::move(pending_payload_);
     pending_payload_.clear();
 
-    if (status != TactileStatus::Ok) {
-        throw TactileError(status, "tactile command returned non-Ok status: "
+    if (status != Status::Ok) {
+        throw Error(status, "tactile command returned non-Ok status: "
                                    + to_string(status));
     }
     return payload_out;
 }
 
-void TactileCdcDemuxer::handle_data_frame(const uint8_t* buf) {
+void CdcDemuxer::handle_data_frame(const uint8_t* buf) {
     std::lock_guard<std::mutex> lock(frame_mu_);
     if (frame_queue_.size() >= MAX_QUEUE) frame_queue_.pop_front();
     frame_queue_.emplace_back();
-    std::memcpy(frame_queue_.back().data(), buf, tactile_protocol::FRAME_SIZE);
+    std::memcpy(frame_queue_.back().data(), buf, protocol::FRAME_SIZE);
     frame_cv_.notify_one();
 }
 
-void TactileCdcDemuxer::handle_response_frame(const uint8_t* buf, uint16_t length) {
+void CdcDemuxer::handle_response_frame(const uint8_t* buf, uint16_t length) {
     // Layout per spec §2.3:
     //   2..4 length, 4..6 cmd_id, 6..8 seq, 8 status, 9..(L-2) payload, (L-2)..L crc.
     if (length < RESPONSE_FIXED_OVERHEAD) return;  // malformed; drop
@@ -244,7 +245,7 @@ void TactileCdcDemuxer::handle_response_frame(const uint8_t* buf, uint16_t lengt
     uint16_t resp_cmd_raw = read_le16(buf + 4);
     uint16_t resp_seq = read_le16(buf + 6);
     uint16_t expected_crc = read_le16(buf + crc_pos);
-    uint16_t computed_crc = tactile_protocol::crc16_ccitt(buf + 2, crc_pos - 2);
+    uint16_t computed_crc = protocol::crc16_ccitt(buf + 2, crc_pos - 2);
 
     if (expected_crc != computed_crc) {
         // Surface as BadCrc so the in-flight caller can retry. Match BOTH
@@ -255,7 +256,7 @@ void TactileCdcDemuxer::handle_response_frame(const uint8_t* buf, uint16_t lengt
         if (pending_active_
             && resp_seq == pending_seq_
             && resp_cmd_raw == static_cast<uint16_t>(pending_cmd_)) {
-            pending_status_ = TactileStatus::BadCrc;
+            pending_status_ = Status::BadCrc;
             pending_payload_.clear();
             pending_filled_ = true;
             pending_cv_.notify_one();
@@ -272,13 +273,13 @@ void TactileCdcDemuxer::handle_response_frame(const uint8_t* buf, uint16_t lengt
         || resp_cmd_raw != static_cast<uint16_t>(pending_cmd_)) {
         return;  // stale / unsolicited / cmd_id mismatch
     }
-    pending_status_ = static_cast<TactileStatus>(status_byte);
+    pending_status_ = static_cast<Status>(status_byte);
     pending_payload_.assign(buf + 9, buf + 9 + payload_len);
     pending_filled_ = true;
     pending_cv_.notify_one();
 }
 
-bool TactileCdcDemuxer::read_drain(size_t count, uint32_t timeout_ms) {
+bool CdcDemuxer::read_drain(size_t count, uint32_t timeout_ms) {
     if (count == 0) return true;
     uint8_t scratch[512];
     while (count > 0) {
@@ -294,7 +295,7 @@ bool TactileCdcDemuxer::read_drain(size_t count, uint32_t timeout_ms) {
     return true;
 }
 
-void TactileCdcDemuxer::handle_disconnect() {
+void CdcDemuxer::handle_disconnect() {
     // disconnected_.exchange(true) gates everything below to fire exactly
     // once, even if multiple read paths see EIO concurrently.
     if (disconnected_.exchange(true, std::memory_order_acq_rel)) return;
@@ -312,7 +313,7 @@ void TactileCdcDemuxer::handle_disconnect() {
     }
 }
 
-void TactileCdcDemuxer::reader_loop() {
+void CdcDemuxer::reader_loop() {
     uint8_t prev = 0;
     while (!stop_requested_.load(std::memory_order_acquire)
            && !disconnected_.load(std::memory_order_acquire)) {
@@ -329,29 +330,29 @@ void TactileCdcDemuxer::reader_loop() {
             FrameBuf buf;
             buf[0] = 0xAA; buf[1] = 0x55;
             ssize_t got = cdc::read_exact(fd_, buf.data() + 2,
-                                          tactile_protocol::FRAME_SIZE - 2, 200);
+                                          protocol::FRAME_SIZE - 2, 200);
             if (got < 0) { handle_disconnect(); return; }
             prev = 0;
-            if (got != static_cast<ssize_t>(tactile_protocol::FRAME_SIZE - 2)) continue;
+            if (got != static_cast<ssize_t>(protocol::FRAME_SIZE - 2)) continue;
 
-            uint16_t length = read_le16(buf.data() + tactile_protocol::OFFSET_LENGTH);
-            if (length != tactile_protocol::EXPECTED_LENGTH) continue;  // false header
-            uint16_t expected_crc = read_le16(buf.data() + tactile_protocol::OFFSET_CRC);
-            uint16_t computed_crc = tactile_protocol::crc16_ccitt(
-                buf.data() + tactile_protocol::OFFSET_LENGTH,
-                tactile_protocol::OFFSET_CRC - tactile_protocol::OFFSET_LENGTH);
+            uint16_t length = read_le16(buf.data() + protocol::OFFSET_LENGTH);
+            if (length != protocol::EXPECTED_LENGTH) continue;  // false header
+            uint16_t expected_crc = read_le16(buf.data() + protocol::OFFSET_CRC);
+            uint16_t computed_crc = protocol::crc16_ccitt(
+                buf.data() + protocol::OFFSET_LENGTH,
+                protocol::OFFSET_CRC - protocol::OFFSET_LENGTH);
             if (expected_crc != computed_crc) continue;
             handle_data_frame(buf.data());
         } else if (b == 0x57) {
             // Response frame: read length(2), then drain payload+crc into a buf.
-            uint8_t buf[TACTILE_FRAME_MAX];
+            uint8_t buf[FRAME_MAX];
             buf[0] = 0xAA; buf[1] = 0x57;
             ssize_t got = cdc::read_exact(fd_, buf + 2, 2, 200);
             if (got < 0) { handle_disconnect(); return; }
             prev = 0;
             if (got != 2) continue;
             uint16_t length = read_le16(buf + 2);
-            if (length < RESPONSE_FIXED_OVERHEAD || length > TACTILE_FRAME_MAX) continue;
+            if (length < RESPONSE_FIXED_OVERHEAD || length > FRAME_MAX) continue;
             ssize_t rest = cdc::read_exact(fd_, buf + 4, length - 4, 200);
             if (rest < 0) { handle_disconnect(); return; }
             if (rest != static_cast<ssize_t>(length - 4)) continue;
@@ -364,7 +365,7 @@ void TactileCdcDemuxer::reader_loop() {
             prev = 0;
             if (got != 2) continue;
             uint16_t length = read_le16(len_buf);
-            if (length < 4 || length > TACTILE_FRAME_MAX) continue;
+            if (length < 4 || length > FRAME_MAX) continue;
             (void)read_drain(length - 4, 200);
         } else {
             // 0xAA followed by an unknown byte: slide window; if the new byte
@@ -374,4 +375,5 @@ void TactileCdcDemuxer::reader_loop() {
     }
 }
 
+}  // namespace tactile
 }  // namespace wujihandcpp

@@ -35,7 +35,7 @@ PYBIND11_MODULE(_core, m) {
         try {
             std::rethrow_exception(p);
 #ifdef WUJIHANDPY_ENABLE_TACTILE
-        } catch (const wujihandcpp::ConnectionLostError& e) {
+        } catch (const wujihandcpp::tactile::ConnectionLostError& e) {
             PyErr_SetString(PyExc_ConnectionError, e.what());
 #endif
         } catch (const wujihandcpp::device::TimeoutError& e) {
@@ -60,7 +60,7 @@ PYBIND11_MODULE(_core, m) {
     logging::init_module(m);
 
 #ifdef WUJIHANDPY_ENABLE_TACTILE
-    tactile::init_module(m);
+    tactile_binding::init_module(m);
 #endif
 
     using namespace wujihandcpp;

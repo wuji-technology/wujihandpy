@@ -12,10 +12,11 @@
 #include "tactile_cdc_demuxer.hpp"
 
 namespace wujihandcpp {
+namespace tactile {
 
 // USB identifiers for the tactile sensor board (spec §1).
-static constexpr uint16_t TACTILE_USB_VID = 0x0483;
-static constexpr uint16_t TACTILE_USB_PID = 0x5700;
+static constexpr uint16_t USB_VID = 0x0483;
+static constexpr uint16_t USB_PID = 0x5700;
 
 namespace {
 
@@ -60,7 +61,7 @@ std::string trim_ascii(const uint8_t* p, size_t len) {
 // Impl
 // ---------------------------------------------------------------------------
 
-struct TactileBoard::Impl {
+struct Board::Impl {
     std::string serial_filter;
     std::string tty_path;
 
@@ -79,7 +80,7 @@ struct TactileBoard::Impl {
     // because in-flight command() / streaming_loop calls take their own refs
     // and may outlive an interleaved disconnect() — the demuxer destructor
     // (which close()s the fd) only fires after the last ref drops.
-    std::shared_ptr<TactileCdcDemuxer> demuxer;
+    std::shared_ptr<CdcDemuxer> demuxer;
 
     // Streaming consumer (one thread that drains demuxer's data queue).
     std::thread streaming_thread;
@@ -102,7 +103,7 @@ struct TactileBoard::Impl {
 
     /// MUST be called with `lifecycle_mu` held.
     bool open_device_locked() {
-        auto devices = cdc::discover_devices(TACTILE_USB_VID, TACTILE_USB_PID);
+        auto devices = cdc::discover_devices(USB_VID, USB_PID);
         if (devices.empty()) return false;
 
         const cdc::DeviceInfo* chosen = nullptr;
@@ -119,14 +120,14 @@ struct TactileBoard::Impl {
         int fd = cdc::open_cdc(tty_path.c_str());
         if (fd < 0) return false;
 
-        auto new_demuxer = std::make_shared<TactileCdcDemuxer>(fd);
+        auto new_demuxer = std::make_shared<CdcDemuxer>(fd);
 
         // Internal disconnect wrapper: flip `connected` BEFORE invoking the
         // user callback so anything checking is_connected() (including
         // streaming_loop) sees the new state immediately. Captures `this`
-        // (= Impl*); ~TactileBoard runs disconnect() which drops the
-        // demuxer's ref before Impl is freed, so the demuxer can never
-        // invoke this lambda after Impl is gone.
+        // (= Impl*); ~Board runs disconnect() which drops the demuxer's ref
+        // before Impl is freed, so the demuxer can never invoke this lambda
+        // after Impl is gone.
         new_demuxer->set_disconnect_callback([this]() {
             connected.store(false, std::memory_order_release);
             DisconnectCallback cb;
@@ -147,15 +148,15 @@ struct TactileBoard::Impl {
     /// Snapshot the demuxer under `lifecycle_mu`. Returns null if not
     /// connected. Caller does blocking I/O on the snapshot WITHOUT the lock,
     /// so a concurrent disconnect() does not wait on the command.
-    std::shared_ptr<TactileCdcDemuxer> snapshot_demuxer() {
+    std::shared_ptr<CdcDemuxer> snapshot_demuxer() {
         std::lock_guard<std::mutex> lock(lifecycle_mu);
         return demuxer;
     }
 
     void streaming_loop(uint64_t my_gen,
-                        std::shared_ptr<TactileCdcDemuxer> dx,
+                        std::shared_ptr<CdcDemuxer> dx,
                         FrameCallback callback) {
-        uint8_t buf[tactile_protocol::FRAME_SIZE];
+        uint8_t buf[protocol::FRAME_SIZE];
         while (!stop_streaming_requested.load(std::memory_order_acquire)) {
             // Three independent shutdown signals are checked here:
             //   - is_closed(): the demuxer this thread was started on has
@@ -171,7 +172,7 @@ struct TactileBoard::Impl {
                 if (dx->is_closed()) break;
                 continue;
             }
-            TactileFrame frame = tactile_protocol::parse_frame(buf);
+            Frame frame = protocol::parse_frame(buf);
             try {
                 callback(frame);
             } catch (...) {
@@ -191,10 +192,10 @@ struct TactileBoard::Impl {
     }
 
     /// Issue a command and return its response payload.
-    std::vector<uint8_t> command(TactileCmd cmd, const uint8_t* payload, size_t len,
-                                 uint32_t timeout_ms = TACTILE_DEFAULT_TIMEOUT_MS) {
+    std::vector<uint8_t> command(Cmd cmd, const uint8_t* payload, size_t len,
+                                 uint32_t timeout_ms = DEFAULT_TIMEOUT_MS) {
         auto dx = snapshot_demuxer();
-        if (!dx) throw TactileNotConnectedError("TactileBoard: not connected");
+        if (!dx) throw NotConnectedError("tactile::Board: not connected");
         return dx->command(cmd, payload, len, timeout_ms);
     }
 };
@@ -203,27 +204,27 @@ struct TactileBoard::Impl {
 // Public API — connection / streaming
 // ---------------------------------------------------------------------------
 
-TactileBoard::TactileBoard(const char* serial_number)
+Board::Board(const char* serial_number)
     : impl_(std::make_shared<Impl>()) {
     if (serial_number) impl_->serial_filter = serial_number;
 }
 
-TactileBoard::~TactileBoard() {
+Board::~Board() {
     disconnect();
 }
 
-bool TactileBoard::connect() {
+bool Board::connect() {
     std::lock_guard<std::mutex> lock(impl_->lifecycle_mu);
     if (impl_->connected.load(std::memory_order_acquire)) return true;
     return impl_->open_device_locked();
 }
 
-void TactileBoard::disconnect() {
+void Board::disconnect() {
     // Pull the demuxer + streaming thread out under lifecycle_mu_; do the
     // potentially-slow wakes/joins outside the lock so concurrent commands
     // (which only hold the lock to snapshot, not for the blocking call) are
     // not blocked waiting for the streaming thread to drain its callback.
-    std::shared_ptr<TactileCdcDemuxer> dx;
+    std::shared_ptr<CdcDemuxer> dx;
     std::thread thread_to_handle;
     {
         std::lock_guard<std::mutex> lock(impl_->lifecycle_mu);
@@ -236,7 +237,7 @@ void TactileBoard::disconnect() {
     if (thread_to_handle.joinable()) {
         if (thread_to_handle.get_id() == std::this_thread::get_id()) {
             // Called from the streaming thread itself (e.g. user destroyed
-            // the TactileBoard or invoked disconnect() from inside a frame
+            // the Board or invoked disconnect() from inside a frame
             // callback). Joining would self-deadlock and ~thread() would
             // std::terminate. Detach and let the thread exit naturally —
             // its lambda holds a shared_ptr<Impl>, so Impl + demuxer stay
@@ -248,38 +249,38 @@ void TactileBoard::disconnect() {
     }
     impl_->streaming.store(false, std::memory_order_release);
     // dx goes out of scope here (or in some lingering command() call); the
-    // last ref drop runs ~TactileCdcDemuxer which close()s the fd.
+    // last ref drop runs ~CdcDemuxer which close()s the fd.
 }
 
-bool TactileBoard::is_connected() const {
+bool Board::is_connected() const {
     return impl_->connected.load(std::memory_order_acquire);
 }
 
-TactileFrame TactileBoard::read_frame(uint32_t timeout_ms) {
+Frame Board::read_frame(uint32_t timeout_ms) {
     auto dx = impl_->snapshot_demuxer();
-    if (!dx) throw std::runtime_error("TactileBoard: not connected");
+    if (!dx) throw std::runtime_error("tactile::Board: not connected");
     if (impl_->streaming.load(std::memory_order_acquire))
-        throw std::logic_error("TactileBoard: cannot call read_frame() while streaming");
+        throw std::logic_error("tactile::Board: cannot call read_frame() while streaming");
 
-    uint8_t buf[tactile_protocol::FRAME_SIZE];
+    uint8_t buf[protocol::FRAME_SIZE];
     if (!dx->wait_data_frame(buf, timeout_ms)) {
         if (!impl_->connected.load(std::memory_order_acquire))
             throw ConnectionLostError("USB CDC device disconnected");
-        throw std::runtime_error("TactileBoard: read_frame timeout");
+        throw std::runtime_error("tactile::Board: read_frame timeout");
     }
-    return tactile_protocol::parse_frame(buf);
+    return protocol::parse_frame(buf);
 }
 
-void TactileBoard::start_streaming(FrameCallback callback) {
-    std::shared_ptr<TactileCdcDemuxer> dx;
+void Board::start_streaming(FrameCallback callback) {
+    std::shared_ptr<CdcDemuxer> dx;
     std::thread old_thread;
     uint64_t my_gen;
     {
         std::lock_guard<std::mutex> lock(impl_->lifecycle_mu);
         if (!impl_->connected.load(std::memory_order_acquire))
-            throw std::runtime_error("TactileBoard: not connected");
+            throw std::runtime_error("tactile::Board: not connected");
         if (impl_->streaming.load(std::memory_order_acquire))
-            throw std::logic_error("TactileBoard: already streaming");
+            throw std::logic_error("tactile::Board: already streaming");
         dx = impl_->demuxer;
         // A previous streaming thread may have exited via disconnect /
         // user-callback exception; harvest it for joining outside the lock.
@@ -310,7 +311,7 @@ void TactileBoard::start_streaming(FrameCallback callback) {
         || impl_->stop_streaming_requested.load(std::memory_order_acquire)) {
         impl_->streaming.store(false, std::memory_order_release);
         throw std::runtime_error(
-            "TactileBoard: disconnected before streaming could start");
+            "tactile::Board: disconnected before streaming could start");
     }
     try {
         // Capture shared_ptr<Impl> by value so the thread's lambda keeps
@@ -331,7 +332,7 @@ void TactileBoard::start_streaming(FrameCallback callback) {
     }
 }
 
-void TactileBoard::stop_streaming() {
+void Board::stop_streaming() {
     std::thread thread_to_handle;
     {
         std::lock_guard<std::mutex> lock(impl_->lifecycle_mu);
@@ -349,7 +350,7 @@ void TactileBoard::stop_streaming() {
     impl_->streaming.store(false, std::memory_order_release);
 }
 
-void TactileBoard::set_disconnect_callback(DisconnectCallback callback) {
+void Board::set_disconnect_callback(DisconnectCallback callback) {
     // Update the user-facing slot. The internal wrapper installed in
     // open_device_locked() reads this slot when the demuxer fires.
     std::lock_guard<std::mutex> lock(impl_->disconnect_cb_mu);
@@ -360,42 +361,42 @@ void TactileBoard::set_disconnect_callback(DisconnectCallback callback) {
 // Public API — commands (spec §3)
 // ---------------------------------------------------------------------------
 
-TactileDeviceInfo TactileBoard::get_device_info() {
-    auto resp = impl_->command(TactileCmd::GetDeviceInfo, nullptr, 0);
+DeviceInfo Board::get_device_info() {
+    auto resp = impl_->command(Cmd::GetDeviceInfo, nullptr, 0);
     if (resp.size() != 32) {
         throw std::runtime_error("get_device_info: unexpected payload size");
     }
-    TactileDeviceInfo info;
+    DeviceInfo info;
     info.serial = trim_ascii(resp.data(), 24);
     std::memcpy(info.hw_revision.data(), resp.data() + 24, 4);
     std::memcpy(info.fw_version.data(), resp.data() + 28, 4);
     return info;
 }
 
-TactileFwBuild TactileBoard::get_fw_build() {
-    auto resp = impl_->command(TactileCmd::GetFwBuild, nullptr, 0);
+FwBuild Board::get_fw_build() {
+    auto resp = impl_->command(Cmd::GetFwBuild, nullptr, 0);
     if (resp.size() != 8) {
         throw std::runtime_error("get_fw_build: unexpected payload size");
     }
-    TactileFwBuild build;
+    FwBuild build;
     build.git_short_sha = trim_ascii(resp.data(), 8);
     return build;
 }
 
-TactileHandedness TactileBoard::get_handedness() {
-    auto resp = impl_->command(TactileCmd::GetHandedness, nullptr, 0);
+Handedness Board::get_handedness() {
+    auto resp = impl_->command(Cmd::GetHandedness, nullptr, 0);
     if (resp.size() != 1) {
         throw std::runtime_error("get_handedness: unexpected payload size");
     }
-    return static_cast<TactileHandedness>(resp[0]);
+    return static_cast<Handedness>(resp[0]);
 }
 
 namespace {
-TactileDiagnostics decode_diagnostics(const std::vector<uint8_t>& resp) {
+Diagnostics decode_diagnostics(const std::vector<uint8_t>& resp) {
     if (resp.size() != 18) {
         throw std::runtime_error("get_diagnostics: unexpected payload size");
     }
-    TactileDiagnostics d;
+    Diagnostics d;
     d.uptime_ms       = read_le32(resp.data() + 0);
     d.frame_count     = read_le32(resp.data() + 4);
     d.crc_err_count   = read_le32(resp.data() + 8);
@@ -405,39 +406,39 @@ TactileDiagnostics decode_diagnostics(const std::vector<uint8_t>& resp) {
 }
 }  // namespace
 
-TactileDiagnostics TactileBoard::get_diagnostics() {
-    auto resp = impl_->command(TactileCmd::GetDiagnostics, nullptr, 0);
+Diagnostics Board::get_diagnostics() {
+    auto resp = impl_->command(Cmd::GetDiagnostics, nullptr, 0);
     return decode_diagnostics(resp);
 }
 
-bool TactileBoard::try_get_diagnostics(TactileDiagnostics& out) {
+bool Board::try_get_diagnostics(Diagnostics& out) {
     auto dx = impl_->snapshot_demuxer();
-    if (!dx) throw TactileNotConnectedError("TactileBoard: not connected");
-    auto resp = dx->try_command(TactileCmd::GetDiagnostics, nullptr, 0);
+    if (!dx) throw NotConnectedError("tactile::Board: not connected");
+    auto resp = dx->try_command(Cmd::GetDiagnostics, nullptr, 0);
     if (!resp.has_value()) return false;  // command channel busy; caller skips
     out = decode_diagnostics(*resp);
     return true;
 }
 
-void TactileBoard::reset_counters() {
-    impl_->command(TactileCmd::ResetCounters, nullptr, 0);
+void Board::reset_counters() {
+    impl_->command(Cmd::ResetCounters, nullptr, 0);
 }
 
-void TactileBoard::set_streaming(bool enable) {
+void Board::set_streaming(bool enable) {
     uint8_t payload = enable ? 1 : 0;
-    impl_->command(TactileCmd::SetStreaming, &payload, 1);
+    impl_->command(Cmd::SetStreaming, &payload, 1);
 }
 
-void TactileBoard::reset_device() {
+void Board::reset_device() {
     // The device tears down USB after sending OK, so the response usually
     // never reaches us — that's the success path. Only swallow exceptions
     // that match "command sent, then the device went away"; surface real
     // failures (not connected, write failed, non-Ok status) to the caller.
     try {
-        impl_->command(TactileCmd::Reset, nullptr, 0, 100);
-    } catch (const TactileResponseTimeoutError&) {
+        impl_->command(Cmd::Reset, nullptr, 0, 100);
+    } catch (const ResponseTimeoutError&) {
         // Device jumped before the reply landed.
-    } catch (const TactileDisconnectedDuringRequestError&) {
+    } catch (const DisconnectedDuringRequestError&) {
         // Device dropped USB during/after the write.
     }
     // Either we got OK, or the device is gone. In both cases this SDK
@@ -447,14 +448,14 @@ void TactileBoard::reset_device() {
     disconnect();
 }
 
-void TactileBoard::enter_bootloader(uint32_t magic) {
+void Board::enter_bootloader(uint32_t magic) {
     uint8_t payload[4];
     write_le32(payload, magic);
     try {
-        impl_->command(TactileCmd::EnterBootloader, payload, 4, 100);
-    } catch (const TactileResponseTimeoutError&) {
+        impl_->command(Cmd::EnterBootloader, payload, 4, 100);
+    } catch (const ResponseTimeoutError&) {
         // Device jumped to bootloader before the reply landed.
-    } catch (const TactileDisconnectedDuringRequestError&) {
+    } catch (const DisconnectedDuringRequestError&) {
         // Device dropped USB during/after the write — same success path.
     }
     // Reaching this point means we got OK, hit a timeout, or saw the device
@@ -465,50 +466,50 @@ void TactileBoard::enter_bootloader(uint32_t magic) {
     disconnect();
 }
 
-uint16_t TactileBoard::get_sample_rate_hz() {
+uint16_t Board::get_sample_rate_hz() {
     uint8_t req[2];
-    write_le16(req, static_cast<uint16_t>(TactileConfigKey::SampleRateHz));
-    auto resp = impl_->command(TactileCmd::GetConfig, req, 2);
-    if (resp.size() != 3 || resp[0] != static_cast<uint8_t>(TactileConfigType::U16)) {
+    write_le16(req, static_cast<uint16_t>(ConfigKey::SampleRateHz));
+    auto resp = impl_->command(Cmd::GetConfig, req, 2);
+    if (resp.size() != 3 || resp[0] != static_cast<uint8_t>(ConfigType::U16)) {
         throw std::runtime_error("get_sample_rate_hz: malformed response");
     }
     return read_le16(resp.data() + 1);
 }
 
-void TactileBoard::set_sample_rate_hz(uint16_t hz) {
+void Board::set_sample_rate_hz(uint16_t hz) {
     uint8_t req[5];
-    write_le16(req, static_cast<uint16_t>(TactileConfigKey::SampleRateHz));
-    req[2] = static_cast<uint8_t>(TactileConfigType::U16);
+    write_le16(req, static_cast<uint16_t>(ConfigKey::SampleRateHz));
+    req[2] = static_cast<uint8_t>(ConfigType::U16);
     write_le16(req + 3, hz);
-    impl_->command(TactileCmd::SetConfig, req, 5);
+    impl_->command(Cmd::SetConfig, req, 5);
 }
 
-bool TactileBoard::get_streaming_enabled() {
+bool Board::get_streaming_enabled() {
     uint8_t req[2];
-    write_le16(req, static_cast<uint16_t>(TactileConfigKey::StreamingEnabled));
-    auto resp = impl_->command(TactileCmd::GetConfig, req, 2);
-    if (resp.size() != 2 || resp[0] != static_cast<uint8_t>(TactileConfigType::EnumU8)) {
+    write_le16(req, static_cast<uint16_t>(ConfigKey::StreamingEnabled));
+    auto resp = impl_->command(Cmd::GetConfig, req, 2);
+    if (resp.size() != 2 || resp[0] != static_cast<uint8_t>(ConfigType::EnumU8)) {
         throw std::runtime_error("get_streaming_enabled: malformed response");
     }
     return resp[1] != 0;
 }
 
-TactileDeviceTime TactileBoard::get_device_time() {
-    auto resp = impl_->command(TactileCmd::GetDeviceTime, nullptr, 0);
+DeviceTime Board::get_device_time() {
+    auto resp = impl_->command(Cmd::GetDeviceTime, nullptr, 0);
     if (resp.size() != 8) {
         throw std::runtime_error("get_device_time: unexpected payload size");
     }
-    return TactileDeviceTime{read_le64(resp.data())};
+    return DeviceTime{read_le64(resp.data())};
 }
 
-TactileSyncResult TactileBoard::sync_host_epoch(uint64_t host_unix_ns) {
+SyncResult Board::sync_host_epoch(uint64_t host_unix_ns) {
     uint8_t req[8];
     write_le64(req, host_unix_ns);
-    auto resp = impl_->command(TactileCmd::SyncHostEpoch, req, 8);
+    auto resp = impl_->command(Cmd::SyncHostEpoch, req, 8);
     if (resp.size() != 16) {
         throw std::runtime_error("sync_host_epoch: unexpected payload size");
     }
-    TactileSyncResult r;
+    SyncResult r;
     r.device_ns_at_sync = read_le64(resp.data());
     r.host_ns_echo      = read_le64(resp.data() + 8);
     // Spec §3.5.2: device echoes the request's host_unix_ns verbatim. A
@@ -522,4 +523,5 @@ TactileSyncResult TactileBoard::sync_host_epoch(uint64_t host_unix_ns) {
     return r;
 }
 
+}  // namespace tactile
 }  // namespace wujihandcpp

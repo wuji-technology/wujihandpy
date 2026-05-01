@@ -16,6 +16,7 @@
 #include "wujihandcpp/protocol/tactile_command.hpp"
 
 namespace wujihandcpp {
+namespace tactile {
 
 /// CDC stream demultiplexer for the tactile board.
 ///
@@ -35,17 +36,17 @@ namespace wujihandcpp {
 /// stop() (where stop() is called from inside a user-installed disconnect
 /// callback running on the reader thread itself, and joining would
 /// std::terminate).
-class TactileCdcDemuxer : public std::enable_shared_from_this<TactileCdcDemuxer> {
+class CdcDemuxer : public std::enable_shared_from_this<CdcDemuxer> {
 public:
     using DisconnectCallback = std::function<void()>;
 
     /// Construct a demuxer that takes ownership of `fd`. The fd is closed
     /// in the destructor so callers must not close it themselves.
-    explicit TactileCdcDemuxer(int fd);
-    ~TactileCdcDemuxer();
+    explicit CdcDemuxer(int fd);
+    ~CdcDemuxer();
 
-    TactileCdcDemuxer(const TactileCdcDemuxer&) = delete;
-    TactileCdcDemuxer& operator=(const TactileCdcDemuxer&) = delete;
+    CdcDemuxer(const CdcDemuxer&) = delete;
+    CdcDemuxer& operator=(const CdcDemuxer&) = delete;
 
     /// Start the reader thread. Must not be called twice.
     void start();
@@ -67,26 +68,26 @@ public:
 
     /// Block waiting for the next data frame.
     /// @return true if a frame was placed in `out`; false on timeout / stop / disconnect.
-    bool wait_data_frame(uint8_t out[tactile_protocol::FRAME_SIZE], uint32_t timeout_ms);
+    bool wait_data_frame(uint8_t out[protocol::FRAME_SIZE], uint32_t timeout_ms);
 
     /// Send a command and wait for the response payload. Auto-retries once on
     /// `BadCrc` per spec §2.4.
-    /// @throws TactileError on non-Ok status (after retry).
+    /// @throws Error on non-Ok status (after retry).
     /// @throws std::runtime_error on timeout.
     /// @throws std::runtime_error on disconnect mid-request.
-    std::vector<uint8_t> command(TactileCmd cmd, const uint8_t* payload, size_t payload_len,
-                                 uint32_t timeout_ms = TACTILE_DEFAULT_TIMEOUT_MS);
+    std::vector<uint8_t> command(Cmd cmd, const uint8_t* payload, size_t payload_len,
+                                 uint32_t timeout_ms = DEFAULT_TIMEOUT_MS);
 
     /// Like command() but returns std::nullopt instead of blocking when the
     /// per-channel command mutex is already held by another caller. Used by
     /// the ROS driver's diagnostics timer so it can yield to user-issued
     /// services instead of queueing behind them on the SDK serializer.
-    /// @throws TactileError on non-Ok status (after BadCrc retry).
-    /// @throws TactileResponseTimeoutError on timeout.
-    /// @throws TactileNotConnectedError / TactileDisconnectedDuringRequestError on disconnect.
+    /// @throws Error on non-Ok status (after BadCrc retry).
+    /// @throws ResponseTimeoutError on timeout.
+    /// @throws NotConnectedError / DisconnectedDuringRequestError on disconnect.
     std::optional<std::vector<uint8_t>>
-    try_command(TactileCmd cmd, const uint8_t* payload, size_t payload_len,
-                uint32_t timeout_ms = TACTILE_DEFAULT_TIMEOUT_MS);
+    try_command(Cmd cmd, const uint8_t* payload, size_t payload_len,
+                uint32_t timeout_ms = DEFAULT_TIMEOUT_MS);
 
     /// Replace the disconnect callback. Empty std::function clears it.
     void set_disconnect_callback(DisconnectCallback cb);
@@ -97,7 +98,7 @@ private:
     void handle_response_frame(const uint8_t* buf, uint16_t length);
     void handle_disconnect();
     bool read_drain(size_t count, uint32_t timeout_ms);
-    std::vector<uint8_t> single_command(TactileCmd cmd, const uint8_t* payload,
+    std::vector<uint8_t> single_command(Cmd cmd, const uint8_t* payload,
                                         size_t payload_len, uint32_t timeout_ms);
 
     int fd_;
@@ -120,7 +121,7 @@ private:
     // "Risks & Open Items" in the design doc; tactile consumers must
     // tolerate occasional sub-second gaps.
     static constexpr size_t MAX_QUEUE = 16;
-    using FrameBuf = std::array<uint8_t, tactile_protocol::FRAME_SIZE>;
+    using FrameBuf = std::array<uint8_t, protocol::FRAME_SIZE>;
     std::mutex frame_mu_;
     std::condition_variable frame_cv_;
     std::deque<FrameBuf> frame_queue_;
@@ -132,9 +133,9 @@ private:
     std::condition_variable pending_cv_;
     bool pending_active_ = false;
     uint16_t pending_seq_ = 0;
-    TactileCmd pending_cmd_ = TactileCmd::GetDeviceInfo;  // matched alongside seq
+    Cmd pending_cmd_ = Cmd::GetDeviceInfo;  // matched alongside seq
     bool pending_filled_ = false;
-    TactileStatus pending_status_ = TactileStatus::Ok;
+    Status pending_status_ = Status::Ok;
     std::vector<uint8_t> pending_payload_;
 
     std::atomic<uint16_t> next_seq_{1};
@@ -143,4 +144,5 @@ private:
     DisconnectCallback disconnect_cb_;
 };
 
+}  // namespace tactile
 }  // namespace wujihandcpp

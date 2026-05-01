@@ -4,9 +4,10 @@
 #include <cstring>
 
 namespace wujihandcpp {
+namespace tactile {
 
 /// Tactile sensor board handedness
-enum class TactileHandedness : uint8_t { LEFT = 0, RIGHT = 1 };
+enum class Handedness : uint8_t { LEFT = 0, RIGHT = 1 };
 
 /// Parsed tactile frame from the tactile board (tboard).
 ///
@@ -17,14 +18,14 @@ enum class TactileHandedness : uint8_t { LEFT = 0, RIGHT = 1 };
 ///
 /// CRC validation happens in the demuxer before the frame is delivered;
 /// callers never see a bad-CRC frame.
-struct TactileFrame {
-    TactileHandedness hand{};      ///< Left or right hand
+struct Frame {
+    Handedness hand{};             ///< Left or right hand
     uint16_t sequence{};           ///< Frame counter (wraps at 65535)
     uint32_t timestamp_ms{};       ///< Milliseconds since device boot
     float pressure[24][32]{};      ///< Pressure matrix, [0.0, 1.0]; NaN = invalid cell
 };
 
-namespace tactile_protocol {
+namespace protocol {
 
 // Wire layout per docs/tactile-wire-protocol.md §2.1 (data frame, 3088 B fixed).
 //
@@ -71,12 +72,12 @@ inline uint16_t crc16_ccitt(const uint8_t* data, size_t length) {
     return crc;
 }
 
-/// Parse a raw 3088-byte frame into TactileFrame. CRC is validated by the
+/// Parse a raw 3088-byte frame into Frame. CRC is validated by the
 /// demuxer before parse_frame() is called.
-inline TactileFrame parse_frame(const uint8_t* raw) {
-    TactileFrame frame{};
+inline Frame parse_frame(const uint8_t* raw) {
+    Frame frame{};
 
-    frame.hand = static_cast<TactileHandedness>(raw[OFFSET_HAND]);
+    frame.hand = static_cast<Handedness>(raw[OFFSET_HAND]);
 
     // memcpy preserves NaN bit patterns and is safe regardless of alignment.
     std::memcpy(&frame.pressure[0][0], raw + OFFSET_TACTILE_DATA, TACTILE_DATA_SIZE);
@@ -93,5 +94,6 @@ inline TactileFrame parse_frame(const uint8_t* raw) {
     return frame;
 }
 
-}  // namespace tactile_protocol
+}  // namespace protocol
+}  // namespace tactile
 }  // namespace wujihandcpp
