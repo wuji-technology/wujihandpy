@@ -20,8 +20,10 @@ src/wujihandpy/_version.py
 
 docs/plans/
 
-# HIL test scripts (local-only, run manually against a connected tactile board)
-tests/hil_*.py
+# Local-only experiments. HIL scripts (tests/hil_*.py) ARE committed —
+# they need a connected board so they're gated behind WUJIHAND_HIL=1
+# (see tests/README.md). Use the .local_*.py prefix for personal one-offs.
+tests/.local_*.py
 
 # Claude-mem generated files (keep root CLAUDE.md)
 **/CLAUDE.md
