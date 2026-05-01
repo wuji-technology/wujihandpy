@@ -112,14 +112,11 @@ private:
     // Data frame queue (bounded, drop-oldest). 16 slots = ~130 ms at 120 Hz,
     // enough to absorb scheduler hiccups in the consumer thread without
     // unbounded memory growth if the consumer is permanently slow.
-    //
-    // Note: there is a separate, ~0.5 s host-side stall observed roughly
-    // every 2-3 s at 120 Hz that is NOT a queue-overflow problem (firmware
-    // reports zero dropouts and CRC errors during it; the bytes are simply
-    // not surfacing through the cdc-acm path during the stall window).
-    // Increasing MAX_QUEUE further does not eliminate it. Tracked under
-    // "Risks & Open Items" in the design doc; tactile consumers must
-    // tolerate occasional sub-second gaps.
+    // Tactile consumers must tolerate occasional sub-second gaps —
+    // the host-side cdc-acm path exhibits sporadic ~0.5 s stalls under
+    // sustained 120 Hz streaming that no amount of queue depth absorbs
+    // (firmware-side counters confirm zero dropouts / CRC errors during
+    // them; bytes simply don't surface from the kernel during the stall).
     static constexpr size_t MAX_QUEUE = 16;
     using FrameBuf = std::array<uint8_t, protocol::FRAME_SIZE>;
     std::mutex frame_mu_;

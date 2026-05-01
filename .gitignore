@@ -20,9 +20,9 @@ src/wujihandpy/_version.py
 
 docs/plans/
 
-# HIL test scripts are local-only (need a physical tactile board, and
-# this is a public repo — we don't ship hardware-specific scripts).
-# Run them locally via `WUJIHAND_HIL=1 python tests/hil_sdk.py`.
+# HIL test scripts are local-only (need a physical board; this is a
+# public repo). Gate the script entry with WUJIHAND_HIL=1 (see
+# tests/README.md). Use the .local_*.py prefix for personal one-offs.
 tests/hil_*.py
 tests/.local_*.py
 

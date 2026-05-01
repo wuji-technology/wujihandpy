@@ -16,9 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - All tactile types live under the `wujihandcpp::tactile` C++
     namespace and the `wujihandpy.tactile` Python submodule. The
     redundant `Tactile` prefix is dropped from every type name —
-    e.g. `wujihandpy.tactile.Board` (was `wujihandpy.TactileBoard`),
-    `tactile.Frame`, `tactile.Diagnostics`, `tactile.Error`,
-    `tactile.BOOTLOADER_MAGIC`. See `docs/refactor-plan.md`.
+    `wujihandpy.tactile.Board` (was `wujihandpy.TactileBoard`),
+    `tactile.Frame`, `tactile.DeviceInfo`, `tactile.FwBuild`,
+    `tactile.Diagnostics`, `tactile.DeviceTime`, `tactile.SyncResult`,
+    `tactile.Status`, `tactile.Error`, `tactile.BOOTLOADER_MAGIC`.
   - `tactile.Frame.pressure` is exposed as a `numpy.float32` 24×32 array.
   - New commands on `tactile.Board`: `get_device_info`, `get_fw_build`,
     `get_handedness`, `get_diagnostics`, `reset_counters`, `set_streaming`,
@@ -28,8 +29,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `get_handedness()` (queries the device directly).
   - `set_disconnect_callback()` replaces the prior "zero-init frame as
     disconnect signal" hack — `0.0` is now a legitimate pressure value.
-  - New types under `wujihandpy.tactile`: `DeviceInfo`, `FwBuild`,
-    `Diagnostics`, `DeviceTime`, `SyncResult`, `Status`, `Error`.
   - Default per-command timeout raised from spec's recommended 500 ms to
     2000 ms to absorb a sporadic ~0.5 s host-side cdc-acm stall observed on
     Linux 6.8 (firmware-side counters confirm zero drops/CRC errors during
