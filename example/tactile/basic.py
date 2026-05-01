@@ -6,11 +6,11 @@ wh110-firmware-tactile-api/docs/tactile-wire-protocol.md).
 
 import time
 import numpy as np
-import wujihandpy as w
+from wujihandpy import tactile
 
 
 def main():
-    with w.TactileBoard() as tb:
+    with tactile.Board() as tb:
         info = tb.get_device_info()
         build = tb.get_fw_build()
         print(f"Tactile board")
