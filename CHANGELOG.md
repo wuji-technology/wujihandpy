@@ -13,8 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `wh110-firmware/docs/tactile-wire-protocol.md`):
   - Data frame is now 3088 B (was 1550 B); pressure is `float32` in `[0.0, 1.0]`
     with `NaN` marking invalid cells (was inverted-polarity `int16`).
-  - `TactileFrame.pressure` is exposed as a `numpy.float32` 24×32 array.
-  - New commands on `TactileBoard`: `get_device_info`, `get_fw_build`,
+  - All tactile types live under the `wujihandcpp::tactile` C++
+    namespace and the `wujihandpy.tactile` Python submodule. The
+    redundant `Tactile` prefix is dropped from every type name —
+    e.g. `wujihandpy.tactile.Board` (was `wujihandpy.TactileBoard`),
+    `tactile.Frame`, `tactile.Diagnostics`, `tactile.Error`,
+    `tactile.BOOTLOADER_MAGIC`. See `docs/refactor-plan.md`.
+  - `tactile.Frame.pressure` is exposed as a `numpy.float32` 24×32 array.
+  - New commands on `tactile.Board`: `get_device_info`, `get_fw_build`,
     `get_handedness`, `get_diagnostics`, `reset_counters`, `set_streaming`,
     `reset_device`, `enter_bootloader`, `get_sample_rate_hz`,
     `set_sample_rate_hz`, `get_streaming_enabled`, `get_device_time`,
@@ -22,14 +28,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `get_handedness()` (queries the device directly).
   - `set_disconnect_callback()` replaces the prior "zero-init frame as
     disconnect signal" hack — `0.0` is now a legitimate pressure value.
-  - New types: `TactileDeviceInfo`, `TactileFwBuild`, `TactileDiagnostics`,
-    `TactileDeviceTime`, `TactileSyncResult`, `TactileStatus`, `TactileError`.
+  - New types under `wujihandpy.tactile`: `DeviceInfo`, `FwBuild`,
+    `Diagnostics`, `DeviceTime`, `SyncResult`, `Status`, `Error`.
   - Default per-command timeout raised from spec's recommended 500 ms to
     2000 ms to absorb a sporadic ~0.5 s host-side cdc-acm stall observed on
     Linux 6.8 (firmware-side counters confirm zero drops/CRC errors during
     the stall — bytes simply don't surface from the kernel during the
     window). Demuxer queue sized at 16 frames (~130 ms @ 120 Hz). Tactile
     consumers must tolerate occasional sub-second sequence gaps.
+
+- **SDK consumed via CMake Config package**. `find_package(wujihandcpp
+  CONFIG REQUIRED)` now resolves a properly exported
+  `wujihandcpp::wujihandcpp` imported target with transitive
+  spdlog/Threads/usb-1.0 deps wired through. Standalone builds install
+  `lib/cmake/wujihandcpp/wujihandcppConfig.cmake` and the matching
+  spdlog Config alongside (`SPDLOG_INSTALL=ON`); the Python wheel build
+  opts out via `WUJIHANDCPP_INSTALL=OFF` so neither pollutes the wheel.
+
+- **Examples reorganized** by subsystem:
+  - `example/joint/{1.read,2.write,3.realtime,4.async,5.multithread}.py`
+    (unchanged content, moved into a subdirectory).
+  - `example/tactile/basic.py` (was `example/6.tactile.py`); rewritten
+    to use the new `from wujihandpy import tactile` import.
 
 ### Added
 
