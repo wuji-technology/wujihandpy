@@ -61,9 +61,13 @@ file(GLOB_RECURSE PROJECT_SOURCE CONFIGURE_DEPENDS
     ${PROJECT_SOURCE_DIR}/src/*.c
 )
 
-if(WIN32)
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    # Tactile-board CDC stack is Linux-only: cdc_transport.cpp uses
+    # /sys/class/tty + termios + poll, and tactile_cdc_demuxer.cpp /
+    # tactile_board.cpp pull <unistd.h> / ::close() on top of that.
     list(REMOVE_ITEM PROJECT_SOURCE
         ${PROJECT_SOURCE_DIR}/src/device/tactile_board.cpp
+        ${PROJECT_SOURCE_DIR}/src/device/tactile_cdc_demuxer.cpp
         ${PROJECT_SOURCE_DIR}/src/transport/cdc_transport.cpp
     )
 endif()
@@ -128,10 +132,18 @@ if(NOT MSVC)
     endif()
 endif()
 
-# Enable LTO optimization
-set_target_properties(${PROJECT_NAME} PROPERTIES
-    INTERPROCEDURAL_OPTIMIZATION TRUE
-)
+# LTO is opt-in. Enabling it bakes the host compiler's LTO bytecode into the
+# static archive, which then refuses to link with a different-major-version
+# GCC downstream (we hit this when the SDK was built with GCC 13 and the ROS
+# driver was built with the system GCC 11). Default OFF keeps source-link
+# downstream consumers — like the wujihandros2 driver — portable; release
+# builds that control the whole toolchain can flip it on.
+option(WUJIHANDCPP_ENABLE_IPO "Enable interprocedural optimization (LTO)" OFF)
+if(WUJIHANDCPP_ENABLE_IPO)
+    set_target_properties(${PROJECT_NAME} PROPERTIES
+        INTERPROCEDURAL_OPTIMIZATION TRUE
+    )
+endif()
 
 install(TARGETS ${PROJECT_NAME} LIBRARY DESTINATION lib ARCHIVE DESTINATION lib)
 install(DIRECTORY include/ DESTINATION include)

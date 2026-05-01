@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <cstdio>
 #include <stdexcept>
 #include <string>
 
@@ -35,6 +36,24 @@ enum class TactileStatus : uint8_t {
     UnknownCmd   = 0x12,
     BadPayload   = 0x13,
 };
+
+/// Format a status as `NAME(0xHH)` for diagnostics. Unknown codes show as
+/// `UNKNOWN(0xHH)` so unfamiliar values are still readable.
+inline std::string to_string(TactileStatus status) {
+    const char* name = nullptr;
+    switch (status) {
+        case TactileStatus::Ok:         name = "OK";          break;
+        case TactileStatus::BadLength:  name = "BAD_LENGTH";  break;
+        case TactileStatus::BadCrc:     name = "BAD_CRC";     break;
+        case TactileStatus::UnknownCmd: name = "UNKNOWN_CMD"; break;
+        case TactileStatus::BadPayload: name = "BAD_PAYLOAD"; break;
+    }
+    char hex[6];
+    std::snprintf(hex, sizeof(hex), "0x%02X",
+                  static_cast<unsigned>(static_cast<uint8_t>(status)));
+    if (!name) return std::string("UNKNOWN(") + hex + ")";
+    return std::string(name) + "(" + hex + ")";
+}
 
 /// Configuration keys (spec §3.4).
 enum class TactileConfigKey : uint16_t {

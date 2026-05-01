@@ -15,9 +15,10 @@ namespace {
 // notification path, so we poll in cdc::read_exact.
 constexpr uint32_t READER_POLL_MS = 100;
 
-// Maximum command frame payload size after subtracting sync+length+cmd_id
-// +seq+crc = 10 bytes (per spec §2.2).
-constexpr size_t MAX_REQUEST_PAYLOAD = TACTILE_FRAME_MAX - 10;
+// Spec §2.2: total frame ≤ 512 B AND request payload > 500 B is illegal.
+// The two constraints overlap with 2 B of cushion (frame_max - overhead = 502),
+// so the binding limit is 500 B. Hard-coded explicitly to track the spec value.
+constexpr size_t MAX_REQUEST_PAYLOAD = 500;
 
 // Response frame fixed overhead (sync 2 + length 2 + cmd_id 2 + seq 2 +
 // status 1 + crc 2 = 11) per spec §2.3.
@@ -221,8 +222,8 @@ std::vector<uint8_t> TactileCdcDemuxer::single_command(TactileCmd cmd, const uin
     pending_payload_.clear();
 
     if (status != TactileStatus::Ok) {
-        throw TactileError(status, "tactile command returned non-Ok status: 0x"
-                                   + std::to_string(static_cast<int>(status)));
+        throw TactileError(status, "tactile command returned non-Ok status: "
+                                   + to_string(status));
     }
     return payload_out;
 }

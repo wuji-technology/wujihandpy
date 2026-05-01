@@ -511,6 +511,14 @@ TactileSyncResult TactileBoard::sync_host_epoch(uint64_t host_unix_ns) {
     TactileSyncResult r;
     r.device_ns_at_sync = read_le64(resp.data());
     r.host_ns_echo      = read_le64(resp.data() + 8);
+    // Spec §3.5.2: device echoes the request's host_unix_ns verbatim. A
+    // mismatch implies a stale response from a prior sync_host_epoch (request
+    // pipelining bug, or seq wrap landing on the wrong waiter despite the
+    // (seq, cmd_id) pairing). Surface this rather than silently accepting a
+    // wrong epoch pair.
+    if (r.host_ns_echo != host_unix_ns) {
+        throw std::runtime_error("sync_host_epoch: device echoed mismatched host_unix_ns");
+    }
     return r;
 }
 
