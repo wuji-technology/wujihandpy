@@ -1,0 +1,36 @@
+"""Type stub for wujihandpy.tactile.
+
+Mirrors the runtime re-exports in tactile.py so type checkers
+(mypy / pyright) resolve `from wujihandpy.tactile import Board` to the
+classes pybind11_stubgen wrote into _core/tactile.pyi.
+"""
+
+from __future__ import annotations
+
+from ._core.tactile import (
+    BOOTLOADER_MAGIC as BOOTLOADER_MAGIC,
+    Board as Board,
+    DeviceInfo as DeviceInfo,
+    DeviceTime as DeviceTime,
+    Diagnostics as Diagnostics,
+    Error as Error,
+    Frame as Frame,
+    FwBuild as FwBuild,
+    Handedness as Handedness,
+    Status as Status,
+    SyncResult as SyncResult,
+)
+
+__all__: list[str] = [
+    "BOOTLOADER_MAGIC",
+    "Board",
+    "DeviceInfo",
+    "DeviceTime",
+    "Diagnostics",
+    "Error",
+    "Frame",
+    "FwBuild",
+    "Handedness",
+    "Status",
+    "SyncResult",
+]
