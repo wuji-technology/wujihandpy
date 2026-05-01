@@ -31,6 +31,10 @@ project(wujihandpy)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 set(BUILD_STATIC_WUJIHANDCPP ON CACHE BOOL "" FORCE)
+# Wheel build: wujihandcpp is embedded into _core.so; do not also install it
+# (or its bundled spdlog) into the wheel.
+set(WUJIHANDCPP_INSTALL OFF CACHE BOOL "" FORCE)
+set(SPDLOG_INSTALL OFF CACHE BOOL "" FORCE)
 add_subdirectory(wujihandcpp EXCLUDE_FROM_ALL)
 
 

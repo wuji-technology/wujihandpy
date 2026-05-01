@@ -91,7 +91,13 @@ endif()
 target_compile_definitions(${PROJECT_NAME} PRIVATE BUILDING_WUJIHANDCPP)
 target_compile_definitions(${PROJECT_NAME} PUBLIC WUJIHANDCPP_VERSION="${PROJECT_VERSION}")
 
-target_include_directories(${PROJECT_NAME} PUBLIC ${PROJECT_SOURCE_DIR}/include)
+# Public include split between BUILD and INSTALL interfaces so the install
+# tree (lib/cmake/wujihandcpp/wujihandcppTargets.cmake) records `include`
+# under the install prefix instead of leaking the source-tree path.
+target_include_directories(${PROJECT_NAME} PUBLIC
+    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+)
 target_include_directories(${PROJECT_NAME} PRIVATE ${PROJECT_SOURCE_DIR}/src)
 
 if(WIN32)
@@ -107,6 +113,13 @@ elseif(UNIX)
     target_link_libraries(${PROJECT_NAME} PUBLIC Threads::Threads)
 endif()
 
+# Install rules are gated so embedding builds (e.g. the wujihandpy Python
+# wheel, which embeds wujihandcpp into _core.so via add_subdirectory) can
+# skip them. Standalone builds (and the system .deb/.rpm packaging path)
+# leave it ON to produce a fully consumable install tree. Declared here —
+# before spdlog FetchContent — so SPDLOG_INSTALL can mirror it.
+option(WUJIHANDCPP_INSTALL "Generate install rules for wujihandcpp" ON)
+
 include(FetchContent)
 FetchContent_Declare(
     spdlog
@@ -114,6 +127,17 @@ FetchContent_Declare(
     GIT_TAG v1.16.0
     GIT_SHALLOW TRUE
 )
+# Ship spdlog alongside wujihandcpp when we are installing. Downstream
+# consumers do `find_package(wujihandcpp CONFIG REQUIRED)` which transitively
+# `find_dependency(spdlog)` — that has to resolve, and the simplest place to
+# resolve it is the same prefix wujihandcpp installed into. When wheel /
+# embedding builds set WUJIHANDCPP_INSTALL=OFF, spdlog stays out of the
+# install set too.
+if(WUJIHANDCPP_INSTALL)
+    set(SPDLOG_INSTALL ON CACHE BOOL "" FORCE)
+else()
+    set(SPDLOG_INSTALL OFF CACHE BOOL "" FORCE)
+endif()
 FetchContent_MakeAvailable(spdlog)
 target_link_libraries(${PROJECT_NAME} PUBLIC spdlog::spdlog)
 
@@ -145,8 +169,54 @@ if(WUJIHANDCPP_ENABLE_IPO)
     )
 endif()
 
-install(TARGETS ${PROJECT_NAME} LIBRARY DESTINATION lib ARCHIVE DESTINATION lib)
-install(DIRECTORY include/ DESTINATION include)
+if(WUJIHANDCPP_INSTALL)
+    include(GNUInstallDirs)
+    include(CMakePackageConfigHelpers)
+
+    install(TARGETS ${PROJECT_NAME}
+        EXPORT wujihandcppTargets
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    )
+    install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+
+    install(EXPORT wujihandcppTargets
+        FILE wujihandcppTargets.cmake
+        NAMESPACE wujihandcpp::
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/wujihandcpp
+    )
+
+    write_basic_package_version_file(
+        "${CMAKE_CURRENT_BINARY_DIR}/wujihandcppConfigVersion.cmake"
+        VERSION ${PROJECT_VERSION}
+        COMPATIBILITY SameMajorVersion
+    )
+
+    configure_package_config_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/wujihandcppConfig.cmake.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/wujihandcppConfig.cmake"
+        INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/wujihandcpp
+    )
+
+    install(FILES
+        "${CMAKE_CURRENT_BINARY_DIR}/wujihandcppConfig.cmake"
+        "${CMAKE_CURRENT_BINARY_DIR}/wujihandcppConfigVersion.cmake"
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/wujihandcpp
+    )
+
+    # Also export the build tree so consumers can use the SDK without an
+    # install step:
+    #   find_package(wujihandcpp PATHS .../wujihandcpp/build NO_DEFAULT_PATH)
+    # Useful for the local dev loop where SDK and ROS sit side by side.
+    # configure_package_config_file already wrote Config + ConfigVersion to
+    # this binary dir; export(EXPORT) writes the matching Targets file.
+    export(EXPORT wujihandcppTargets
+        FILE "${CMAKE_CURRENT_BINARY_DIR}/wujihandcppTargets.cmake"
+        NAMESPACE wujihandcpp::
+    )
+endif()
 
 include(CTest)
 if(BUILD_TESTING)
