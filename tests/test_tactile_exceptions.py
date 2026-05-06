@@ -3,15 +3,22 @@
 Guards against silently regressing the round-1 P1 fix that mapped the
 internal C++ exceptions onto stdlib `ConnectionError` / `TimeoutError`.
 
-The tactile bindings are Linux-only — non-Linux test runs skip the whole
-file via `pytest.importorskip`.
+Platform handling: same as test_tactile_imports.py — non-Linux skips
+the whole file at module level; Linux hard-imports so regressions in
+the binding fail the test instead of silently skipping.
 """
 from __future__ import annotations
 
+import sys
+
 import pytest
 
-pytest.importorskip("wujihandpy.tactile",
-                    reason="tactile bindings are Linux-only")
+if not sys.platform.startswith("linux"):
+    pytest.skip(
+        "tactile bindings are Linux-only",
+        allow_module_level=True,
+    )
+
 import wujihandpy.tactile as tactile  # noqa: E402
 
 

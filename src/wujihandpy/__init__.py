@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ._core import Finger, Hand, IController, Joint, filter
+from ._core import Finger, Hand, IController, Joint, filter, logging
 from ._version import __version__
 
 # Tactile bindings are Linux-only — see wujihandcpp/include/wujihandcpp/data/
@@ -24,6 +24,7 @@ __all__ = [
     "Joint",
     "IController",
     "filter",
+    "logging",
 ]
 if _HAS_TACTILE:
     __all__.append("tactile")
