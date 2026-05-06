@@ -1,0 +1,81 @@
+"""Tactile exception-type translation invariants — no hardware needed.
+
+Guards against silently regressing the round-1 P1 fix that mapped the
+internal C++ exceptions onto stdlib `ConnectionError` / `TimeoutError`.
+"""
+from __future__ import annotations
+
+import pytest
+
+import wujihandpy.tactile as tactile
+
+
+def _board_not_connected():
+    """Construct a Board against a nonexistent serial; connect()
+    returns False and the SDK stays disconnected. Subsequent calls
+    must raise ConnectionError, not bare RuntimeError or anything
+    else."""
+    b = tactile.Board(serial_number="ci-nonexistent-serial-zzz")
+    assert b.connect() is False
+    return b
+
+
+def test_read_frame_on_disconnected_raises_ConnectionError():
+    b = _board_not_connected()
+    with pytest.raises(ConnectionError):
+        b.read_frame(timeout_ms=10)
+
+
+def test_get_device_info_on_disconnected_raises_ConnectionError():
+    b = _board_not_connected()
+    with pytest.raises(ConnectionError):
+        b.get_device_info()
+
+
+def test_get_diagnostics_on_disconnected_raises_ConnectionError():
+    b = _board_not_connected()
+    with pytest.raises(ConnectionError):
+        b.get_diagnostics()
+
+
+def test_set_streaming_on_disconnected_raises_ConnectionError():
+    b = _board_not_connected()
+    with pytest.raises(ConnectionError):
+        b.set_streaming(True)
+
+
+def test_start_streaming_on_disconnected_raises_ConnectionError():
+    b = _board_not_connected()
+    with pytest.raises(ConnectionError):
+        b.start_streaming(lambda f: None)
+
+
+def test_enter_context_on_missing_device_raises_ConnectionError():
+    """`with tactile.Board(serial=...)` should raise ConnectionError
+    on missing device, not bare RuntimeError. Matches stdlib idioms
+    where `socket.connect()` raises ConnectionRefusedError /
+    ConnectionError."""
+    with pytest.raises(ConnectionError):
+        with tactile.Board(serial_number="ci-nonexistent-serial-zzz"):
+            pass
+
+
+def test_exception_classes_distinct_from_runtime_error():
+    """Sanity check: the four wire-failure classes must not collapse
+    to bare RuntimeError. They translate to ConnectionError /
+    TimeoutError in main.cpp and a regression there would silently
+    break user `except ConnectionError:` clauses."""
+    b = _board_not_connected()
+    try:
+        b.read_frame(timeout_ms=5)
+    except ConnectionError:
+        pass  # expected
+    except RuntimeError as e:
+        # ConnectionError IS a subclass of OSError IS a subclass of
+        # Exception; RuntimeError is a sibling that should never be
+        # what we raise from a tactile not-connected path.
+        if not isinstance(e, ConnectionError):
+            pytest.fail(
+                "tactile read_frame on disconnected board raised "
+                f"plain RuntimeError ({e!r}); regression of round-1 P1 fix"
+            )

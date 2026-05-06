@@ -224,12 +224,25 @@ void Board::disconnect() {
     // potentially-slow wakes/joins outside the lock so concurrent commands
     // (which only hold the lock to snapshot, not for the blocking call) are
     // not blocked waiting for the streaming thread to drain its callback.
+    //
+    // streaming.store(false) is performed INSIDE the lock so a concurrent
+    // start_streaming() that races with this disconnect() observes a
+    // consistent (connected=false, streaming=false) snapshot. Storing it
+    // after the unbounded join() outside the lock would let the following
+    // sequence clobber a fresh streaming thread:
+    //   T_A: lock; move dx + thread; unlock
+    //   T_A: dx->stop(); thread.join();   // slow
+    //   T_B: connect(); start_streaming(); // sets streaming=true
+    //   T_A: streaming.store(false);       // clobbers T_B
+    // The next start_streaming() would then pass the "already streaming"
+    // guard and spawn a second consumer on the same demuxer queue.
     std::shared_ptr<CdcDemuxer> dx;
     std::thread thread_to_handle;
     {
         std::lock_guard<std::mutex> lock(impl_->lifecycle_mu);
         impl_->connected.store(false, std::memory_order_release);
         impl_->stop_streaming_requested.store(true, std::memory_order_release);
+        impl_->streaming.store(false, std::memory_order_release);
         dx = std::move(impl_->demuxer);
         thread_to_handle = std::move(impl_->streaming_thread);
     }
@@ -247,7 +260,6 @@ void Board::disconnect() {
             thread_to_handle.join();
         }
     }
-    impl_->streaming.store(false, std::memory_order_release);
     // dx goes out of scope here (or in some lingering command() call); the
     // last ref drop runs ~CdcDemuxer which close()s the fd.
 }
@@ -257,16 +269,30 @@ bool Board::is_connected() const {
 }
 
 Frame Board::read_frame(uint32_t timeout_ms) {
-    auto dx = impl_->snapshot_demuxer();
-    if (!dx) throw std::runtime_error("tactile::Board: not connected");
-    if (impl_->streaming.load(std::memory_order_acquire))
-        throw std::logic_error("tactile::Board: cannot call read_frame() while streaming");
+    // Snapshot the demuxer AND the streaming flag atomically under
+    // lifecycle_mu. Doing them as two separate atomic loads opens a
+    // race: read_frame's streaming-check passes while a concurrent
+    // start_streaming() bumps `streaming=true` between the two loads,
+    // and read_frame ends up consuming a frame that the streaming
+    // consumer expected. The lock makes the (demuxer, streaming)
+    // observation consistent.
+    std::shared_ptr<CdcDemuxer> dx;
+    {
+        std::lock_guard<std::mutex> lock(impl_->lifecycle_mu);
+        dx = impl_->demuxer;
+        if (!dx) throw NotConnectedError("tactile::Board: not connected");
+        if (impl_->streaming.load(std::memory_order_acquire))
+            throw std::logic_error(
+                "tactile::Board: cannot call read_frame() while streaming");
+    }
 
     uint8_t buf[protocol::FRAME_SIZE];
     if (!dx->wait_data_frame(buf, timeout_ms)) {
         if (!impl_->connected.load(std::memory_order_acquire))
             throw ConnectionLostError("USB CDC device disconnected");
-        throw std::runtime_error("tactile::Board: read_frame timeout");
+        // Use the typed exception so Python callers see TimeoutError, matching
+        // the rest of the tactile command surface.
+        throw ResponseTimeoutError("tactile::Board: read_frame timeout");
     }
     return protocol::parse_frame(buf);
 }
@@ -278,7 +304,7 @@ void Board::start_streaming(FrameCallback callback) {
     {
         std::lock_guard<std::mutex> lock(impl_->lifecycle_mu);
         if (!impl_->connected.load(std::memory_order_acquire))
-            throw std::runtime_error("tactile::Board: not connected");
+            throw NotConnectedError("tactile::Board: not connected");
         if (impl_->streaming.load(std::memory_order_acquire))
             throw std::logic_error("tactile::Board: already streaming");
         dx = impl_->demuxer;
@@ -309,8 +335,18 @@ void Board::start_streaming(FrameCallback callback) {
     if (!impl_->connected.load(std::memory_order_acquire)
         || impl_->demuxer != dx
         || impl_->stop_streaming_requested.load(std::memory_order_acquire)) {
-        impl_->streaming.store(false, std::memory_order_release);
-        throw std::runtime_error(
+        // Generation guard, same shape as streaming_loop's tail. While we
+        // were joining `old_thread` outside the lock a concurrent
+        // disconnect → reconnect → start_streaming cycle may have
+        // bumped the generation past us. If our `my_gen` is no longer
+        // current, a fresh consumer is already running with
+        // `streaming=true`; clobbering it back to false here would let
+        // the next start_streaming() pass the "already streaming"
+        // guard and spawn a second consumer on the same demuxer queue.
+        if (impl_->streaming_generation.load(std::memory_order_acquire) == my_gen) {
+            impl_->streaming.store(false, std::memory_order_release);
+        }
+        throw NotConnectedError(
             "tactile::Board: disconnected before streaming could start");
     }
     try {
@@ -327,16 +363,27 @@ void Board::start_streaming(FrameCallback callback) {
                 impl->streaming_loop(my_gen, std::move(dx_local), std::move(cb));
             });
     } catch (...) {
-        impl_->streaming.store(false, std::memory_order_release);
+        // Same generation guard — std::thread() throwing is rare but the
+        // race window is identical to the validation-failure branch.
+        if (impl_->streaming_generation.load(std::memory_order_acquire) == my_gen) {
+            impl_->streaming.store(false, std::memory_order_release);
+        }
         throw;
     }
 }
 
 void Board::stop_streaming() {
+    // streaming.store(false) is performed INSIDE the lock for the same
+    // reason as disconnect(): the unbounded join() below releases the lock
+    // while a concurrent start_streaming() could spawn a fresh consumer; if
+    // we cleared `streaming` after the join we would clobber that fresh
+    // generation's `streaming=true` and a third start_streaming() would
+    // then spawn a second concurrent consumer on the same demuxer queue.
     std::thread thread_to_handle;
     {
         std::lock_guard<std::mutex> lock(impl_->lifecycle_mu);
         impl_->stop_streaming_requested.store(true, std::memory_order_release);
+        impl_->streaming.store(false, std::memory_order_release);
         thread_to_handle = std::move(impl_->streaming_thread);
     }
     if (thread_to_handle.joinable()) {
@@ -347,7 +394,6 @@ void Board::stop_streaming() {
             thread_to_handle.join();
         }
     }
-    impl_->streaming.store(false, std::memory_order_release);
 }
 
 void Board::set_disconnect_callback(DisconnectCallback callback) {
@@ -431,15 +477,25 @@ void Board::set_streaming(bool enable) {
 
 void Board::reset_device() {
     // The device tears down USB after sending OK, so the response usually
-    // never reaches us — that's the success path. Only swallow exceptions
-    // that match "command sent, then the device went away"; surface real
-    // failures (not connected, write failed, non-Ok status) to the caller.
+    // never reaches us — that's the success path. Swallow the exception
+    // classes that all map to "command sent (or sent-ish), then the
+    // device went away" so callers don't have to care which exact wire
+    // edge fired:
+    //   - ResponseTimeoutError              — device jumped before the reply
+    //   - DisconnectedDuringRequestError    — device dropped USB during the wait
+    //   - WriteFailedError                  — write() raced with the kernel
+    //                                          tearing the CDC fd down (-EIO);
+    //                                          functionally identical to a
+    //                                          mid-request disconnect from the
+    //                                          caller's point of view
+    // Other exceptions (NotConnectedError because the SDK was already
+    // disconnected, non-Ok Error from the firmware) propagate so the
+    // caller can distinguish a real failure from "device is gone now".
     try {
         impl_->command(Cmd::Reset, nullptr, 0, 100);
     } catch (const ResponseTimeoutError&) {
-        // Device jumped before the reply landed.
     } catch (const DisconnectedDuringRequestError&) {
-        // Device dropped USB during/after the write.
+    } catch (const WriteFailedError&) {
     }
     // Either we got OK, or the device is gone. In both cases this SDK
     // handle is no longer connected to a live device — drop the demuxer so
@@ -457,10 +513,15 @@ void Board::enter_bootloader(uint32_t magic) {
         // Device jumped to bootloader before the reply landed.
     } catch (const DisconnectedDuringRequestError&) {
         // Device dropped USB during/after the write — same success path.
+    } catch (const WriteFailedError&) {
+        // write() returned -EIO mid-call because the kernel tore the
+        // CDC fd down between our snapshot and the syscall. Same
+        // outcome as DisconnectedDuringRequestError for our purposes:
+        // the device is gone, switch our connected state to match.
     }
     // Reaching this point means we got OK, hit a timeout, or saw the device
     // drop — all "bootloader is now running" outcomes. Other exceptions
-    // (BadPayload for wrong magic, NotConnected, WriteFailed) propagate from
+    // (BadPayload for wrong magic, NotConnectedError) propagate from
     // command() and skip this teardown. The device re-enumerates as PID
     // 0x5701; the caller must connect to that handle.
     disconnect();

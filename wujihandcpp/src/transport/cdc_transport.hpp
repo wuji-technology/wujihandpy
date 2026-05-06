@@ -32,9 +32,24 @@ int open_cdc(const char* tty_path);
 ///         Returns < count if timeout expires.
 ssize_t read_exact(int fd, uint8_t* buf, size_t count, uint32_t timeout_ms);
 
-/// Write exactly `count` bytes, retrying on partial writes / EINTR.
-/// @return number of bytes written (== count) on success, -1 on error/disconnect.
-ssize_t write_exact(int fd, const uint8_t* buf, size_t count);
+/// Write exactly `count` bytes with a cumulative deadline.
+/// @param fd          open file descriptor
+/// @param buf         source buffer
+/// @param count       bytes to write
+/// @param timeout_ms  cumulative deadline in milliseconds. Required —
+///                    no default — because passing 0 silently regresses
+///                    to "no timeout" and re-opens the unbounded-block
+///                    failure mode this function was added to fix. The
+///                    kernel cdc-acm path can stall for ~500 ms under
+///                    sustained 120 Hz traffic; a stuck device is
+///                    indistinguishable from "URB queue full" from the
+///                    host's point of view. Use the same per-command
+///                    budget as the response wait; never 0.
+/// @return number of bytes written (== count) on success.
+///         < count if the deadline expires (caller treats as failure).
+///         -1 on disconnect / write() error.
+ssize_t write_exact(int fd, const uint8_t* buf, size_t count,
+                    uint32_t timeout_ms);
 
 }  // namespace cdc
 }  // namespace wujihandcpp

@@ -174,13 +174,43 @@ ssize_t read_exact(int fd, uint8_t* buf, size_t count, uint32_t timeout_ms) {
     return static_cast<ssize_t>(total);
 }
 
-ssize_t write_exact(int fd, const uint8_t* buf, size_t count) {
+ssize_t write_exact(int fd, const uint8_t* buf, size_t count,
+                    uint32_t timeout_ms) {
     size_t total = 0;
+    auto deadline = std::chrono::steady_clock::now()
+                    + std::chrono::milliseconds(timeout_ms);
+
     while (total < count) {
+        // Cumulative deadline: gate every iteration on the remaining
+        // budget. The header forbids timeout_ms==0 because that path
+        // would silently re-open the unbounded-block failure mode.
+        auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+                            deadline - std::chrono::steady_clock::now()).count();
+        if (remaining <= 0) return static_cast<ssize_t>(total);  // timeout
+
+        struct pollfd pfd{};
+        pfd.fd = fd;
+        pfd.events = POLLOUT;
+        int ret = poll(&pfd, 1, static_cast<int>(remaining));
+        if (ret < 0) {
+            if (errno == EINTR) continue;
+            return -1;
+        }
+        if (ret == 0) {
+            return static_cast<ssize_t>(total);  // timeout
+        }
+        if (pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) {
+            return -1;  // device disconnected mid-write
+        }
+
         ssize_t n = write(fd, buf + total, count - total);
         if (n < 0) {
             if (errno == EINTR) continue;
-            return -1;  // EAGAIN should not occur — fd is blocking after open_cdc()
+            // EAGAIN can briefly fire between the poll() ready signal
+            // and the write() under heavy USB pressure; the loop's
+            // `remaining <= 0` deadline check above bounds the retry.
+            if (errno == EAGAIN) continue;
+            return -1;
         }
         if (n == 0) {
             return -1;  // shouldn't happen for a regular fd, treat as failure

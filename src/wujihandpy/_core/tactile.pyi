@@ -6,7 +6,7 @@ import collections.abc
 import numpy
 import numpy.typing
 import typing
-__all__: list[str] = ['BOOTLOADER_MAGIC', 'Board', 'DeviceInfo', 'DeviceTime', 'Diagnostics', 'Error', 'Frame', 'FwBuild', 'Handedness', 'Status', 'SyncResult']
+__all__: list = ['BOOTLOADER_MAGIC', 'Board', 'DeviceInfo', 'DeviceTime', 'Diagnostics', 'Error', 'Frame', 'FwBuild', 'Handedness', 'Status', 'SyncResult']
 class Board:
     def __enter__(self) -> Board:
         ...

@@ -132,8 +132,18 @@ inline void init_module(py::module_& parent) {
                 try {
                     (*cb)(frame);
                 } catch (py::error_already_set& e) {
-                    e.restore();
-                    PyErr_Clear();
+                    // Surface the Python traceback to sys.stderr / the
+                    // unraisablehook before tearing down streaming. The
+                    // previous `e.restore(); PyErr_Clear();` pair stashed
+                    // the exception then immediately discarded it — the
+                    // streaming thread would silently exit and the user
+                    // would see no diagnostic. PyErr_WriteUnraisable
+                    // prints the full traceback using the same machinery
+                    // Python uses for finalizer errors, then clears the
+                    // error indicator, leaving us free to throw a clean
+                    // C++ exception so the SDK's streaming_loop can stop
+                    // the consumer thread.
+                    PyErr_WriteUnraisable(cb->ptr());
                     throw std::runtime_error(
                         "tactile.Board: Python frame callback raised an exception");
                 }
@@ -162,11 +172,17 @@ inline void init_module(py::module_& parent) {
                 py::gil_scoped_acquire acquire;
                 try {
                     (*cb)();
-                } catch (py::error_already_set& e) {
-                    e.restore();
-                    PyErr_Clear();
-                    // Disconnect callback exceptions are intentionally swallowed
-                    // (see C++ Board::set_disconnect_callback contract).
+                } catch (py::error_already_set&) {
+                    // Disconnect callback exceptions are intentionally
+                    // swallowed (see C++ Board::set_disconnect_callback
+                    // contract — the disconnect path can't unwind the
+                    // SDK reader thread cleanly mid-shutdown). Print
+                    // the traceback to sys.stderr / the unraisablehook
+                    // first so the user can see *what* went wrong;
+                    // the alternative `e.restore(); PyErr_Clear()`
+                    // sequence flashed the exception into TLS and then
+                    // discarded it, producing a silent no-op.
+                    PyErr_WriteUnraisable(cb->ptr());
                 }
             };
             // Release the GIL — set_disconnect_callback may drop the
@@ -241,7 +257,9 @@ inline void init_module(py::module_& parent) {
         .def("__enter__", [](Board& self) -> Board& {
             bool ok;
             { py::gil_scoped_release release; ok = self.connect(); }
-            if (!ok) throw std::runtime_error("tactile.Board: device not found");
+            // NotConnectedError → Python ConnectionError (see main.cpp), so
+            // `except ConnectionError` matches the rest of the tactile surface.
+            if (!ok) throw NotConnectedError("tactile.Board: device not found");
             return self;
         })
         .def("__exit__", [](Board& self, const py::object&,
@@ -252,6 +270,24 @@ inline void init_module(py::module_& parent) {
 
     // Module-level constants on the submodule, not the class.
     m.attr("BOOTLOADER_MAGIC") = BOOTLOADER_MAGIC;
+
+    // Publish __all__ so `from wujihandpy._core.tactile import *` works and so
+    // wrapper tooling (src/wujihandpy/tactile.py + update_stubs.py) reads a
+    // single source of truth for the public submodule surface. Derive it
+    // from the module's own dict — every public binding registered above
+    // shows up automatically; adding a new py::class_ or m.attr never needs
+    // a paired __all__ edit, eliminating the wrapper/stub-drift class
+    // documented in the round-1 review.
+    {
+        py::list names;
+        for (auto item : m.attr("__dict__").cast<py::dict>()) {
+            std::string name = item.first.cast<std::string>();
+            if (!name.empty() && name[0] != '_') {
+                names.append(name);
+            }
+        }
+        m.attr("__all__") = py::module_::import("builtins").attr("sorted")(names);
+    }
 }
 
 }  // namespace tactile_binding

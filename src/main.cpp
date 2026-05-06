@@ -37,6 +37,20 @@ PYBIND11_MODULE(_core, m) {
 #ifdef WUJIHANDPY_ENABLE_TACTILE
         } catch (const wujihandcpp::tactile::ConnectionLostError& e) {
             PyErr_SetString(PyExc_ConnectionError, e.what());
+        } catch (const wujihandcpp::tactile::DisconnectedDuringRequestError& e) {
+            // Wire-level disconnect is a connection failure to Python callers.
+            PyErr_SetString(PyExc_ConnectionError, e.what());
+        } catch (const wujihandcpp::tactile::NotConnectedError& e) {
+            PyErr_SetString(PyExc_ConnectionError, e.what());
+        } catch (const wujihandcpp::tactile::WriteFailedError& e) {
+            // write() to the CDC fd failed; treat as connection-level error so
+            // callers can `except ConnectionError` uniformly across the four
+            // wire-failure classes.
+            PyErr_SetString(PyExc_ConnectionError, e.what());
+        } catch (const wujihandcpp::tactile::ResponseTimeoutError& e) {
+            // Map to Python TimeoutError so `except TimeoutError` works the
+            // same way it does for the joint SDK.
+            PyErr_SetString(PyExc_TimeoutError, e.what());
 #endif
         } catch (const wujihandcpp::device::TimeoutError& e) {
             PyErr_SetString(PyExc_TimeoutError, e.what());

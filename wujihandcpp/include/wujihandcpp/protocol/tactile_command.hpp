@@ -1,5 +1,8 @@
 #pragma once
 
+// Tactile API is Linux-only — see wujihandcpp/data/tactile.hpp for rationale.
+#if defined(__linux__)
+
 #include <cstdint>
 #include <cstdio>
 #include <stdexcept>
@@ -121,3 +124,5 @@ class DisconnectedDuringRequestError : public std::runtime_error {
 
 }  // namespace tactile
 }  // namespace wujihandcpp
+
+#endif  // defined(__linux__)

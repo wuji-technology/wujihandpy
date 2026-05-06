@@ -186,16 +186,39 @@ std::vector<uint8_t> CdcDemuxer::single_command(Cmd cmd, const uint8_t* payload,
         pending_payload_.clear();
     }
 
-    if (cdc::write_exact(fd_, buf, length) != static_cast<ssize_t>(length)) {
+    // Bound the write to the per-command deadline. Without this the
+    // documented 2 s budget is unbounded — a stuck cdc-acm URB queue
+    // can park write() forever even though the firmware would have
+    // answered in milliseconds. A short-write (<length) is treated
+    // as a write failure for the purposes of the command channel:
+    // the wire frame is unparseable on a partial write, so the
+    // device couldn't act on it anyway.
+    //
+    // Deadline math: split the per-command timeout between write and
+    // response-wait by using a single absolute deadline. write_exact
+    // returns when its slice expires; the wait_for below uses
+    // (deadline - now) so the cumulative worst-case is timeout_ms,
+    // not 2 * timeout_ms.
+    auto deadline = std::chrono::steady_clock::now()
+                    + std::chrono::milliseconds(timeout_ms);
+    if (cdc::write_exact(fd_, buf, length, timeout_ms)
+        != static_cast<ssize_t>(length)) {
         std::lock_guard<std::mutex> lock(pending_mu_);
         pending_active_ = false;
         throw WriteFailedError(
-            "CdcDemuxer: write failed (device disconnected?)");
+            "CdcDemuxer: write failed (timeout / device disconnected)");
     }
 
-    // Wait for the matching response.
+    // Wait for the matching response within the remaining budget. If
+    // write_exact ate the entire budget (rare — the write is 16 bytes
+    // and a healthy device drains it in microseconds), `remaining` may
+    // be zero or slightly negative, in which case wait_for treats it
+    // as already-timed-out and returns immediately.
+    auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        deadline - std::chrono::steady_clock::now());
+    if (remaining.count() < 0) remaining = std::chrono::milliseconds(0);
     std::unique_lock<std::mutex> lock(pending_mu_);
-    bool got = pending_cv_.wait_for(lock, std::chrono::milliseconds(timeout_ms),
+    bool got = pending_cv_.wait_for(lock, remaining,
         [this]() {
             return pending_filled_
                 || disconnected_.load(std::memory_order_acquire)

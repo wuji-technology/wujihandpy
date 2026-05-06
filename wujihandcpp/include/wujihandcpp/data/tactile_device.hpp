@@ -1,5 +1,8 @@
 #pragma once
 
+// Tactile API is Linux-only — see wujihandcpp/data/tactile.hpp for rationale.
+#if defined(__linux__)
+
 #include <array>
 #include <cstdint>
 #include <string>
@@ -41,3 +44,5 @@ struct SyncResult {
 
 }  // namespace tactile
 }  // namespace wujihandcpp
+
+#endif  // defined(__linux__)

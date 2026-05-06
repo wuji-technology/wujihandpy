@@ -85,7 +85,15 @@ target_link_libraries(_core PRIVATE pybind11::module)
 target_link_directories(_core PRIVATE ${CMAKE_BINARY_DIR}/wujihandcpp)
 target_link_libraries(_core PRIVATE wujihandcpp)
 
-if(NOT WIN32)
+# WUJIHANDPY_ENABLE_TACTILE must match the platform gate used in the
+# wujihandcpp tactile headers (#if defined(__linux__)) and the .cpp
+# exclusion in wujihandcpp/CMakeLists.txt (`if(NOT CMAKE_SYSTEM_NAME
+# STREQUAL "Linux")`). The previous `if(NOT WIN32)` was true on macOS
+# too, which would now hard-compile-error in src/main.cpp because the
+# new __linux__ header gates make `wujihandcpp::tactile::*` invisible
+# on every non-Linux platform. Project policy is Linux-only anyway, so
+# tightening here just makes the three gates agree.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_compile_definitions(_core PRIVATE WUJIHANDPY_ENABLE_TACTILE)
 endif()
 

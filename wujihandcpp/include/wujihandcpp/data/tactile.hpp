@@ -1,5 +1,16 @@
 #pragma once
 
+// Tactile board API is Linux-only: cdc_transport.cpp (the only implementation
+// of the wire protocol) uses /sys/class/tty + termios + poll, and the demuxer
+// pulls in <unistd.h> / ::close() on top of that. The CMake build excludes
+// those .cpp files on non-Linux, so leaving the header symbols visible would
+// produce "compile OK, link unresolved" downstream when WUJIHANDCPP_API
+// (dllimport on Windows) is followed without matching export. Gating the
+// public types here keeps the header includable on every platform but exposes
+// nothing — code that actually uses tactile::* hits a clean compile error
+// instead of a confusing linker error.
+#if defined(__linux__)
+
 #include <cstdint>
 #include <cstring>
 
@@ -97,3 +108,5 @@ inline Frame parse_frame(const uint8_t* raw) {
 }  // namespace protocol
 }  // namespace tactile
 }  // namespace wujihandcpp
+
+#endif  // defined(__linux__)
