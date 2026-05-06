@@ -79,24 +79,41 @@ public:
         return v;
     }
 
-    // IByteStream
+    // IByteStream — same loop-until-full / partial-on-timeout shape as
+    // production cdc::CdcByteStream. The previous version returned the
+    // first chunk available even if < len, which made these tests
+    // unable to detect a regression in CdcByteStream's "wait for the
+    // remaining bytes within the deadline" loop. Round-2 codex review
+    // (P3#1) flagged the divergence.
     ssize_t read(uint8_t* buf, size_t len, uint32_t timeout_ms) override {
+        size_t total = 0;
         auto deadline = std::chrono::steady_clock::now()
                         + std::chrono::milliseconds(timeout_ms);
         std::unique_lock<std::mutex> lock(mu_);
-        if (!cv_.wait_until(lock, deadline,
-                            [&]() { return !read_buf_.empty() || disconnected_; })) {
-            return 0;  // timeout — same shape as CdcByteStream
+        while (total < len) {
+            if (!cv_.wait_until(lock, deadline, [&]() {
+                    return !read_buf_.empty() || disconnected_;
+                })) {
+                return static_cast<ssize_t>(total);  // timeout, partial read
+            }
+            if (disconnected_) return -1;
+            size_t take = std::min(len - total, read_buf_.size());
+            for (size_t i = 0; i < take; ++i) {
+                buf[total + i] = read_buf_.front();
+                read_buf_.pop_front();
+            }
+            total += take;
         }
-        if (disconnected_) return -1;
-        size_t take = std::min(len, read_buf_.size());
-        for (size_t i = 0; i < take; ++i) {
-            buf[i] = read_buf_.front();
-            read_buf_.pop_front();
-        }
-        return static_cast<ssize_t>(take);
+        return static_cast<ssize_t>(total);
     }
 
+    // Production CdcByteStream::write deadline-bounds the write and can
+    // return partial; we mirror disconnect behavior here. timeout in
+    // tests is dominated by the demuxer's per-command timeout (~500 ms
+    // in the tests); we accept all bytes synchronously the same way a
+    // healthy USB endpoint would and never short-write — but disconnect
+    // surfaces as -1, matching the production "device dropped mid-call"
+    // path.
     ssize_t write(const uint8_t* buf, size_t len, uint32_t /*timeout_ms*/) override {
         std::lock_guard<std::mutex> lock(mu_);
         if (disconnected_) return -1;
