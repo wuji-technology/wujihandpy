@@ -1,10 +1,7 @@
-#include "tactile_cdc_demuxer.hpp"
+#include "frame_demuxer.hpp"
 
 #include <chrono>
 #include <cstring>
-#include <unistd.h>
-
-#include "../transport/cdc_transport.hpp"
 
 namespace wujihandcpp {
 namespace tactile {
@@ -12,8 +9,9 @@ namespace tactile {
 namespace {
 
 // Reader-side polling timeout: short enough to react to stop_requested
-// quickly without burning CPU. The CDC fd doesn't have a true async
-// notification path, so we poll in cdc::read_exact.
+// quickly without burning CPU. The underlying byte stream doesn't have
+// a true async notification path, so we poll its read() with this
+// short deadline and loop back to the stop-flag check.
 constexpr uint32_t READER_POLL_MS = 100;
 
 // Spec §2.2: total frame ≤ 512 B AND request payload > 500 B is illegal.
@@ -36,17 +34,18 @@ inline void write_le16(uint8_t* p, uint16_t v) {
 
 }  // namespace
 
-CdcDemuxer::CdcDemuxer(int fd) : fd_(fd) {}
+FrameDemuxer::FrameDemuxer(std::shared_ptr<transport::IByteStream> stream)
+    : stream_(std::move(stream)) {}
 
-CdcDemuxer::~CdcDemuxer() {
+FrameDemuxer::~FrameDemuxer() {
     stop();
-    if (fd_ >= 0) {
-        ::close(fd_);
-        fd_ = -1;
-    }
+    // The byte stream is dropped (and any underlying fd closed) when the
+    // last shared_ptr<IByteStream> ref goes — typically right here when
+    // we drop our `stream_`, unless the reader thread was self-detached
+    // and still holds a ref via `self->stream_`.
 }
 
-void CdcDemuxer::start() {
+void FrameDemuxer::start() {
     // Capture shared_from_this() so the reader thread keeps the demuxer
     // alive for as long as the loop runs. Required for the self-detach path
     // in stop(): if stop() is called from inside the reader thread (via the
@@ -58,7 +57,7 @@ void CdcDemuxer::start() {
     thread_ = std::thread([self]() { self->reader_loop(); });
 }
 
-void CdcDemuxer::stop() {
+void FrameDemuxer::stop() {
     // A caller mid-write that already passed the disconnected_/stop_requested_
     // check in single_command() may still complete its write_exact() before
     // observing the new state — at most one "teardown-race write" leaks out.
@@ -80,8 +79,9 @@ void CdcDemuxer::stop() {
             // handle). Joining ourselves would std::terminate; detach and
             // let the reader loop unwind naturally. The shared_ptr<self>
             // captured in start() keeps *this alive until reader_loop
-            // returns, after which the last ref drops and ~CdcDemuxer
-            // closes the fd.
+            // returns, after which the last ref drops and ~FrameDemuxer
+            // releases its IByteStream ref (the underlying fd / handle
+            // is closed by the stream's destructor).
             thread_.detach();
         } else {
             thread_.join();
@@ -89,12 +89,12 @@ void CdcDemuxer::stop() {
     }
 }
 
-void CdcDemuxer::set_disconnect_callback(DisconnectCallback cb) {
+void FrameDemuxer::set_disconnect_callback(DisconnectCallback cb) {
     std::lock_guard<std::mutex> lock(disconnect_cb_mu_);
     disconnect_cb_ = std::move(cb);
 }
 
-bool CdcDemuxer::wait_data_frame(uint8_t out[protocol::FRAME_SIZE],
+bool FrameDemuxer::wait_data_frame(uint8_t out[protocol::FRAME_SIZE],
                                  uint32_t timeout_ms) {
     std::unique_lock<std::mutex> lock(frame_mu_);
     bool got = frame_cv_.wait_for(lock, std::chrono::milliseconds(timeout_ms),
@@ -109,7 +109,7 @@ bool CdcDemuxer::wait_data_frame(uint8_t out[protocol::FRAME_SIZE],
     return true;
 }
 
-std::vector<uint8_t> CdcDemuxer::command(Cmd cmd, const uint8_t* payload,
+std::vector<uint8_t> FrameDemuxer::command(Cmd cmd, const uint8_t* payload,
                                          size_t payload_len, uint32_t timeout_ms) {
     // Spec §2.4: requests are strictly serial. Hold this mutex through
     // build → send → wait so concurrent callers queue.
@@ -127,7 +127,7 @@ std::vector<uint8_t> CdcDemuxer::command(Cmd cmd, const uint8_t* payload,
 }
 
 std::optional<std::vector<uint8_t>>
-CdcDemuxer::try_command(Cmd cmd, const uint8_t* payload,
+FrameDemuxer::try_command(Cmd cmd, const uint8_t* payload,
                         size_t payload_len, uint32_t timeout_ms) {
     // Non-blocking acquire of the command serializer. If another caller
     // currently holds it, return nullopt — the caller decides whether to
@@ -147,15 +147,15 @@ CdcDemuxer::try_command(Cmd cmd, const uint8_t* payload,
     }
 }
 
-std::vector<uint8_t> CdcDemuxer::single_command(Cmd cmd, const uint8_t* payload,
+std::vector<uint8_t> FrameDemuxer::single_command(Cmd cmd, const uint8_t* payload,
                                                 size_t payload_len, uint32_t timeout_ms) {
     if (payload_len > MAX_REQUEST_PAYLOAD) {
-        throw std::runtime_error("CdcDemuxer: command payload too large");
+        throw std::runtime_error("FrameDemuxer: command payload too large");
     }
     // Short-circuit if the channel is already torn down — a stale demuxer
     // snapshot must not send bytes after the lifecycle owner closed it.
     if (is_closed()) {
-        throw NotConnectedError("CdcDemuxer: channel closed");
+        throw NotConnectedError("FrameDemuxer: channel closed");
     }
 
     // Build command frame (spec §2.2): sync(2) + length(2) + cmd(2) + seq(2)
@@ -201,12 +201,12 @@ std::vector<uint8_t> CdcDemuxer::single_command(Cmd cmd, const uint8_t* payload,
     // not 2 * timeout_ms.
     auto deadline = std::chrono::steady_clock::now()
                     + std::chrono::milliseconds(timeout_ms);
-    if (cdc::write_exact(fd_, buf, length, timeout_ms)
+    if (stream_->write(buf, length, timeout_ms)
         != static_cast<ssize_t>(length)) {
         std::lock_guard<std::mutex> lock(pending_mu_);
         pending_active_ = false;
         throw WriteFailedError(
-            "CdcDemuxer: write failed (timeout / device disconnected)");
+            "FrameDemuxer: write failed (timeout / device disconnected)");
     }
 
     // Wait for the matching response within the remaining budget. If
@@ -231,14 +231,14 @@ std::vector<uint8_t> CdcDemuxer::single_command(Cmd cmd, const uint8_t* payload,
     // after reconnect vs. surface the teardown).
     if (disconnected_.load(std::memory_order_acquire)) {
         throw DisconnectedDuringRequestError(
-            "CdcDemuxer: disconnected while awaiting response");
+            "FrameDemuxer: disconnected while awaiting response");
     }
     if (stop_requested_.load(std::memory_order_acquire) && !pending_filled_) {
         throw NotConnectedError(
-            "CdcDemuxer: channel closed while awaiting response");
+            "FrameDemuxer: channel closed while awaiting response");
     }
     if (!got || !pending_filled_) {
-        throw ResponseTimeoutError("CdcDemuxer: response timeout");
+        throw ResponseTimeoutError("FrameDemuxer: response timeout");
     }
 
     Status status = pending_status_;
@@ -252,7 +252,7 @@ std::vector<uint8_t> CdcDemuxer::single_command(Cmd cmd, const uint8_t* payload,
     return payload_out;
 }
 
-void CdcDemuxer::handle_data_frame(const uint8_t* buf) {
+void FrameDemuxer::handle_data_frame(const uint8_t* buf) {
     std::lock_guard<std::mutex> lock(frame_mu_);
     if (frame_queue_.size() >= MAX_QUEUE) frame_queue_.pop_front();
     frame_queue_.emplace_back();
@@ -260,7 +260,7 @@ void CdcDemuxer::handle_data_frame(const uint8_t* buf) {
     frame_cv_.notify_one();
 }
 
-void CdcDemuxer::handle_response_frame(const uint8_t* buf, uint16_t length) {
+void FrameDemuxer::handle_response_frame(const uint8_t* buf, uint16_t length) {
     // Layout per spec §2.3:
     //   2..4 length, 4..6 cmd_id, 6..8 seq, 8 status, 9..(L-2) payload, (L-2)..L crc.
     if (length < RESPONSE_FIXED_OVERHEAD) return;  // malformed; drop
@@ -302,12 +302,12 @@ void CdcDemuxer::handle_response_frame(const uint8_t* buf, uint16_t length) {
     pending_cv_.notify_one();
 }
 
-bool CdcDemuxer::read_drain(size_t count, uint32_t timeout_ms) {
+bool FrameDemuxer::read_drain(size_t count, uint32_t timeout_ms) {
     if (count == 0) return true;
     uint8_t scratch[512];
     while (count > 0) {
         size_t chunk = count > sizeof(scratch) ? sizeof(scratch) : count;
-        ssize_t n = cdc::read_exact(fd_, scratch, chunk, timeout_ms);
+        ssize_t n = stream_->read(scratch, chunk, timeout_ms);
         if (n < 0) {
             handle_disconnect();
             return false;
@@ -318,7 +318,7 @@ bool CdcDemuxer::read_drain(size_t count, uint32_t timeout_ms) {
     return true;
 }
 
-void CdcDemuxer::handle_disconnect() {
+void FrameDemuxer::handle_disconnect() {
     // disconnected_.exchange(true) gates everything below to fire exactly
     // once, even if multiple read paths see EIO concurrently.
     if (disconnected_.exchange(true, std::memory_order_acq_rel)) return;
@@ -336,13 +336,13 @@ void CdcDemuxer::handle_disconnect() {
     }
 }
 
-void CdcDemuxer::reader_loop() {
+void FrameDemuxer::reader_loop() {
     uint8_t prev = 0;
     while (!stop_requested_.load(std::memory_order_acquire)
            && !disconnected_.load(std::memory_order_acquire)) {
 
         uint8_t b;
-        ssize_t n = cdc::read_exact(fd_, &b, 1, READER_POLL_MS);
+        ssize_t n = stream_->read(&b, 1, READER_POLL_MS);
         if (n < 0) { handle_disconnect(); return; }
         if (n == 0) { prev = 0; continue; }  // timeout — loop back to check stop flag
 
@@ -352,7 +352,7 @@ void CdcDemuxer::reader_loop() {
             // Data frame: read remaining FRAME_SIZE-2 bytes.
             FrameBuf buf;
             buf[0] = 0xAA; buf[1] = 0x55;
-            ssize_t got = cdc::read_exact(fd_, buf.data() + 2,
+            ssize_t got = stream_->read(buf.data() + 2,
                                           protocol::FRAME_SIZE - 2, 200);
             if (got < 0) { handle_disconnect(); return; }
             prev = 0;
@@ -370,20 +370,20 @@ void CdcDemuxer::reader_loop() {
             // Response frame: read length(2), then drain payload+crc into a buf.
             uint8_t buf[FRAME_MAX];
             buf[0] = 0xAA; buf[1] = 0x57;
-            ssize_t got = cdc::read_exact(fd_, buf + 2, 2, 200);
+            ssize_t got = stream_->read(buf + 2, 2, 200);
             if (got < 0) { handle_disconnect(); return; }
             prev = 0;
             if (got != 2) continue;
             uint16_t length = read_le16(buf + 2);
             if (length < RESPONSE_FIXED_OVERHEAD || length > FRAME_MAX) continue;
-            ssize_t rest = cdc::read_exact(fd_, buf + 4, length - 4, 200);
+            ssize_t rest = stream_->read(buf + 4, length - 4, 200);
             if (rest < 0) { handle_disconnect(); return; }
             if (rest != static_cast<ssize_t>(length - 4)) continue;
             handle_response_frame(buf, length);
         } else if (b == 0x56) {
             // Host-to-device sync; not expected on RX. Drain by length to resync.
             uint8_t len_buf[2];
-            ssize_t got = cdc::read_exact(fd_, len_buf, 2, 200);
+            ssize_t got = stream_->read(len_buf, 2, 200);
             if (got < 0) { handle_disconnect(); return; }
             prev = 0;
             if (got != 2) continue;

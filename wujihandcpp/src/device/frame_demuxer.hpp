@@ -12,16 +12,17 @@
 #include <thread>
 #include <vector>
 
+#include "../transport/byte_stream.hpp"
 #include "wujihandcpp/data/tactile.hpp"
 #include "wujihandcpp/protocol/tactile_command.hpp"
 
 namespace wujihandcpp {
 namespace tactile {
 
-/// CDC stream demultiplexer for the tactile board.
+/// Frame demultiplexer for the tactile-board sync-byte wire protocol.
 ///
-/// Owns one CDC fd and runs a single reader thread that classifies each
-/// incoming frame by sync byte (spec §2.1):
+/// Operates on any `transport::IByteStream` and runs a single reader
+/// thread that classifies each incoming frame by sync byte (spec §2.1):
 ///   - `AA 55` data frames     → bounded queue consumed by `wait_data_frame()`
 ///   - `AA 57` response frames → matched by `seq` to the in-flight `command()`
 ///   - `AA 56` (host→device)   → drained (protocol violation; not expected on RX)
@@ -30,23 +31,35 @@ namespace tactile {
 /// is in flight at a time. On disconnect, all waiters are woken and the
 /// registered disconnect callback is invoked once.
 ///
+/// The demuxer used to be CDC-specific (took a raw fd, called
+/// `cdc::read_exact / cdc::write_exact` directly). It now talks to a
+/// `transport::IByteStream` instead — the framing logic is identical
+/// but any future device using the same sync-byte / length-prefixed
+/// frame shape over a different IO source (kernel tty, socat-pty
+/// fixture, in-memory fake) reuses this class. Today the only
+/// production producer is `cdc::CdcByteStream`; unit tests use a
+/// `FakeByteStream` to exercise the framing code without hardware.
+///
 /// Lifetime: MUST be created via std::make_shared. The reader thread captures
 /// a shared_ptr via shared_from_this() in start() so the demuxer remains
 /// alive until the reader loop exits — required for the self-detach path in
 /// stop() (where stop() is called from inside a user-installed disconnect
 /// callback running on the reader thread itself, and joining would
 /// std::terminate).
-class CdcDemuxer : public std::enable_shared_from_this<CdcDemuxer> {
+class FrameDemuxer : public std::enable_shared_from_this<FrameDemuxer> {
 public:
     using DisconnectCallback = std::function<void()>;
 
-    /// Construct a demuxer that takes ownership of `fd`. The fd is closed
-    /// in the destructor so callers must not close it themselves.
-    explicit CdcDemuxer(int fd);
-    ~CdcDemuxer();
+    /// Construct a demuxer reading from `stream`. The demuxer holds a
+    /// shared_ptr to keep the stream alive across the reader thread's
+    /// whole lifetime — including the self-detach path where the
+    /// demuxer outlives the lifecycle owner that originally created
+    /// it.
+    explicit FrameDemuxer(std::shared_ptr<transport::IByteStream> stream);
+    ~FrameDemuxer();
 
-    CdcDemuxer(const CdcDemuxer&) = delete;
-    CdcDemuxer& operator=(const CdcDemuxer&) = delete;
+    FrameDemuxer(const FrameDemuxer&) = delete;
+    FrameDemuxer& operator=(const FrameDemuxer&) = delete;
 
     /// Start the reader thread. Must not be called twice.
     void start();
@@ -101,7 +114,7 @@ private:
     std::vector<uint8_t> single_command(Cmd cmd, const uint8_t* payload,
                                         size_t payload_len, uint32_t timeout_ms);
 
-    int fd_;
+    std::shared_ptr<transport::IByteStream> stream_;
     std::thread thread_;
     // stop_requested_ = lifecycle owner asked us to shut down (stop() called).
     // disconnected_   = device dropped off the bus (EIO/HUP from read).

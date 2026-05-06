@@ -62,12 +62,19 @@ file(GLOB_RECURSE PROJECT_SOURCE CONFIGURE_DEPENDS
 )
 
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    # Tactile-board CDC stack is Linux-only: cdc_transport.cpp uses
-    # /sys/class/tty + termios + poll, and tactile_cdc_demuxer.cpp /
-    # tactile_board.cpp pull <unistd.h> / ::close() on top of that.
+    # Tactile-board CDC stack is Linux-only: cdc_byte_stream.cpp uses
+    # termios + poll(2) + /sys/class/tty (the latter via
+    # cdc_transport.cpp::discover_devices), and tactile_board.cpp /
+    # frame_demuxer.cpp build on top of those Linux-specific kernel
+    # interfaces. The public tactile headers are gated on
+    # `#if defined(__linux__)` so non-Linux consumers also see them as
+    # empty — keeping the exclusion list and the header gates aligned
+    # is what stops `find_package(wujihandcpp)` consumers from
+    # hitting an unresolved-symbol link error on macOS / Windows.
     list(REMOVE_ITEM PROJECT_SOURCE
         ${PROJECT_SOURCE_DIR}/src/device/tactile_board.cpp
-        ${PROJECT_SOURCE_DIR}/src/device/tactile_cdc_demuxer.cpp
+        ${PROJECT_SOURCE_DIR}/src/device/frame_demuxer.cpp
+        ${PROJECT_SOURCE_DIR}/src/transport/cdc_byte_stream.cpp
         ${PROJECT_SOURCE_DIR}/src/transport/cdc_transport.cpp
     )
 endif()
@@ -233,10 +240,21 @@ if(BUILD_TESTING)
     file(GLOB_RECURSE WUJIHANDCPP_TEST_SOURCES CONFIGURE_DEPENDS
         ${PROJECT_SOURCE_DIR}/tests/*.cpp
     )
+    # Exclude tests/cpp11_compat/main.cpp from this gtest target — it has
+    # its own int main() and is built as a separate standalone executable
+    # by tests/cpp11_compat/CMakeLists.txt. Without this filter, its main
+    # symbol collides with gtest_main and the gtest binary silently exits
+    # with the cpp11 probe's success message instead of running any tests.
+    list(FILTER WUJIHANDCPP_TEST_SOURCES EXCLUDE REGEX "/cpp11_compat/")
 
     add_executable(wujihandcpp_tests
         ${WUJIHANDCPP_TEST_SOURCES}
     )
+    # Tests need access to private src/ headers (FrameDemuxer + IByteStream
+    # are implementation details, not part of the public API surface). The
+    # main lib only exposes include/ to consumers via PUBLIC; we explicitly
+    # widen the test target's include path here.
+    target_include_directories(wujihandcpp_tests PRIVATE ${PROJECT_SOURCE_DIR}/src)
     target_link_libraries(wujihandcpp_tests PRIVATE gtest_main ${PROJECT_NAME})
 
     add_test(NAME wujihandcpp_tests COMMAND wujihandcpp_tests)

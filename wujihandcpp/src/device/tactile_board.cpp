@@ -8,8 +8,9 @@
 #include <string>
 #include <thread>
 
+#include "../transport/cdc_byte_stream.hpp"
 #include "../transport/cdc_transport.hpp"
-#include "tactile_cdc_demuxer.hpp"
+#include "frame_demuxer.hpp"
 
 namespace wujihandcpp {
 namespace tactile {
@@ -80,7 +81,7 @@ struct Board::Impl {
     // because in-flight command() / streaming_loop calls take their own refs
     // and may outlive an interleaved disconnect() — the demuxer destructor
     // (which close()s the fd) only fires after the last ref drops.
-    std::shared_ptr<CdcDemuxer> demuxer;
+    std::shared_ptr<FrameDemuxer> demuxer;
 
     // Streaming consumer (one thread that drains demuxer's data queue).
     std::thread streaming_thread;
@@ -117,10 +118,16 @@ struct Board::Impl {
         }
 
         tty_path = chosen->tty_path;
-        int fd = cdc::open_cdc(tty_path.c_str());
-        if (fd < 0) return false;
+        std::shared_ptr<transport::IByteStream> stream;
+        try {
+            stream = std::make_shared<cdc::CdcByteStream>(tty_path.c_str());
+        } catch (const std::exception&) {
+            // CdcByteStream throws on open()/tcgetattr()/tcsetattr() failure.
+            // The lifecycle owner expects bool from connect() — translate.
+            return false;
+        }
 
-        auto new_demuxer = std::make_shared<CdcDemuxer>(fd);
+        auto new_demuxer = std::make_shared<FrameDemuxer>(std::move(stream));
 
         // Internal disconnect wrapper: flip `connected` BEFORE invoking the
         // user callback so anything checking is_connected() (including
@@ -148,13 +155,13 @@ struct Board::Impl {
     /// Snapshot the demuxer under `lifecycle_mu`. Returns null if not
     /// connected. Caller does blocking I/O on the snapshot WITHOUT the lock,
     /// so a concurrent disconnect() does not wait on the command.
-    std::shared_ptr<CdcDemuxer> snapshot_demuxer() {
+    std::shared_ptr<FrameDemuxer> snapshot_demuxer() {
         std::lock_guard<std::mutex> lock(lifecycle_mu);
         return demuxer;
     }
 
     void streaming_loop(uint64_t my_gen,
-                        std::shared_ptr<CdcDemuxer> dx,
+                        std::shared_ptr<FrameDemuxer> dx,
                         FrameCallback callback) {
         uint8_t buf[protocol::FRAME_SIZE];
         while (!stop_streaming_requested.load(std::memory_order_acquire)) {
@@ -236,7 +243,7 @@ void Board::disconnect() {
     //   T_A: streaming.store(false);       // clobbers T_B
     // The next start_streaming() would then pass the "already streaming"
     // guard and spawn a second consumer on the same demuxer queue.
-    std::shared_ptr<CdcDemuxer> dx;
+    std::shared_ptr<FrameDemuxer> dx;
     std::thread thread_to_handle;
     {
         std::lock_guard<std::mutex> lock(impl_->lifecycle_mu);
@@ -261,7 +268,8 @@ void Board::disconnect() {
         }
     }
     // dx goes out of scope here (or in some lingering command() call); the
-    // last ref drop runs ~CdcDemuxer which close()s the fd.
+    // last ref drop runs ~FrameDemuxer, which drops the IByteStream
+    // ref; the stream's destructor closes the underlying fd.
 }
 
 bool Board::is_connected() const {
@@ -276,7 +284,7 @@ Frame Board::read_frame(uint32_t timeout_ms) {
     // and read_frame ends up consuming a frame that the streaming
     // consumer expected. The lock makes the (demuxer, streaming)
     // observation consistent.
-    std::shared_ptr<CdcDemuxer> dx;
+    std::shared_ptr<FrameDemuxer> dx;
     {
         std::lock_guard<std::mutex> lock(impl_->lifecycle_mu);
         dx = impl_->demuxer;
@@ -298,7 +306,7 @@ Frame Board::read_frame(uint32_t timeout_ms) {
 }
 
 void Board::start_streaming(FrameCallback callback) {
-    std::shared_ptr<CdcDemuxer> dx;
+    std::shared_ptr<FrameDemuxer> dx;
     std::thread old_thread;
     uint64_t my_gen;
     {
