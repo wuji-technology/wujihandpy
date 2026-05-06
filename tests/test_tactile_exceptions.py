@@ -2,12 +2,17 @@
 
 Guards against silently regressing the round-1 P1 fix that mapped the
 internal C++ exceptions onto stdlib `ConnectionError` / `TimeoutError`.
+
+The tactile bindings are Linux-only — non-Linux test runs skip the whole
+file via `pytest.importorskip`.
 """
 from __future__ import annotations
 
 import pytest
 
-import wujihandpy.tactile as tactile
+pytest.importorskip("wujihandpy.tactile",
+                    reason="tactile bindings are Linux-only")
+import wujihandpy.tactile as tactile  # noqa: E402
 
 
 def _board_not_connected():

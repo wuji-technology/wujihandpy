@@ -2,14 +2,26 @@
 
 These run in CI on every PR and lock the public API shape so a future
 edit to the C++ binding can't silently desync the wrapper / stub.
+
+The tactile bindings are Linux-only (root CMakeLists.txt gates
+WUJIHANDPY_ENABLE_TACTILE on CMAKE_SYSTEM_NAME=="Linux"). On non-Linux
+test runs, `_core` ships without the tactile submodule; `pytest.importorskip`
+turns the unavailable tactile import into a SKIP instead of a collection
+error so the whole host suite still runs.
 """
 from __future__ import annotations
 
-import importlib
+import pytest
 
 import wujihandpy
-import wujihandpy.tactile
-import wujihandpy._core.tactile
+
+pytest.importorskip("wujihandpy.tactile",
+                    reason="tactile bindings are Linux-only (see "
+                           "wujihandcpp/include/wujihandcpp/data/tactile.hpp "
+                           "for the platform gate)")
+pytest.importorskip("wujihandpy._core.tactile")
+import wujihandpy.tactile  # noqa: E402  (imported after the skip guard)
+import wujihandpy._core.tactile  # noqa: E402
 
 
 def test_wrapper_all_matches_native():
