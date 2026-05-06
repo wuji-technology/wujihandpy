@@ -165,9 +165,20 @@ struct Board::Impl {
                 try { cb(); } catch (...) {}
             }
         });
-        new_demuxer->start();
-        demuxer = std::move(new_demuxer);
+        // Order matters: flip connected=true and publish the demuxer
+        // BEFORE start() spawns the reader thread. If we did start()
+        // first and the reader's first read() saw -EIO immediately
+        // (cable yanked between open() and the first poll), the
+        // disconnect callback would fire connected=false BEFORE we
+        // ever set true, and our subsequent unconditional store(true)
+        // here would silently mask the disconnect — leaving
+        // is_connected() returning true while the reader thread is
+        // already dead. Setting connected=true first means a
+        // race-induced disconnect callback's store(false) is the
+        // last write and wins; later reads see the correct state.
         connected.store(true, std::memory_order_release);
+        demuxer = new_demuxer;  // shared_ptr copy — keep our own ref
+        new_demuxer->start();
         return true;
     }
 

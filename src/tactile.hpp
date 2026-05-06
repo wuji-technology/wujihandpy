@@ -132,18 +132,17 @@ inline void init_module(py::module_& parent) {
                 try {
                     (*cb)(frame);
                 } catch (py::error_already_set& e) {
-                    // Surface the Python traceback to sys.stderr / the
-                    // unraisablehook before tearing down streaming. The
-                    // previous `e.restore(); PyErr_Clear();` pair stashed
-                    // the exception then immediately discarded it — the
-                    // streaming thread would silently exit and the user
-                    // would see no diagnostic. PyErr_WriteUnraisable
-                    // prints the full traceback using the same machinery
-                    // Python uses for finalizer errors, then clears the
-                    // error indicator, leaving us free to throw a clean
-                    // C++ exception so the SDK's streaming_loop can stop
-                    // the consumer thread.
-                    PyErr_WriteUnraisable(cb->ptr());
+                    // Surface the Python traceback via sys.unraisablehook
+                    // so the user sees what went wrong before the
+                    // streaming consumer tears down. pybind11's
+                    // `discard_as_unraisable` is the correct one-call:
+                    // it RESTORES the cached error to the Python error
+                    // indicator and calls PyErr_WriteUnraisable internally.
+                    // Calling PyErr_WriteUnraisable directly without the
+                    // restore is a no-op — error_already_set's constructor
+                    // already fetched + cleared the indicator, so there's
+                    // no exception left to print.
+                    e.discard_as_unraisable(*cb);
                     throw std::runtime_error(
                         "tactile.Board: Python frame callback raised an exception");
                 }
@@ -172,17 +171,20 @@ inline void init_module(py::module_& parent) {
                 py::gil_scoped_acquire acquire;
                 try {
                     (*cb)();
-                } catch (py::error_already_set&) {
+                } catch (py::error_already_set& e) {
                     // Disconnect callback exceptions are intentionally
                     // swallowed (see C++ Board::set_disconnect_callback
                     // contract — the disconnect path can't unwind the
-                    // SDK reader thread cleanly mid-shutdown). Print
-                    // the traceback to sys.stderr / the unraisablehook
-                    // first so the user can see *what* went wrong;
-                    // the alternative `e.restore(); PyErr_Clear()`
-                    // sequence flashed the exception into TLS and then
-                    // discarded it, producing a silent no-op.
-                    PyErr_WriteUnraisable(cb->ptr());
+                    // SDK reader thread cleanly mid-shutdown). Use
+                    // pybind11's `discard_as_unraisable` to restore the
+                    // cached error AND print the traceback via
+                    // sys.unraisablehook in one call. Calling
+                    // PyErr_WriteUnraisable alone (or `e.restore();
+                    // PyErr_Clear()`) was a silent no-op — both paths
+                    // depended on the error indicator being live, but
+                    // error_already_set's constructor already fetched
+                    // and cleared it.
+                    e.discard_as_unraisable(*cb);
                 }
             };
             // Release the GIL — set_disconnect_callback may drop the
