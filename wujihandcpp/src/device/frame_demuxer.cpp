@@ -327,30 +327,39 @@ void FrameDemuxer::handle_disconnect() {
     }
 }
 
+// Read `len` bytes; on disconnect tear down the demuxer and return false.
+// `partial` reports a short read (timeout mid-frame) so the caller can resync
+// without conflating it with a wire-level failure.
+bool FrameDemuxer::read_exact_or_disconnect(uint8_t* dst, size_t len,
+                                            uint32_t timeout_ms, bool& partial) {
+    ssize_t got = stream_->read(dst, len, timeout_ms);
+    if (got < 0) { handle_disconnect(); return false; }
+    partial = (got != static_cast<ssize_t>(len));
+    return true;
+}
+
 void FrameDemuxer::reader_loop() {
     uint8_t prev = 0;
     while (!stop_requested_.load(std::memory_order_acquire)
            && !disconnected_.load(std::memory_order_acquire)) {
 
         uint8_t b;
-        ssize_t n = stream_->read(&b, 1, READER_POLL_MS);
-        if (n < 0) { handle_disconnect(); return; }
-        if (n == 0) { prev = 0; continue; }  // timeout — loop back to check stop flag
+        bool partial;
+        if (!read_exact_or_disconnect(&b, 1, READER_POLL_MS, partial)) return;
+        if (partial) { prev = 0; continue; }  // timeout — re-check stop flag
 
         if (prev != 0xAA) { prev = b; continue; }
 
         if (b == 0x55) {
-            // Data frame: read remaining FRAME_SIZE-2 bytes.
             FrameBuf buf;
             buf[0] = 0xAA; buf[1] = 0x55;
-            ssize_t got = stream_->read(buf.data() + 2,
-                                          protocol::FRAME_SIZE - 2, 200);
-            if (got < 0) { handle_disconnect(); return; }
+            if (!read_exact_or_disconnect(buf.data() + 2,
+                                          protocol::FRAME_SIZE - 2, 200, partial)) return;
             prev = 0;
-            if (got != static_cast<ssize_t>(protocol::FRAME_SIZE - 2)) continue;
+            if (partial) continue;
 
             uint16_t length = read_le16(buf.data() + protocol::OFFSET_LENGTH);
-            if (length != protocol::EXPECTED_LENGTH) continue;  // false header
+            if (length != protocol::EXPECTED_LENGTH) continue;
             uint16_t expected_crc = read_le16(buf.data() + protocol::OFFSET_CRC);
             uint16_t computed_crc = protocol::crc16_ccitt(
                 buf.data() + protocol::OFFSET_LENGTH,
@@ -358,32 +367,27 @@ void FrameDemuxer::reader_loop() {
             if (expected_crc != computed_crc) continue;
             handle_data_frame(buf.data());
         } else if (b == 0x57) {
-            // Response frame: read length(2), then drain payload+crc into a buf.
             uint8_t buf[FRAME_MAX];
             buf[0] = 0xAA; buf[1] = 0x57;
-            ssize_t got = stream_->read(buf + 2, 2, 200);
-            if (got < 0) { handle_disconnect(); return; }
+            if (!read_exact_or_disconnect(buf + 2, 2, 200, partial)) return;
             prev = 0;
-            if (got != 2) continue;
+            if (partial) continue;
             uint16_t length = read_le16(buf + 2);
             if (length < RESPONSE_FIXED_OVERHEAD || length > FRAME_MAX) continue;
-            ssize_t rest = stream_->read(buf + 4, length - 4, 200);
-            if (rest < 0) { handle_disconnect(); return; }
-            if (rest != static_cast<ssize_t>(length - 4)) continue;
+            if (!read_exact_or_disconnect(buf + 4, length - 4, 200, partial)) return;
+            if (partial) continue;
             handle_response_frame(buf, length);
         } else if (b == 0x56) {
-            // Host-to-device sync; not expected on RX. Drain by length to resync.
+            // AA56 = host-to-device echo on RX; drain by length to resync.
             uint8_t len_buf[2];
-            ssize_t got = stream_->read(len_buf, 2, 200);
-            if (got < 0) { handle_disconnect(); return; }
+            if (!read_exact_or_disconnect(len_buf, 2, 200, partial)) return;
             prev = 0;
-            if (got != 2) continue;
+            if (partial) continue;
             uint16_t length = read_le16(len_buf);
             if (length < 4 || length > FRAME_MAX) continue;
             (void)read_drain(length - 4, 200);
         } else {
-            // 0xAA followed by an unknown byte: slide window; if the new byte
-            // is itself 0xAA it might start a new sync.
+            // 0xAA followed by unknown byte; slide the window.
             prev = b;
         }
     }

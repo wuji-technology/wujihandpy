@@ -111,15 +111,9 @@ public:
     /// Spec §3.2.1 — uptime / counters snapshot.
     Diagnostics get_diagnostics();
 
-    /// Non-blocking variant of get_diagnostics(). If the SDK command channel
-    /// is currently busy (another command in flight on a different thread),
-    /// returns false WITHOUT queueing or blocking. Otherwise behaves like
-    /// get_diagnostics(): on success writes into `out` and returns true; on
-    /// timeout / disconnect / non-Ok status throws as get_diagnostics() does.
-    ///
-    /// Intended for periodic pollers (e.g. a ROS diagnostics timer) that
-    /// must yield to higher-priority caller-issued commands instead of
-    /// queueing behind them on the per-channel serializer.
+    /// Try to read diagnostics without waiting on another in-flight command.
+    /// @return false if the command channel is busy; otherwise fills `out`
+    ///   or throws like get_diagnostics().
     bool try_get_diagnostics(Diagnostics& out);
 
     /// Spec §3.2.2 — zero the four diagnostic counters.

@@ -75,10 +75,10 @@ inline void init_module(py::module_& parent) {
         .def_readonly("timestamp_ms", &Frame::timestamp_ms)
         .def_property_readonly("pressure", [](const Frame& f) {
             // memcpy preserves NaN bit patterns; callers use numpy.isnan().
-            auto* buf = new float[24 * 32];
-            std::memcpy(buf, &f.pressure[0][0], 24 * 32 * sizeof(float));
-            py::capsule free(buf, [](void* p) { delete[] static_cast<float*>(p); });
-            return py::array_t<float>({24, 32}, buf, free);
+            py::array_t<float> out({24, 32});
+            std::memcpy(out.mutable_data(), &f.pressure[0][0],
+                        24 * 32 * sizeof(float));
+            return out;
         });
 
     py::class_<DeviceInfo>(m, "DeviceInfo")
@@ -142,35 +142,23 @@ inline void init_module(py::module_& parent) {
             self.set_disconnect_callback(std::move(wrapped));
         }, py::arg("callback"))
 
-        // Identity (spec §3.1)
-        .def("get_device_info",  &Board::get_device_info,  call_guard<release_gil>())
-        .def("get_fw_build",     &Board::get_fw_build,     call_guard<release_gil>())
-        .def("get_handedness",   &Board::get_handedness,   call_guard<release_gil>())
-
-        // Diagnostics (spec §3.2)
-        .def("get_diagnostics",  &Board::get_diagnostics,  call_guard<release_gil>())
-        .def("reset_counters",   &Board::reset_counters,   call_guard<release_gil>())
-
-        // Lifecycle (spec §3.3)
-        .def("set_streaming",    &Board::set_streaming,    py::arg("enable"),
-                                                           call_guard<release_gil>())
-        .def("reset_device",     &Board::reset_device,     call_guard<release_gil>())
-        .def("enter_bootloader", &Board::enter_bootloader, py::arg("magic"),
-                                                           call_guard<release_gil>())
-
-        // Configuration (spec §3.4)
-        .def("get_sample_rate_hz",    &Board::get_sample_rate_hz,
-                                      call_guard<release_gil>())
-        .def("set_sample_rate_hz",    &Board::set_sample_rate_hz,
-                                      py::arg("sample_rate_hz"),
-                                      call_guard<release_gil>())
-        .def("get_streaming_enabled", &Board::get_streaming_enabled,
-                                      call_guard<release_gil>())
-
-        // Time sync (spec §3.5)
-        .def("get_device_time",  &Board::get_device_time,  call_guard<release_gil>())
-        .def("sync_host_epoch",  &Board::sync_host_epoch,  py::arg("host_unix_ns"),
-                                                           call_guard<release_gil>())
+        .def("get_device_info",       &Board::get_device_info,       call_guard<release_gil>())
+        .def("get_fw_build",          &Board::get_fw_build,          call_guard<release_gil>())
+        .def("get_handedness",        &Board::get_handedness,        call_guard<release_gil>())
+        .def("get_diagnostics",       &Board::get_diagnostics,       call_guard<release_gil>())
+        .def("reset_counters",        &Board::reset_counters,        call_guard<release_gil>())
+        .def("set_streaming",         &Board::set_streaming,         py::arg("enable"),
+                                                                     call_guard<release_gil>())
+        .def("reset_device",          &Board::reset_device,          call_guard<release_gil>())
+        .def("enter_bootloader",      &Board::enter_bootloader,      py::arg("magic"),
+                                                                     call_guard<release_gil>())
+        .def("get_sample_rate_hz",    &Board::get_sample_rate_hz,    call_guard<release_gil>())
+        .def("set_sample_rate_hz",    &Board::set_sample_rate_hz,    py::arg("sample_rate_hz"),
+                                                                     call_guard<release_gil>())
+        .def("get_streaming_enabled", &Board::get_streaming_enabled, call_guard<release_gil>())
+        .def("get_device_time",       &Board::get_device_time,       call_guard<release_gil>())
+        .def("sync_host_epoch",       &Board::sync_host_epoch,       py::arg("host_unix_ns"),
+                                                                     call_guard<release_gil>())
 
         .def("__enter__", [](Board& self) -> Board& {
             bool ok;

@@ -111,6 +111,8 @@ private:
     void handle_response_frame(const uint8_t* buf, uint16_t length);
     void handle_disconnect();
     bool read_drain(size_t count, uint32_t timeout_ms);
+    bool read_exact_or_disconnect(uint8_t* dst, size_t len, uint32_t timeout_ms,
+                                  bool& partial);
     std::vector<uint8_t> single_command(Cmd cmd, const uint8_t* payload,
                                         size_t payload_len, uint32_t timeout_ms);
     std::vector<uint8_t> command_with_bad_crc_retry(Cmd cmd, const uint8_t* payload,

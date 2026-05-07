@@ -49,6 +49,17 @@ inline void write_le64(uint8_t* p, uint64_t v) {
     write_le32(p + 4, static_cast<uint32_t>(v >> 32));
 }
 
+// Configuration keys / value-type tags (spec §3.4) — internal-only,
+// kept here so they don't leak into the public protocol header.
+enum class ConfigKey : uint16_t {
+    StreamingEnabled = 0x0001,
+    SampleRateHz     = 0x0002,
+};
+enum class ConfigType : uint8_t {
+    U16    = 0,
+    EnumU8 = 1,
+};
+
 /// Trim trailing NULs from a fixed-size ASCII field.
 std::string trim_ascii(const uint8_t* p, size_t len) {
     size_t n = 0;

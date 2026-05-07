@@ -59,18 +59,6 @@ inline std::string to_string(Status status) {
     return std::string(name) + "(" + hex + ")";
 }
 
-/// Configuration keys (spec §3.4).
-enum class ConfigKey : uint16_t {
-    StreamingEnabled = 0x0001,
-    SampleRateHz     = 0x0002,
-};
-
-/// Configuration value type tags (spec §3.4).
-enum class ConfigType : uint8_t {
-    U16     = 0,
-    EnumU8  = 1,
-};
-
 /// Magic value required by `EnterBootloader` to prevent accidental triggering (spec §3.3.3).
 constexpr uint32_t BOOTLOADER_MAGIC = 0xB007B007u;
 

@@ -83,11 +83,6 @@ ssize_t CdcByteStream::read(uint8_t* buf, size_t len, uint32_t timeout_ms) {
         std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
 
     while (total < len) {
-        // Cumulative deadline: gate every iteration on the remaining
-        // budget. timeout_ms==0 collapses to "already-timed-out" which
-        // returns total=0 immediately — defensive against callers that
-        // construct this from `deadline - now` math after the deadline
-        // already passed.
         auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
                              deadline - std::chrono::steady_clock::now())
                              .count();
