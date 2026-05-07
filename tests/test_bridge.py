@@ -19,6 +19,7 @@ from bridge.python.hand_zenoh_bridge import (
     wrap_with_timestamp,
     HandBridge,
     RESOURCE_DEFS,
+    make_joint_names,
 )
 
 
@@ -202,6 +203,67 @@ def test_resource_defs_count():
     paths = [resource["path"] for resource in RESOURCE_DEFS]
     assert len(RESOURCE_DEFS) >= 10
     assert len(paths) == len(set(paths))
+
+
+# ---------------------------------------------------------------------------
+# joint_states (ROS-compatible URDF-driving stream)
+# ---------------------------------------------------------------------------
+
+def test_make_joint_names_left_layout():
+    names = make_joint_names("left")
+    assert len(names) == 20
+    # Row-major 5x4 flattening: finger1..5, joint1..4
+    assert names[0] == "left_finger1_joint1"
+    assert names[3] == "left_finger1_joint4"
+    assert names[4] == "left_finger2_joint1"
+    assert names[19] == "left_finger5_joint4"
+
+
+def test_make_joint_names_right_prefix():
+    names = make_joint_names("right")
+    assert all(n.startswith("right_finger") for n in names)
+
+
+def test_joint_states_capability_schema_not_wrapped():
+    # joint_states must keep schema title "sensor_msgs/JointState" exactly so
+    # Wuji Studio's 3D panel (which identifies JointState by schema title) can
+    # recognize and subscribe to it.
+    cap = json.loads(build_capability("TEST"))
+    by_path = {r["path"]: r for r in cap["resources"]}
+
+    js = by_path["joint_states"]
+    assert js["can_sub"] is True
+    assert js["can_get"] is False
+    assert js["json_schema"]["title"] == "sensor_msgs/JointState"
+    assert js["json_schema"]["type"] == "object"
+    assert set(js["json_schema"]["properties"].keys()) == {"header", "name", "position"}
+    # Studio's URDF handler relies on header.stamp for ordering.
+    stamp_props = js["json_schema"]["properties"]["header"]["properties"]["stamp"]["properties"]
+    assert set(stamp_props.keys()) == {"sec", "nsec"}
+    # Envelope wrap would add a 'timestamp_us' property; make sure it did NOT.
+    assert "timestamp_us" not in js["json_schema"]["properties"]
+
+
+def test_read_resource_joint_states_flatten_row_major():
+    hand = MagicMock()
+    positions = np.arange(20, dtype=np.float64).reshape(5, 4)
+    hand.read_joint_actual_position.return_value = positions
+
+    bridge = HandBridge(hand, "TEST", pub_rate=100.0, side="left")
+    # No realtime controller → falls back to hand.read_joint_actual_position()
+    result = bridge._read_resource("joint_states")
+
+    assert result["name"] == make_joint_names("left")
+    assert result["position"] == list(range(20))  # 0..19 in row-major order
+    # Index must align with joint name
+    assert result["name"][5] == "left_finger2_joint2"
+    assert result["position"][5] == 5.0
+
+
+def test_bridge_rejects_invalid_side():
+    hand = MagicMock()
+    with pytest.raises(ValueError, match="side"):
+        HandBridge(hand, "TEST", pub_rate=100.0, side="middle")
 
 
 # ---------------------------------------------------------------------------

@@ -59,6 +59,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pre-production firmware with non-`0x2000` PIDs must now pass
   `usb_pid=` explicitly.
 
+- **Hand USB transport failures map to `ConnectionError`** in Python
+  (was bare `RuntimeError`). Mirrors the tactile.Glove transport-error
+  mapping. New `wujihandcpp::device::ConnectionError` C++ class
+  (inherits `std::runtime_error` so existing C++ catch blocks keep
+  working). Affects "device not found", "multiple devices match", and
+  libusb transfer-submit failures.
+
 - **Examples reorganized** by subsystem:
   - `example/joint/{1.read,2.write,3.realtime,4.async,5.multithread}.py`
     (unchanged content, moved into a subdirectory).
@@ -71,6 +78,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `wujihandpy.Hand` now supports `with` syntax for parity with
+  `tactile.Glove`. NOTE: `__exit__` is a no-op — Hand opens USB in its
+  constructor and the underlying libusb handle is released when the
+  Python object is garbage-collected. Use `del hand` or let the binding
+  leave scope for explicit teardown.
+
+## [1.6.0] - 2026-04-27
+
+### Changed
+
+- Initialization failure now reports specific disconnected joints (e.g. `finger(2).joint(1)`) instead of generic error message
+- **Zenoh Bridge (Python)**: `realtime_controller` LowPass cutoff is now configurable via `--filter-cutoff` (default `5.0` Hz, matching `example/3.realtime.py`); previously hard-coded at 10000 Hz. Pass `--filter-cutoff 10000` to restore the prior near-passthrough behavior.
+- **Zenoh Bridge (Python)**: `--side {left,right}` is now a required CLI argument so the published `joint_states` joint names match the URDF loaded downstream.
+
+### Added
+
+- **Firmware upgrade reminder**: `Hand()` now displays an in-terminal banner with the latest version and a link to the upgrade guide whenever your device firmware is out of date
 - **Zenoh Bridge (Python)**: standalone bridge process exposing WujiHand via Zenoh network protocol (`bridge/python/hand_zenoh_bridge.py`)
 - **Zenoh Bridge (C++)**: native C++ bridge with lower latency for production deployment (`bridge/cpp/`)
 - 16 Zenoh resources: 12 GET (scalar + 5×4 joint arrays), 5 SET (target_position, control_mode, enabled, effort_limit, reset_error)
@@ -82,6 +106,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Python/C++ fire-and-forget target_position subscriber for low-latency PUT writes
 - 37 unit tests for bridge protocol, resources, timestamps, and control ownership
 - `bridge/README.md` with architecture, usage, and resource documentation
+- **Zenoh Bridge (Python)**: `joint_states` SUB topic (`sensor_msgs/JointState`) — flat row-major projection of `joint/actual_position` with joint names matching [`wuji-hand-description`](https://github.com/wuji-technology/wuji-hand-description) URDFs, enabling live URDF visualization in Wuji Studio's 3D panel. Published without the timestamp envelope so the schema title stays exactly `sensor_msgs/JointState`; ordering is carried in `header.stamp` via a bridge-side monotonic clock.
 
 ## [1.5.1] - 2026-02-02
 
@@ -169,7 +194,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Requires firmware v3.0.0+
 
-[Unreleased]: https://github.com/wuji-technology/wujihandpy/compare/v1.5.1...HEAD
+[Unreleased]: https://github.com/wuji-technology/wujihandpy/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/wuji-technology/wujihandpy/compare/v1.5.1...v1.6.0
 [1.5.1]: https://github.com/wuji-technology/wujihandpy/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/wuji-technology/wujihandpy/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/wuji-technology/wujihandpy/compare/v1.3.0...v1.4.0

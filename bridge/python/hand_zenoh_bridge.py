@@ -72,6 +72,29 @@ def sanitize_sn(sn: str) -> str:
     return sn.replace(".", "_")
 
 
+# ---------------------------------------------------------------------------
+# Joint naming (matches wuji-hand-description URDF)
+# ---------------------------------------------------------------------------
+
+# Resources that stream raw values without the {timestamp_us, data} envelope.
+# These typically expose ROS-compatible schemas (e.g. sensor_msgs/JointState)
+# so downstream viewers like Wuji Studio can identify them by schema name.
+_ENVELOPE_EXEMPT_PATHS = frozenset({"joint_states"})
+
+
+def make_joint_names(side: str) -> list:
+    """Build 20 joint names matching `wuji-hand-description/urdf/{side}.urdf`.
+
+    Row-major flatten order of the 5x4 joint array:
+        name[i * 4 + j] = f"{side}_finger{i+1}_joint{j+1}"
+    """
+    return [
+        f"{side}_finger{finger + 1}_joint{joint + 1}"
+        for finger in range(5)
+        for joint in range(4)
+    ]
+
+
 # Resource definitions
 RESOURCE_DEFS = [
     # GET-only scalar resources
@@ -204,12 +227,44 @@ RESOURCE_DEFS = [
     },
     {
         "path": "joint/target_position",
-        "can_get": False, "can_set": True, "can_sub": False,
+        "can_get": False, "can_set": True, "can_sub": False, "can_pub": True,
         "json_schema": {
             "title": "JointTargetPosition",
             "type": "array",
             "description": "5x4 joint target positions",
             "items": {"type": "array", "items": {"type": "number"}},
+        },
+    },
+    # Title must stay exactly "sensor_msgs/JointState" — Studio's 3D panel
+    # keys on the schema title, so this path opts out of the timestamp
+    # envelope (see _ENVELOPE_EXEMPT_PATHS) and carries ordering in the
+    # standard ROS `header.stamp` instead.
+    {
+        "path": "joint_states",
+        "can_get": False, "can_set": False, "can_sub": True,
+        "json_schema": {
+            "title": "sensor_msgs/JointState",
+            "type": "object",
+            "properties": {
+                "header": {
+                    "type": "object",
+                    "properties": {
+                        "stamp": {
+                            "type": "object",
+                            "properties": {
+                                "sec":  {"type": "integer"},
+                                "nsec": {"type": "integer"},
+                            },
+                            "required": ["sec", "nsec"],
+                        },
+                        "frame_id": {"type": "string"},
+                    },
+                    "required": ["stamp", "frame_id"],
+                },
+                "name": {"type": "array", "items": {"type": "string"}},
+                "position": {"type": "array", "items": {"type": "number"}},
+            },
+            "required": ["header", "name", "position"],
         },
     },
 ]
@@ -225,16 +280,20 @@ def build_capability(serial_number: str) -> str:
             "can_get": r["can_get"],
             "can_set": r["can_set"],
             "can_sub": r["can_sub"],
-            "can_pub": False,
+            "can_pub": r.get("can_pub", False),
             "can_exec": False,
             "internal": False,
             "serde_format": "json",
             "json_schema": r["json_schema"],
         })
 
-    # Wrap SUB resource schemas with timestamp envelope
+    # Wrap SUB resource schemas with timestamp envelope (except exempt paths)
     for res in resources:
-        if res["can_sub"] and res.get("json_schema"):
+        if (
+            res["can_sub"]
+            and res.get("json_schema")
+            and res["path"] not in _ENVELOPE_EXEMPT_PATHS
+        ):
             original_schema = res["json_schema"]
             res["json_schema"] = {
                 "title": original_schema.get("title", "") + "Timestamped",
@@ -265,23 +324,51 @@ class HandBridge:
     LowPass interpolation) instead of SDO for smooth motion control.
     """
 
-    def __init__(self, hand, serial_number: str, pub_rate: float):
+    def __init__(
+        self,
+        hand,
+        serial_number: str,
+        pub_rate: float,
+        side: str = "left",
+        filter_cutoff_hz: float = 5.0,
+    ):
         """Initialize the Hand Zenoh Bridge.
 
         Args:
             hand: A wujihandpy.Hand instance (USB-connected).
             serial_number: Device serial number for Zenoh key registration.
             pub_rate: SUB resource publish rate in Hz (e.g. 1000). Must be positive.
+            side: Which hand's joint names to publish for `joint_states`
+                  ("left" or "right"). Must match the URDF side loaded in Studio.
+                  Defaults to "left" for programmatic / unit-test callers; the
+                  CLI entry point (`main`) requires it explicitly via `--side`.
+            filter_cutoff_hz: LowPass cutoff frequency applied by the internal
+                  realtime_controller to smooth target_position writes. The
+                  filter runs at PDO rate (1 kHz) and bridges the gap between
+                  the bridge's 100 Hz feed loop and the motor's 1 kHz update
+                  rate — lower = smoother / slower response, higher =
+                  snappier / noisier. Defaults to 5 Hz, matching
+                  `wujihandpy/example/3.realtime.py`. Must be positive.
 
         Raises:
-            ValueError: If pub_rate is not positive.
+            ValueError: If pub_rate is not positive, side is not 'left'/'right',
+                or filter_cutoff_hz is not positive.
         """
         if pub_rate <= 0:
             raise ValueError(f"pub_rate must be positive, got {pub_rate}")
+        if side not in ("left", "right"):
+            raise ValueError(f"side must be 'left' or 'right', got {side!r}")
+        if filter_cutoff_hz <= 0:
+            raise ValueError(
+                f"filter_cutoff_hz must be positive, got {filter_cutoff_hz}"
+            )
         self.hand = hand
         self.sn = serial_number
         self.sanitized_sn = sanitize_sn(serial_number)
         self.pub_rate = pub_rate
+        self._side = side
+        self._joint_names = make_joint_names(side)
+        self._filter_cutoff_hz = filter_cutoff_hz
         self.session = None
         self._alive_token = None
         self._running = False
@@ -293,6 +380,11 @@ class HandBridge:
         self._publishers = {}
         self._hand_lock = threading.Lock()
         self._control_lock = threading.Lock()
+        # Strictly-monotonic ns timestamp for `header.stamp` on joint_states.
+        # Uses CLOCK_MONOTONIC (time.monotonic_ns) so NTP / wall-clock jumps
+        # can't cause regressions, plus a +1 floor against same-value reads.
+        self._stamp_lock = threading.Lock()
+        self._last_stamp_ns = 0
         # Realtime controller state
         self._controller = None
         self._rt_target = np.zeros((5, 4), dtype=np.float64)
@@ -303,6 +395,20 @@ class HandBridge:
     def _key(self, suffix: str) -> str:
         """Build a Zenoh key expression: wuji/{sanitized_sn}/{suffix}."""
         return f"wuji/{self.sanitized_sn}/{suffix}"
+
+    def _next_stamp_ns(self) -> int:
+        """Strictly-monotonic nanosecond stamp for `header.stamp`.
+
+        time.monotonic_ns() is CLOCK_MONOTONIC (immune to wall-clock jumps /
+        NTP slewing), but adjacent calls can return the same value on
+        low-resolution timers. The +1 floor guarantees strict `>`.
+        """
+        with self._stamp_lock:
+            now = time.monotonic_ns()
+            if now <= self._last_stamp_ns:
+                now = self._last_stamp_ns + 1
+            self._last_stamp_ns = now
+            return now
 
     def _control_owner_key(self, owner_zid: str) -> str:
         """Liveliness key for tracking a control owner's presence."""
@@ -390,12 +496,19 @@ class HandBridge:
         with self._rt_lock:
             self._rt_target = initial_pos.copy()
 
-        # Use an extremely high cutoff so the filter is effectively a passthrough.
-        # realtime_controller() requires an IFilter; there is no identity filter.
-        logger.info("Starting realtime controller (no filtering, upstream enabled)...")
+        # LowPass filter runs at PDO rate (1 kHz) inside the realtime controller,
+        # smoothing the 100 Hz feed loop's step-changes out to 1 ms granularity
+        # before they reach the motor. Cutoff is configurable via `--filter-cutoff`
+        # (default 5 Hz, matching wujihandpy/example/3.realtime.py). A very high
+        # cutoff (e.g. 10000 Hz) approximates a passthrough if callers prefer to
+        # supply pre-filtered targets.
+        logger.info(
+            "Starting realtime controller (lowpass cutoff=%.1f Hz, upstream enabled)...",
+            self._filter_cutoff_hz,
+        )
         self._controller = self.hand.realtime_controller(
             enable_upstream=True,
-            filter=wujihandpy.filter.LowPass(cutoff_freq=10000.0),
+            filter=wujihandpy.filter.LowPass(cutoff_freq=self._filter_cutoff_hz),
         )
         self._controller.__enter__()
 
@@ -700,6 +813,19 @@ class HandBridge:
         except Exception as e:
             logger.error(f"target_position subscriber error: {e}")
 
+    def _read_joint_actual_position(self):
+        """Fetch the 5x4 actual-position array from the best available source.
+
+        Prefers the realtime controller's zero-copy cache; falls back to SDO
+        under hand_lock. Shared by `joint/actual_position` and `joint_states`
+        so both reflect the same underlying sample.
+        """
+        controller = self._controller
+        if controller is not None:
+            return controller.get_joint_actual_position()
+        with self._hand_lock:
+            return self.hand.read_joint_actual_position()
+
     def _read_resource(self, path: str):
         """Read a resource from the hand, return JSON-serializable value.
 
@@ -708,9 +834,8 @@ class HandBridge:
         """
         controller = self._controller
 
-        if path == "joint/actual_position" and controller is not None:
-            # Zero-copy from controller cache, no SDO needed
-            return controller.get_joint_actual_position().tolist()
+        if path == "joint/actual_position":
+            return self._read_joint_actual_position().tolist()
 
         if path == "joint/actual_effort":
             if controller is not None:
@@ -718,6 +843,18 @@ class HandBridge:
             # actual_effort is only exposed from the realtime controller cache;
             # during shutdown races, return a zeroed snapshot instead of failing.
             return np.zeros((5, 4), dtype=np.float64).tolist()
+
+        if path == "joint_states":
+            pos = self._read_joint_actual_position()
+            ns = self._next_stamp_ns()
+            return {
+                "header": {
+                    "stamp": {"sec": ns // 1_000_000_000, "nsec": ns % 1_000_000_000},
+                    "frame_id": f"{self._side}_palm_link",
+                },
+                "name": self._joint_names,
+                "position": pos.flatten().tolist(),
+            }
 
         # All other reads need SDO access via hand_lock
         with self._hand_lock:
@@ -729,8 +866,6 @@ class HandBridge:
                 return int(self.hand.read_handedness())
             elif path == "firmware_version":
                 return int(self.hand.read_firmware_version())
-            elif path == "joint/actual_position":
-                return self.hand.read_joint_actual_position().tolist()
             elif path == "joint/temperature":
                 return self.hand.read_joint_temperature().tolist()
             elif path == "joint/error_code":
@@ -779,8 +914,13 @@ class HandBridge:
     def _publish_loop(self):
         """Continuously publish SUB resources at configured rate.
 
-        Each published message is wrapped with a host-side timestamp:
+        Most messages are wrapped with a host-side timestamp:
             {"timestamp_us": <UTC microseconds>, "data": <value>}
+
+        Paths listed in `_ENVELOPE_EXEMPT_PATHS` are published as-is, so their
+        schema title (advertised in @capability) matches the declared type
+        (e.g. `sensor_msgs/JointState`) and downstream consumers can identify
+        them without unwrapping.
         """
         period = 1.0 / self.pub_rate
         while self._running:
@@ -788,8 +928,11 @@ class HandBridge:
                 timestamp_us = get_timestamp_us()
                 for path, pub in self._publishers.items():
                     value = self._read_resource(path)
-                    envelope = wrap_with_timestamp(value, timestamp_us)
-                    data = json.dumps(envelope).encode("utf-8")
+                    if path in _ENVELOPE_EXEMPT_PATHS:
+                        payload = value
+                    else:
+                        payload = wrap_with_timestamp(value, timestamp_us)
+                    data = json.dumps(payload).encode("utf-8")
                     pub.put(data)
             except Exception as e:
                 logger.error(f"Publish loop error: {e}")
@@ -801,6 +944,29 @@ def main():
     parser = argparse.ArgumentParser(description="Wuji Hand Zenoh Bridge")
     parser.add_argument("--sn", type=str, default=None, help="Hand serial number filter")
     parser.add_argument("--pub-rate", type=float, required=True, help="Position publish rate in Hz (e.g. 1000)")
+    parser.add_argument(
+        "--side",
+        type=str,
+        required=True,
+        choices=("left", "right"),
+        help=(
+            "Which hand this bridge represents. Drives the joint names published "
+            "on `joint_states` (e.g. left_finger1_joint1). Must match the URDF "
+            "loaded in Wuji Studio."
+        ),
+    )
+    parser.add_argument(
+        "--filter-cutoff",
+        type=float,
+        default=5.0,
+        help=(
+            "LowPass cutoff (Hz) for the internal realtime_controller. Smooths "
+            "target_position writes at PDO 1 kHz. Lower = smoother / slower, "
+            "higher = snappier / noisier. Set very high (e.g. 10000) to "
+            "approximate passthrough if you pre-filter targets client-side. "
+            "Default: 5.0 (matches wujihandpy/example/3.realtime.py)."
+        ),
+    )
     parser.add_argument("--log-level", type=str, default="INFO", help="Log level")
     args = parser.parse_args()
 
@@ -821,7 +987,13 @@ def main():
         logger.warning(f"Could not read product SN (firmware too old?), using: {sn}")
     logger.info(f"Hand connected, SN: {sn}")
 
-    bridge = HandBridge(hand, serial_number=sn, pub_rate=args.pub_rate)
+    bridge = HandBridge(
+        hand,
+        serial_number=sn,
+        pub_rate=args.pub_rate,
+        side=args.side,
+        filter_cutoff_hz=args.filter_cutoff,
+    )
     try:
         bridge.start()
         logger.info("Bridge running. Press Ctrl+C to stop.")

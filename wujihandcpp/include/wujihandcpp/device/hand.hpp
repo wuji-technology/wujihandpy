@@ -62,7 +62,22 @@ public:
             latch.wait();
 
         } catch (const TimeoutError&) {
-            throw TimeoutError("Hand initialization timed out: joint configuration incomplete");
+            int disconnected_count = 0;
+            std::string disconnected;
+            for (int i = 0; i < sub_count_; i++)
+                for (int j = 0; j < Finger::sub_count_; j++)
+                    if (finger(i).joint(j).get<data::joint::FirmwareVersion>() == 0) {
+                        disconnected_count++;
+                        disconnected += " finger(" + std::to_string(i) + ").joint(" + std::to_string(j) + ")";
+                    }
+
+            if (disconnected_count == 0)
+                throw TimeoutError("Failed to initialize hand: configuration timed out");
+            else if (disconnected_count < sub_count_ * Finger::sub_count_)
+                throw TimeoutError(
+                    "Failed to initialize hand: joint(s) not responding:" + disconnected);
+            else
+                throw TimeoutError("Failed to initialize hand: no response from device");
         }
     };
 

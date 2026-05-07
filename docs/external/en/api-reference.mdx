@@ -9,7 +9,7 @@ This section introduces all available data fields in wujihandpy.
 ### 1.1 Hand Layer
 This layer contains device-unique general fields, such as handedness, firmware version, etc.
 #### handedness
-This field indicates the handedness of the dexterous hand (left/right hand, 0 for left, 1 for right).
+This field indicates the handedness of the dexterous hand (left/right hand, 0 for right, 1 for left).
 - **Type**: `uint8`
 - **Read/Write**: Read-only
 #### firmware_version
@@ -35,11 +35,11 @@ This field indicates the measured input voltage of the dexterous hand, in volts.
 
 ### 1.2 Joint Layer
 This layer contains fields where each joint holds an independent copy, such as enabled status, target position, etc.
-#### joint_hardware_version
+#### joint_firmware_version
 This field records the version number of the joint driver board firmware.
 - **Type**: `uint32`
 - **Read/Write**: Read-only
-#### joint_hardware_date
+#### joint_firmware_date
 This field records the compilation date of the joint driver board firmware.
 - **Type**: `uint32`
 - **Read/Write**: Read-only
@@ -144,6 +144,8 @@ Effort is the actuation effort in current space, filtered before output.
 Typical use cases:
 - Collision detection: sudden increase in effort indicates joint obstruction
 - Output monitoring: calculate output percentage via `effort / effort_limit`
+
+This field is only accessible through `IController.get_joint_actual_effort()` in real-time control mode.
 </Callout>
 
 #### joint_enabled
@@ -223,7 +225,7 @@ This field records the lower position limit of the joint.
   *Get cached firmware compilation date*
 
 - `read_handedness(timeout=0.5) -> uint8`
-  *Synchronously read left/right hand identifier (0=left, 1=right)*
+  *Synchronously read left/right hand identifier (0=right, 1=left)*
 - `read_handedness_async(timeout=0.5) -> Awaitable[uint8]`
   *Asynchronously read left/right hand identifier*
 - `read_handedness_unchecked(timeout=0.5) -> None`
@@ -327,24 +329,24 @@ This field records the lower position limit of the joint.
 - `get_joint_effort_limit() -> NDArray[float64]`
   *Get cached all joint effort limits*
 
-##### Hardware Information
-- `read_joint_hardware_version(timeout=0.5) -> NDArray[uint32]`
-  *Synchronously read all joint hardware versions*
-- `read_joint_hardware_version_async(timeout=0.5) -> Awaitable[NDArray[uint32]]`
-  *Asynchronously read all joint hardware versions*
-- `read_joint_hardware_version_unchecked(timeout=0.5) -> None`
-  *Non-blocking read all joint hardware versions*
-- `get_joint_hardware_version() -> NDArray[uint32]`
-  *Get cached all joint hardware versions*
+##### Firmware Information
+- `read_joint_firmware_version(timeout=0.5) -> NDArray[uint32]`
+  *Synchronously read all joint firmware versions*
+- `read_joint_firmware_version_async(timeout=0.5) -> Awaitable[NDArray[uint32]]`
+  *Asynchronously read all joint firmware versions*
+- `read_joint_firmware_version_unchecked(timeout=0.5) -> None`
+  *Non-blocking read all joint firmware versions*
+- `get_joint_firmware_version() -> NDArray[uint32]`
+  *Get cached all joint firmware versions*
 
-- `read_joint_hardware_date(timeout=0.5) -> NDArray[uint32]`
-  *Synchronously read all joint hardware production dates*
-- `read_joint_hardware_date_async(timeout=0.5) -> Awaitable[NDArray[uint32]]`
-  *Asynchronously read all joint hardware production dates*
-- `read_joint_hardware_date_unchecked(timeout=0.5) -> None`
-  *Non-blocking read all joint hardware production dates*
-- `get_joint_hardware_date() -> NDArray[uint32]`
-  *Get cached all joint hardware production dates*
+- `read_joint_firmware_date(timeout=0.5) -> NDArray[uint32]`
+  *Synchronously read all joint firmware build dates*
+- `read_joint_firmware_date_async(timeout=0.5) -> Awaitable[NDArray[uint32]]`
+  *Asynchronously read all joint firmware build dates*
+- `read_joint_firmware_date_unchecked(timeout=0.5) -> None`
+  *Non-blocking read all joint firmware build dates*
+- `get_joint_firmware_date() -> NDArray[uint32]`
+  *Get cached all joint firmware build dates*
 
 #### 2.1.6 Joint Control (Supports Single Value or {5,4} Array)
 
@@ -515,24 +517,24 @@ This field records the lower position limit of the joint.
 - `get_joint_effort_limit() -> NDArray[float64]`
   *Get cached all joint effort limits of the finger*
 
-##### Hardware Information
-- `read_joint_hardware_version(timeout=0.5) -> NDArray[uint32]`
-  *Synchronously read all joint hardware versions of the finger*
-- `read_joint_hardware_version_async(timeout=0.5) -> Awaitable[NDArray[uint32]]`
-  *Asynchronously read all joint hardware versions of the finger*
-- `read_joint_hardware_version_unchecked(timeout=0.5) -> None`
-  *Non-blocking read all joint hardware versions of the finger*
-- `get_joint_hardware_version() -> NDArray[uint32]`
-  *Get cached all joint hardware versions of the finger*
+##### Firmware Information
+- `read_joint_firmware_version(timeout=0.5) -> NDArray[uint32]`
+  *Synchronously read all joint firmware versions of the finger*
+- `read_joint_firmware_version_async(timeout=0.5) -> Awaitable[NDArray[uint32]]`
+  *Asynchronously read all joint firmware versions of the finger*
+- `read_joint_firmware_version_unchecked(timeout=0.5) -> None`
+  *Non-blocking read all joint firmware versions of the finger*
+- `get_joint_firmware_version() -> NDArray[uint32]`
+  *Get cached all joint firmware versions of the finger*
 
-- `read_joint_hardware_date(timeout=0.5) -> NDArray[uint32]`
-  *Synchronously read all joint hardware production dates of the finger*
-- `read_joint_hardware_date_async(timeout=0.5) -> Awaitable[NDArray[uint32]]`
-  *Asynchronously read all joint hardware production dates of the finger*
-- `read_joint_hardware_date_unchecked(timeout=0.5) -> None`
-  *Non-blocking read all joint hardware production dates of the finger*
-- `get_joint_hardware_date() -> NDArray[uint32]`
-  *Get cached all joint hardware production dates of the finger*
+- `read_joint_firmware_date(timeout=0.5) -> NDArray[uint32]`
+  *Synchronously read all joint firmware build dates of the finger*
+- `read_joint_firmware_date_async(timeout=0.5) -> Awaitable[NDArray[uint32]]`
+  *Asynchronously read all joint firmware build dates of the finger*
+- `read_joint_firmware_date_unchecked(timeout=0.5) -> None`
+  *Non-blocking read all joint firmware build dates of the finger*
+- `get_joint_firmware_date() -> NDArray[uint32]`
+  *Get cached all joint firmware build dates of the finger*
 
 #### 2.2.3 Joint Control (Supports Single Value or 4-Element Array)
 
@@ -695,24 +697,24 @@ This field records the lower position limit of the joint.
 - `get_joint_effort_limit() -> float64`
   *Get cached joint effort limit*
 
-##### Hardware Information
-- `read_joint_hardware_version(timeout=0.5) -> uint32`
-  *Synchronously read joint hardware version*
-- `read_joint_hardware_version_async(timeout=0.5) -> Awaitable[uint32]`
-  *Asynchronously read joint hardware version*
-- `read_joint_hardware_version_unchecked(timeout=0.5) -> None`
-  *Non-blocking read joint hardware version*
-- `get_joint_hardware_version() -> uint32`
-  *Get cached joint hardware version*
+##### Firmware Information
+- `read_joint_firmware_version(timeout=0.5) -> uint32`
+  *Synchronously read joint firmware version*
+- `read_joint_firmware_version_async(timeout=0.5) -> Awaitable[uint32]`
+  *Asynchronously read joint firmware version*
+- `read_joint_firmware_version_unchecked(timeout=0.5) -> None`
+  *Non-blocking read joint firmware version*
+- `get_joint_firmware_version() -> uint32`
+  *Get cached joint firmware version*
 
-- `read_joint_hardware_date(timeout=0.5) -> uint32`
-  *Synchronously read joint hardware production date*
-- `read_joint_hardware_date_async(timeout=0.5) -> Awaitable[uint32]`
-  *Asynchronously read joint hardware production date*
-- `read_joint_hardware_date_unchecked(timeout=0.5) -> None`
-  *Non-blocking read joint hardware production date*
-- `get_joint_hardware_date() -> uint32`
-  *Get cached joint hardware production date*
+- `read_joint_firmware_date(timeout=0.5) -> uint32`
+  *Synchronously read joint firmware build date*
+- `read_joint_firmware_date_async(timeout=0.5) -> Awaitable[uint32]`
+  *Asynchronously read joint firmware build date*
+- `read_joint_firmware_date_unchecked(timeout=0.5) -> None`
+  *Non-blocking read joint firmware build date*
+- `get_joint_firmware_date() -> uint32`
+  *Get cached joint firmware build date*
 
 #### 2.3.2 Joint Control (Single Value)
 
