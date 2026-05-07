@@ -20,7 +20,8 @@ Wuji Hand SDK: C++ core with Python bindings, for controlling and communicating 
 │   ├── 2.write.py
 │   ├── 3.realtime.py
 │   ├── 4.async.py
-│   └── 5.multithread.py
+│   ├── 5.multithread.py
+│   └── 6.disconnect.py
 ├── wujihandcpp/
 │   ├── include/
 │   │   └── wujihandcpp/
@@ -39,7 +40,7 @@ Wuji Hand SDK: C++ core with Python bindings, for controlling and communicating 
 |-----------|-------------|
 | `src/` | Python binding source code and C++ headers |
 | `src/wujihandpy/` | Python package with type stubs |
-| `example/` | Usage examples for read, write, realtime, and async operations |
+| `example/` | Usage examples for read, write, realtime, async, multi-threaded, and disconnect-handling operations |
 | `wujihandcpp/` | Underlying C++ SDK implementation |
 | `wujihandcpp/include/` | C++ header files |
 | `wujihandcpp/src/` | C++ source files |
