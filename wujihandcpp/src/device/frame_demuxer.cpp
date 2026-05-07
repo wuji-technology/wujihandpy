@@ -53,13 +53,9 @@ void FrameDemuxer::start() {
 }
 
 void FrameDemuxer::stop() {
-    // A caller mid-write that already passed the disconnected_/stop_requested_
-    // check in single_command() may still complete its write_exact() before
-    // observing the new state — at most one "teardown-race write" leaks out.
-    // Bytes go to a device whose host is being torn down; the response (if
-    // any) is discarded when the kernel closes the fd. Acquiring command_mu_
-    // here to fully prevent it would block stop() up to one command timeout
-    // (~2 s) for a benign edge case, which we judged not worth the latency.
+    // At most one already-started write can complete during teardown.
+    // Taking command_mu_ to prevent it would block stop() up to one
+    // command timeout (~2 s) for a benign edge case.
     stop_requested_.store(true, std::memory_order_release);
     // Take the predicate mutexes briefly before notifying. Without this, a
     // waiter that evaluated its predicate just before stop_requested_ was

@@ -7,19 +7,11 @@
 namespace wujihandcpp {
 namespace cdc {
 
-/// Linux USB CDC ACM byte stream over /dev/ttyACMx.
+/// Linux USB CDC ACM byte stream over /dev/ttyACMx. Holds the fd in raw
+/// termios mode (VMIN=1, VTIME=0) and closes it in the destructor.
 ///
-/// Holds an fd opened with the raw-mode termios setup the new tactile
-/// wire protocol expects (no echo, no canonical processing, VMIN=1
-/// VTIME=0 — see open_cdc() impl). Closes the fd in the destructor.
-///
-/// Use via `std::shared_ptr<transport::IByteStream>` so the demuxer
-/// + command pipeline can hold their own refs across async teardown.
-/// The original `cdc::open_cdc / cdc::read_exact / cdc::write_exact`
-/// free-function family this replaces leaked the fd lifecycle into
-/// every caller; channelling everything through one RAII class makes
-/// the ownership story trivial: if you have a CdcByteStream alive,
-/// the fd is open.
+/// Intended to be held via `std::shared_ptr<transport::IByteStream>` so the
+/// demuxer can keep the fd alive across async teardown.
 class CdcByteStream : public transport::IByteStream {
 public:
     /// Open `tty_path` (e.g. "/dev/ttyACM0") in CDC raw mode.

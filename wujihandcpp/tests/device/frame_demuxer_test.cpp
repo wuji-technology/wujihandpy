@@ -57,12 +57,7 @@ public:
         return v;
     }
 
-    // IByteStream — same loop-until-full / partial-on-timeout shape as
-    // production cdc::CdcByteStream. The previous version returned the
-    // first chunk available even if < len, which made these tests
-    // unable to detect a regression in CdcByteStream's "wait for the
-    // remaining bytes within the deadline" loop. Round-2 codex review
-    // (P3#1) flagged the divergence.
+    // Mirrors production CdcByteStream::read: loop until full, timeout, or disconnect.
     ssize_t read(uint8_t* buf, size_t len, uint32_t timeout_ms) override {
         size_t total = 0;
         auto deadline = std::chrono::steady_clock::now()

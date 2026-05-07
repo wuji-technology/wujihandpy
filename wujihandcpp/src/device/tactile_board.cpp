@@ -158,17 +158,8 @@ struct Board::Impl {
                 try { cb(); } catch (...) {}
             }
         });
-        // Order matters: flip connected=true and publish the demuxer
-        // BEFORE start() spawns the reader thread. If we did start()
-        // first and the reader's first read() saw -EIO immediately
-        // (cable yanked between open() and the first poll), the
-        // disconnect callback would fire connected=false BEFORE we
-        // ever set true, and our subsequent unconditional store(true)
-        // here would silently mask the disconnect — leaving
-        // is_connected() returning true while the reader thread is
-        // already dead. Setting connected=true first means a
-        // race-induced disconnect callback's store(false) is the
-        // last write and wins; later reads see the correct state.
+        // Publish connected state before start(): if the reader immediately
+        // reports EIO, its connected=false store must remain the last write.
         connected.store(true, std::memory_order_release);
         demuxer = new_demuxer;  // shared_ptr copy — keep our own ref
         new_demuxer->start();
@@ -189,14 +180,8 @@ struct Board::Impl {
                         FrameCallback callback) {
         uint8_t buf[protocol::FRAME_SIZE];
         while (!token->stop.load(std::memory_order_acquire)) {
-            // Three independent shutdown signals are checked here:
-            //   - is_closed(): the demuxer this thread was started on has
-            //     been torn down (e.g. disconnect()→reconnect() created a
-            //     fresh demuxer; we, the OLD thread, must exit so we do not
-            //     burn CPU spinning on a closed channel)
-            //   - !connected: the board is not connected (handles the case
-            //     where the wakeup was an EIO)
-            //   - wait timeout: keep spinning (loop back to token->stop)
+            // Exit when this demuxer is closed or the board disconnected;
+            // otherwise timeouts just give the stop token another chance.
             if (dx->is_closed()) break;
             if (!dx->wait_data_frame(buf, 200)) {
                 if (!connected.load(std::memory_order_acquire)) break;
@@ -210,12 +195,8 @@ struct Board::Impl {
                 break;  // user callback raised; exit the consumer
             }
         }
-        // Generation guard: only clear the shared `streaming` flag if we are
-        // still the current generation. If a disconnect→reconnect cycle
-        // started a fresh streaming thread while we (an old, possibly
-        // detached, thread) were unwinding, clobbering its `streaming=true`
-        // would leave the SDK reporting "not streaming" while a thread is
-        // actively consuming frames.
+        // Only the current streaming generation may clear the shared flag —
+        // stale detached threads must not clobber a restarted session.
         uint64_t cur_gen = streaming_generation.load(std::memory_order_acquire);
         if (cur_gen == my_gen) {
             streaming.store(false, std::memory_order_release);

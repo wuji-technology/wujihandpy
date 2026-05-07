@@ -31,15 +31,6 @@ namespace tactile {
 /// is in flight at a time. On disconnect, all waiters are woken and the
 /// registered disconnect callback is invoked once.
 ///
-/// The demuxer used to be CDC-specific (took a raw fd, called
-/// `cdc::read_exact / cdc::write_exact` directly). It now talks to a
-/// `transport::IByteStream` instead — the framing logic is identical
-/// but any future device using the same sync-byte / length-prefixed
-/// frame shape over a different IO source (kernel tty, socat-pty
-/// fixture, in-memory fake) reuses this class. Today the only
-/// production producer is `cdc::CdcByteStream`; unit tests use a
-/// `FakeByteStream` to exercise the framing code without hardware.
-///
 /// Lifetime: MUST be created via std::make_shared. The reader thread captures
 /// a shared_ptr via shared_from_this() in start() so the demuxer remains
 /// alive until the reader loop exits — required for the self-detach path in

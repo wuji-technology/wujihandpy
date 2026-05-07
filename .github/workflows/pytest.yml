@@ -1,8 +1,6 @@
 name: pytest
 
-# Run host-side pytest on every PR. Closes the gap where the README claims
-# tests/ is exercised in CI but no workflow actually invokes pytest. HIL
-# tests (tests/hil_*.py) are gitignored and intentionally skipped here.
+# Run host-side pytest on PRs; hardware-in-the-loop tests stay local-only.
 
 on:
   push:

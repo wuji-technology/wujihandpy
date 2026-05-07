@@ -65,11 +65,8 @@ constexpr uint32_t BOOTLOADER_MAGIC = 0xB007B007u;
 /// Maximum command/response frame size including sync, length, payload, and CRC (spec §2.2).
 constexpr uint16_t FRAME_MAX = 512;
 
-/// Default per-command timeout. Spec §2.4 recommends 500 ms but it is a host
-/// policy, not a firmware contract. We use 2000 ms because under sustained
-/// 120 Hz streaming the host-side cdc-acm path exhibits sporadic ~0.5 s
-/// stalls during which queued data frames push the response past a 500 ms
-/// deadline (the firmware itself responds on the order of ms — see HIL log).
+/// Default host-side command timeout. Longer than the spec's 500 ms guidance
+/// to tolerate observed CDC ACM stalls during 120 Hz streaming.
 constexpr uint32_t DEFAULT_TIMEOUT_MS = 2000;
 
 /// Exception thrown when a tactile command returns a non-Ok status.

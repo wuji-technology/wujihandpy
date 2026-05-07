@@ -35,10 +35,7 @@ auto make_python_callback(py::function py_cb, const char* error_context) {
         try {
             (*cb)(std::forward<Args>(args)...);
         } catch (py::error_already_set& e) {
-            // discard_as_unraisable restores the cached error indicator
-            // and routes it through sys.unraisablehook. Without it, the
-            // error_already_set ctor's fetch+clear leaves nothing for
-            // PyErr_WriteUnraisable to print.
+            // Preserve callback failures through sys.unraisablehook.
             e.discard_as_unraisable(*cb);
             if (error_context) throw std::runtime_error(error_context);
         }
