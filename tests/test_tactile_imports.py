@@ -40,12 +40,12 @@ def test_three_import_paths_resolve_identically():
        `from wujihandpy import tactile; tactile.Glove`,
        `import wujihandpy.tactile; wujihandpy.tactile.Glove` —
     all three must resolve to the same class object."""
-    from wujihandpy.tactile import Glove as B1
+    from wujihandpy.tactile import Glove as G1
     from wujihandpy import tactile
-    B2 = tactile.Glove
+    G2 = tactile.Glove
     import wujihandpy.tactile as t3
-    B3 = t3.Glove
-    assert B1 is B2 is B3
+    G3 = t3.Glove
+    assert G1 is G2 is G3
 
 
 def test_native_all_is_populated():

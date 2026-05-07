@@ -22,44 +22,44 @@ if not sys.platform.startswith("linux"):
 import wujihandpy.tactile as tactile  # noqa: E402
 
 
-def _board_not_connected():
+def _glove_not_connected():
     """Construct a Glove against a nonexistent serial; connect()
     returns False and the SDK stays disconnected. Subsequent calls
     must raise ConnectionError, not bare RuntimeError or anything
     else."""
-    b = tactile.Glove(serial_number="ci-nonexistent-serial-zzz")
-    assert b.connect() is False
-    return b
+    glove = tactile.Glove(serial_number="ci-nonexistent-serial-zzz")
+    assert glove.connect() is False
+    return glove
 
 
 def test_read_frame_on_disconnected_raises_ConnectionError():
-    b = _board_not_connected()
+    glove = _glove_not_connected()
     with pytest.raises(ConnectionError):
-        b.read_frame(timeout_ms=10)
+        glove.read_frame(timeout_ms=10)
 
 
 def test_get_device_info_on_disconnected_raises_ConnectionError():
-    b = _board_not_connected()
+    glove = _glove_not_connected()
     with pytest.raises(ConnectionError):
-        b.get_device_info()
+        glove.get_device_info()
 
 
 def test_get_diagnostics_on_disconnected_raises_ConnectionError():
-    b = _board_not_connected()
+    glove = _glove_not_connected()
     with pytest.raises(ConnectionError):
-        b.get_diagnostics()
+        glove.get_diagnostics()
 
 
 def test_set_streaming_on_disconnected_raises_ConnectionError():
-    b = _board_not_connected()
+    glove = _glove_not_connected()
     with pytest.raises(ConnectionError):
-        b.set_streaming(True)
+        glove.set_streaming(True)
 
 
 def test_start_streaming_on_disconnected_raises_ConnectionError():
-    b = _board_not_connected()
+    glove = _glove_not_connected()
     with pytest.raises(ConnectionError):
-        b.start_streaming(lambda f: None)
+        glove.start_streaming(lambda f: None)
 
 
 def test_enter_context_on_missing_device_raises_ConnectionError():
@@ -74,9 +74,9 @@ def test_enter_context_on_missing_device_raises_ConnectionError():
 
 def test_exception_classes_distinct_from_runtime_error():
     """Wire-failure classes should remain stdlib-catchable."""
-    b = _board_not_connected()
+    glove = _glove_not_connected()
     try:
-        b.read_frame(timeout_ms=5)
+        glove.read_frame(timeout_ms=5)
     except ConnectionError:
         pass  # expected
     except RuntimeError as e:
@@ -85,6 +85,6 @@ def test_exception_classes_distinct_from_runtime_error():
         # what we raise from a tactile not-connected path.
         if not isinstance(e, ConnectionError):
             pytest.fail(
-                "tactile read_frame on disconnected board raised "
+                "tactile read_frame on disconnected glove raised "
                 f"plain RuntimeError ({e!r}); regression of round-1 P1 fix"
             )

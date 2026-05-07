@@ -1,5 +1,5 @@
 """
-Tactile board API (wujihandcpp::tactile namespace).
+Tactile glove API (wujihandcpp::tactile namespace).
 """
 from __future__ import annotations
 import collections.abc

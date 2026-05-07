@@ -240,7 +240,7 @@ if(BUILD_TESTING)
     # symbol collides with gtest_main and the gtest binary silently exits
     # with the cpp11 probe's success message instead of running any tests.
     list(FILTER WUJIHANDCPP_TEST_SOURCES EXCLUDE REGEX "/cpp11_compat/")
-    # Tactile tests link against frame_demuxer + tactile_board + cdc_byte_stream,
+    # Tactile tests link against frame_demuxer + tactile_glove + cdc_byte_stream,
     # all Linux-only (matching the .cpp exclusion above and the public-header
     # `#if defined(__linux__)` gate). Without this filter, BUILD_TESTING=ON on
     # macOS / Windows still globs frame_demuxer_test.cpp and the test target

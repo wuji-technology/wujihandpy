@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Tactile board SDK rewritten for the new wire protocol** (firmware
+- **Tactile glove SDK rewritten for the new wire protocol** (firmware
   `wh110-firmware/docs/tactile-wire-protocol.md`):
   - Data frame is now 3088 B (was 1550 B); pressure is `float32` in `[0.0, 1.0]`
     with `NaN` marking invalid cells (was inverted-polarity `int16`).
