@@ -19,6 +19,10 @@ public:
     };
 
     virtual void set_joint_target_position(const double (&positions)[5][4]) = 0;
+
+    /// Explicitly detach from the hand. May throw on transport errors.
+    /// The destructor calls this too but swallows exceptions.
+    virtual void detach() {}
 };
 
 class IRealtimeController {

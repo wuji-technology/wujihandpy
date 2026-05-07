@@ -71,7 +71,17 @@ public:
         controller_->set_joint_target_position(target_positions);
     }
 
-    void close() { controller_.reset(); }
+    void close() {
+        if (controller_) {
+            try {
+                controller_->detach();
+            } catch (...) {
+                controller_.reset();
+                throw;
+            }
+            controller_.reset();
+        }
+    }
 
 private:
     std::unique_ptr<wujihandcpp::device::IController> controller_;

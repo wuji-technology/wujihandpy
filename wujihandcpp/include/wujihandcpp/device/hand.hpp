@@ -342,6 +342,9 @@ private:
 
         ~CompatibleControllerOperator() override = default;
 
+        // Firmware-filter mode never calls attach_realtime_controller, so detach is a no-op.
+        void detach() override {}
+
         auto get_joint_actual_position() -> const std::atomic<double> (&)[5][4] override {
             return hand_.realtime_get_joint_actual_position();
         }
@@ -383,10 +386,16 @@ private:
             if (!controller_)
                 return;
             try {
-                hand_.detach_realtime_controller();
+                detach();
             } catch (...) {
-                // TODO: Add log here
             }
+        }
+
+        void detach() override {
+            if (!controller_)
+                return;
+            hand_.detach_realtime_controller();
+            controller_ = nullptr;
         }
 
         void set_joint_target_position(const double (&positions)[5][4]) override {
@@ -420,10 +429,16 @@ private:
             if (!controller_)
                 return;
             try {
-                hand_.detach_realtime_controller();
+                detach();
             } catch (...) {
-                // TODO: Add log here
             }
+        }
+
+        void detach() override {
+            if (!controller_)
+                return;
+            hand_.detach_realtime_controller();
+            controller_ = nullptr;
         }
 
         auto get_joint_actual_position() -> const std::atomic<double> (&)[5][4] override {
@@ -472,19 +487,41 @@ private:
     }
 
     std::unique_ptr<IRealtimeController> detach_realtime_controller() {
-        bool last_enabled[5][4];
-        save_and_disable_joints(last_enabled);
+        std::exception_ptr sdo_failure;
 
-        {
-            Latch latch;
-            write_async<data::joint::ControlMode>(latch, 6);
-            write_async<data::hand::PdoEnabled>(latch, 0);
-            latch.wait();
+        if (!handler_.has_transport_error()) {
+            // Normal path: send SDO commands to gracefully transition the device.
+            // If the device disconnects mid-block, save the exception and still
+            // run handler-level detach below so the controller is released.
+            try {
+                bool last_enabled[5][4];
+                save_and_disable_joints(last_enabled);
+
+                {
+                    Latch latch;
+                    write_async<data::joint::ControlMode>(latch, 6);
+                    write_async<data::hand::PdoEnabled>(latch, 0);
+                    latch.wait();
+                }
+
+                revert_disabled_joints(last_enabled);
+            } catch (...) {
+                sdo_failure = std::current_exception();
+            }
         }
 
-        revert_disabled_joints(last_enabled);
+        // Always detach at handler level (stops PDO thread, releases controller)
+        auto controller =
+            std::unique_ptr<IRealtimeController>{handler_.detach_realtime_controller()};
 
-        return std::unique_ptr<IRealtimeController>{handler_.detach_realtime_controller()};
+        // Disconnect takes priority over any other SDO failure: a TimeoutError
+        // observed during detach is almost certainly the device dropping.
+        if (handler_.has_transport_error())
+            handler_.throw_if_transport_error();
+        if (sdo_failure)
+            std::rethrow_exception(sdo_failure);
+
+        return controller;
     }
 
     static uint16_t calculate_index_offset(int finger_id, int joint_id) {

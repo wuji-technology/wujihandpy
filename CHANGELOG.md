@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- USB device disconnection no longer terminates the process. The SDK raises `ConnectionError` (Python) / `wujihandcpp::device::DeviceDisconnectedError` (C++) for blocking SDO calls, in-flight async reads, and raw SDO operations. Pending async callbacks are explicitly woken so callers don't hang. See `example/6.disconnect.py` for the recommended catch pattern.
+  - Note: in realtime control mode, `IController.get_joint_actual_position` / `set_joint_target_position` go through PDO atomic operations and do NOT raise on disconnect. To detect disconnect inside a realtime loop, periodically issue a SDO probe (e.g. `hand.read_input_voltage()`).
+- Realtime controller cleanup (`Hand.realtime_controller(...)` context exit) no longer throws spurious "No realtime controller attached" when the firmware-filter path is active.
+
+### Added
+
+- Example: `6.disconnect.py` demonstrating USB disconnect handling.
+
 ## [1.6.0] - 2026-04-27
 
 ### Changed

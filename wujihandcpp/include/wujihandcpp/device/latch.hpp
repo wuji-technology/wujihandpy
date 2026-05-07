@@ -14,6 +14,11 @@ public:
     using runtime_error::runtime_error;
 };
 
+class DeviceDisconnectedError : public std::runtime_error {
+public:
+    using runtime_error::runtime_error;
+};
+
 class Latch {
 public:
     template <typename T>

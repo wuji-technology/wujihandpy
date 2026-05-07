@@ -107,6 +107,12 @@ public:
 
     WUJIHANDCPP_API device::IRealtimeController* detach_realtime_controller();
 
+    /// Returns true if an unrecoverable transport error has occurred.
+    WUJIHANDCPP_API bool has_transport_error() const;
+
+    /// Throws std::runtime_error if an unrecoverable transport error has occurred.
+    WUJIHANDCPP_API void throw_if_transport_error();
+
     WUJIHANDCPP_API void start_latency_test();
     WUJIHANDCPP_API void stop_latency_test();
 

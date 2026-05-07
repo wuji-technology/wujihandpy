@@ -31,6 +31,8 @@ PYBIND11_MODULE(_core, m) {
             return;
         try {
             std::rethrow_exception(p);
+        } catch (const wujihandcpp::device::DeviceDisconnectedError& e) {
+            PyErr_SetString(PyExc_ConnectionError, e.what());
         } catch (const wujihandcpp::device::TimeoutError& e) {
             PyErr_SetString(PyExc_TimeoutError, e.what());
         }

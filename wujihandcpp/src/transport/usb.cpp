@@ -12,6 +12,8 @@
 
 #include <libusb.h>
 
+#include <wujihandcpp/device/latch.hpp>
+
 #include "logging/logging.hpp"
 #include "transport/transport.hpp"
 #include "utility/cross_os.hpp"
@@ -60,6 +62,9 @@ public:
     }
 
     std::unique_ptr<IBuffer> request_transmit_buffer() noexcept override {
+        if (receive_error_.load(std::memory_order::acquire))
+            return nullptr;
+
         TransferWrapper* transfer = nullptr;
         {
             std::lock_guard guard{transmit_transfer_pop_mutex_};
@@ -73,6 +78,7 @@ public:
     };
 
     void transmit(std::unique_ptr<IBuffer> buffer, size_t size) override {
+        throw_if_receive_error();
         if (size > max_transfer_length_)
             throw std::invalid_argument("Transmit size exceeds maximum transfer length");
 
@@ -100,6 +106,10 @@ public:
         receive_callback_ = std::move(callback);
         init_receive_transfers();
     };
+
+    void on_error(std::function<void(const std::string& message)> callback) override {
+        error_callback_ = std::move(callback);
+    }
 
 private:
     class TransferWrapper : public IBuffer {
@@ -396,15 +406,22 @@ private:
             if (ret == LIBUSB_ERROR_NO_DEVICE)
                 logger_.error(
                     "Failed to re-submit receive transfer: Device disconnected. "
-                    "Terminating...");
+                    "Reporting via on_error.");
             else
                 logger_.error(
-                    "Failed to re-submit receive transfer: {} ({}). Terminating...", ret,
-                    libusb_errname(ret));
+                    "Failed to re-submit receive transfer: {} ({}). Reporting via on_error.",
+                    ret, libusb_errname(ret));
             destroy_libusb_transfer(transfer);
 
-            // TODO: Replace abrupt termination with a flag and exception-based error handling
-            std::terminate();
+            receive_error_.store(true, std::memory_order::release);
+            if (error_callback_) {
+                if (ret == LIBUSB_ERROR_NO_DEVICE)
+                    error_callback_("Device disconnected");
+                else
+                    error_callback_(
+                        std::format("Failed to re-submit receive transfer: {} ({})", ret,
+                                    libusb_errname(ret)));
+            }
         }
     }
 
@@ -419,6 +436,11 @@ private:
     void destroy_libusb_transfer(libusb_transfer* transfer) {
         libusb_free_transfer(transfer);
         active_transfers_.fetch_sub(1, std::memory_order::relaxed);
+    }
+
+    void throw_if_receive_error() {
+        if (receive_error_.load(std::memory_order::acquire)) [[unlikely]]
+            throw device::DeviceDisconnectedError("Device disconnected");
     }
 
     static constexpr const char* libusb_errname(int number) {
@@ -460,10 +482,13 @@ private:
     std::atomic<int> active_transfers_ = 0;
     std::atomic<bool> stop_handling_events_ = false;
 
+    std::atomic<bool> receive_error_ = false;
+
     utility::RingBuffer<TransferWrapper*> free_transmit_transfers_;
     std::mutex transmit_transfer_pop_mutex_, transmit_transfer_push_mutex_;
 
     std::function<void(const std::byte*, size_t size)> receive_callback_;
+    std::function<void(const std::string& message)> error_callback_;
 };
 
 std::unique_ptr<ITransport>

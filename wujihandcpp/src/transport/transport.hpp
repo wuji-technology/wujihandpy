@@ -26,6 +26,10 @@ public:
     virtual void transmit(std::unique_ptr<IBuffer> buffer, size_t size) = 0;
 
     virtual void receive(std::function<void(const std::byte* buffer, size_t size)> callback) = 0;
+
+    /// Register a callback invoked (from an internal thread) when an unrecoverable error occurs.
+    /// Must be called before receive(). Not thread-safe.
+    virtual void on_error(std::function<void(const std::string& message)> callback) = 0;
 };
 
 std::unique_ptr<ITransport>

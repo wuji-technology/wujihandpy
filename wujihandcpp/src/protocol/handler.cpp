@@ -53,6 +53,22 @@ public:
     }
 
     void start_transmit_receive() {
+        transport_->on_error([this](const std::string& message) {
+            {
+                std::lock_guard guard{transport_error_mutex_};
+                if (transport_error_.load(std::memory_order::relaxed))
+                    return; // first writer wins; subsequent transfers see the same disconnect
+                transport_error_message_ = message;
+                transport_error_.store(true, std::memory_order::release);
+            }
+            logger_.error("Transport error: {}", message);
+            pdo_thread_.request_stop();
+            // Do NOT request_stop on sdo_thread_ here: its loop checks stop_token
+            // before transport_error_, so a stop request would skip
+            // fail_all_pending_on_disconnect() and leave callers stuck. The
+            // thread exits via the transport_error_ branch on the next tick.
+        });
+
         transport_->receive([this](const std::byte* buffer, size_t size) {
             receive_transfer_completed_callback(buffer, size);
         });
@@ -79,6 +95,7 @@ public:
         int storage_id, std::chrono::steady_clock::duration::rep timeout,
         void (*callback)(Buffer8 context, bool success), Buffer8 callback_context) {
         operation_thread_check();
+        throw_if_transport_error();
 
         if (storage_[storage_id].operation.load(std::memory_order::relaxed).mode
             != Operation::Mode::NONE) [[unlikely]]
@@ -113,6 +130,7 @@ public:
         Buffer8 data, int storage_id, std::chrono::steady_clock::duration::rep timeout,
         void (*callback)(Buffer8 context, bool success), Buffer8 callback_context) {
         operation_thread_check();
+        throw_if_transport_error();
 
         if (storage_[storage_id].operation.load(std::memory_order::relaxed).mode
             != Operation::Mode::NONE) [[unlikely]]
@@ -172,6 +190,17 @@ public:
         return realtime_controller_.release();
     }
 
+    bool has_transport_error() const {
+        return transport_error_.load(std::memory_order::acquire);
+    }
+
+    void throw_if_transport_error() {
+        if (transport_error_.load(std::memory_order::acquire)) [[unlikely]] {
+            std::lock_guard guard{transport_error_mutex_};
+            throw device::DeviceDisconnectedError(transport_error_message_);
+        }
+    }
+
     void start_latency_test() {
         operation_thread_check();
 
@@ -212,6 +241,7 @@ public:
     std::vector<uint8_t> raw_sdo_read(
         uint16_t index, uint8_t sub_index, std::chrono::steady_clock::duration timeout) {
         operation_thread_check();
+        throw_if_transport_error();
 
         // Find an available slot
         RawSdoUnit* unit = nullptr;
@@ -253,9 +283,11 @@ public:
             unit->mode = RawSdoUnit::Mode::NONE;
             unit->in_use.store(false, std::memory_order_release);
 
-            if (state == RawSdoUnit::State::FAILED)
+            if (state == RawSdoUnit::State::FAILED) {
+                throw_if_transport_error(); // throws DeviceDisconnectedError if transport down
                 throw device::TimeoutError(std::format(
                     "Raw SDO read timed out: index=0x{:04X}, sub_index={}", index, sub_index));
+            }
         }
 
         return result;
@@ -265,6 +297,7 @@ public:
         uint16_t index, uint8_t sub_index, const void* data, size_t size,
         std::chrono::steady_clock::duration timeout) {
         operation_thread_check();
+        throw_if_transport_error();
 
         if (size != 1 && size != 2 && size != 4 && size != 8)
             throw std::invalid_argument(
@@ -308,9 +341,11 @@ public:
             unit->mode = RawSdoUnit::Mode::NONE;
             unit->in_use.store(false, std::memory_order_release);
 
-            if (state == RawSdoUnit::State::FAILED)
+            if (state == RawSdoUnit::State::FAILED) {
+                throw_if_transport_error(); // throws DeviceDisconnectedError if transport down
                 throw device::TimeoutError(std::format(
                     "Raw SDO write timed out: index=0x{:04X}, sub_index={}", index, sub_index));
+            }
         }
     }
 
@@ -641,6 +676,35 @@ private:
         return false;
     }
 
+    // Wake every pending storage and raw-SDO waiter, marking them failed.
+    // Called from sdo_thread once a transport error is observed.
+    void fail_all_pending_on_disconnect() {
+        for (size_t i = 0; i < storage_unit_count_; i++) {
+            auto& storage = storage_[i];
+            auto operation = storage.operation.load(std::memory_order::acquire);
+            if (operation.mode == Operation::Mode::NONE)
+                continue;
+            auto callback = storage.callback;
+            auto context = storage.callback_context;
+            operation.mode = Operation::Mode::NONE;
+            storage.operation.store(operation, std::memory_order::release);
+            if (callback)
+                callback(context, false);
+        }
+
+        for (auto& unit : raw_sdo_units_) {
+            if (!unit.in_use.load(std::memory_order_acquire))
+                continue;
+            std::lock_guard lock{unit.mutex};
+            if (unit.state == RawSdoUnit::State::PENDING
+                || unit.state == RawSdoUnit::State::READING
+                || unit.state == RawSdoUnit::State::WRITING) {
+                unit.state = RawSdoUnit::State::FAILED;
+                unit.cv.notify_one();
+            }
+        }
+    }
+
     void sdo_thread_main(const std::stop_token& stop_token) {
         constexpr double update_rate = 199.0;
         constexpr auto update_period =
@@ -648,6 +712,11 @@ private:
                 std::chrono::duration<double>(1.0 / update_rate));
 
         while (!stop_token.stop_requested()) {
+            if (transport_error_.load(std::memory_order::acquire)) [[unlikely]] {
+                fail_all_pending_on_disconnect();
+                return;
+            }
+
             auto now = std::chrono::steady_clock::now();
 
             for (size_t i = 0; i < storage_unit_count_; i++) {
@@ -1010,6 +1079,10 @@ private:
     std::unique_ptr<device::IRealtimeController> realtime_controller_;
     std::jthread pdo_thread_;
 
+    std::atomic<bool> transport_error_ = false;
+    std::mutex transport_error_mutex_;
+    std::string transport_error_message_;
+
     std::array<RawSdoUnit, RAW_SDO_SLOT_COUNT> raw_sdo_units_;
 };
 
@@ -1069,6 +1142,14 @@ WUJIHANDCPP_API void Handler::attach_realtime_controller(
 
 WUJIHANDCPP_API device::IRealtimeController* Handler::detach_realtime_controller() {
     return impl_->detach_realtime_controller();
+}
+
+WUJIHANDCPP_API bool Handler::has_transport_error() const {
+    return impl_->has_transport_error();
+}
+
+WUJIHANDCPP_API void Handler::throw_if_transport_error() {
+    impl_->throw_if_transport_error();
 }
 
 WUJIHANDCPP_API void Handler::start_latency_test() { impl_->start_latency_test(); }
