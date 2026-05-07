@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <cstring>
+#include <format>
 #include <memory>
 #include <mutex>
 #include <stdexcept>
@@ -125,8 +126,24 @@ struct Glove::Impl {
                 if (d.serial_number == serial_filter) { chosen = &d; break; }
             }
             if (!chosen) return false;
-        } else {
+        } else if (devices.size() == 1) {
             chosen = &devices[0];
+        } else {
+            // Multiple gloves on the bus and no serial_number filter.
+            // Refuse to silently pick one — udev/USB enumeration order is
+            // not stable across reboots, so devices[0] would map to a
+            // different physical glove on different boots.
+            std::string sn_list;
+            for (size_t i = 0; i < devices.size(); ++i) {
+                if (i) sn_list += ", ";
+                sn_list += devices[i].serial_number.empty()
+                               ? "<missing>"
+                               : devices[i].serial_number;
+            }
+            throw std::runtime_error(std::format(
+                "tactile::Glove: {} devices found with PID 0x{:04x}; "
+                "specify serial_number to disambiguate. Found: {}",
+                devices.size(), USB_PID, sn_list));
         }
 
         tty_path = chosen->tty_path;

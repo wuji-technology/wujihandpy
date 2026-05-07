@@ -31,6 +31,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `get_handedness()` (queries the device directly).
   - `set_disconnect_callback()` replaces the prior "zero-init frame as
     disconnect signal" hack — `0.0` is now a legitimate pressure value.
+  - `Glove()` without `serial_number` raises `RuntimeError` listing all
+    found serials when more than one glove is on the bus, instead of
+    silently selecting the first device by tty name (whose ordering is
+    not stable across reboots).
   - Default per-command timeout raised from spec's recommended 500 ms to
     2000 ms to absorb a sporadic ~0.5 s host-side cdc-acm stall observed on
     Linux 6.8 (firmware-side counters confirm zero drops/CRC errors during
