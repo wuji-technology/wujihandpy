@@ -29,191 +29,191 @@ class Finger:
         ...
     def joint(self, index: typing.SupportsInt | typing.SupportsIndex) -> Joint:
         ...
-    def read_joint_actual_position(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> numpy.typing.NDArray[numpy.float64]:
+    def read_joint_actual_position(self, timeout: typing.SupportsFloat = 0.5) -> numpy.typing.NDArray[numpy.float64]:
         ...
-    def read_joint_actual_position_async(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[numpy.typing.NDArray[numpy.float64]]:
+    def read_joint_actual_position_async(self, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[numpy.typing.NDArray[numpy.float64]]:
         ...
-    def read_joint_actual_position_unchecked(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def read_joint_actual_position_unchecked(self, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
-    def read_joint_bus_voltage(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> numpy.typing.NDArray[numpy.float32]:
+    def read_joint_bus_voltage(self, timeout: typing.SupportsFloat = 0.5) -> numpy.typing.NDArray[numpy.float32]:
         ...
-    def read_joint_bus_voltage_async(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[numpy.typing.NDArray[numpy.float32]]:
+    def read_joint_bus_voltage_async(self, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[numpy.typing.NDArray[numpy.float32]]:
         ...
-    def read_joint_bus_voltage_unchecked(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def read_joint_bus_voltage_unchecked(self, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
-    def read_joint_current_limit(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> numpy.typing.NDArray[numpy.float64]:
+    def read_joint_current_limit(self, timeout: typing.SupportsFloat = 0.5) -> numpy.typing.NDArray[numpy.float64]:
         ...
-    def read_joint_current_limit_async(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[numpy.typing.NDArray[numpy.float64]]:
+    def read_joint_current_limit_async(self, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[numpy.typing.NDArray[numpy.float64]]:
         ...
-    def read_joint_current_limit_unchecked(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def read_joint_current_limit_unchecked(self, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
-    def read_joint_effort_limit(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> numpy.typing.NDArray[numpy.float64]:
+    def read_joint_effort_limit(self, timeout: typing.SupportsFloat = 0.5) -> numpy.typing.NDArray[numpy.float64]:
         ...
-    def read_joint_effort_limit_async(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[numpy.typing.NDArray[numpy.float64]]:
+    def read_joint_effort_limit_async(self, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[numpy.typing.NDArray[numpy.float64]]:
         ...
-    def read_joint_effort_limit_unchecked(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def read_joint_effort_limit_unchecked(self, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
-    def read_joint_error_code(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> numpy.typing.NDArray[numpy.uint32]:
+    def read_joint_error_code(self, timeout: typing.SupportsFloat = 0.5) -> numpy.typing.NDArray[numpy.uint32]:
         ...
-    def read_joint_error_code_async(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[numpy.typing.NDArray[numpy.uint32]]:
+    def read_joint_error_code_async(self, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[numpy.typing.NDArray[numpy.uint32]]:
         ...
-    def read_joint_error_code_unchecked(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def read_joint_error_code_unchecked(self, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
-    def read_joint_firmware_date(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> numpy.typing.NDArray[numpy.uint32]:
+    def read_joint_firmware_date(self, timeout: typing.SupportsFloat = 0.5) -> numpy.typing.NDArray[numpy.uint32]:
         ...
-    def read_joint_firmware_date_async(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[numpy.typing.NDArray[numpy.uint32]]:
+    def read_joint_firmware_date_async(self, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[numpy.typing.NDArray[numpy.uint32]]:
         ...
-    def read_joint_firmware_date_unchecked(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def read_joint_firmware_date_unchecked(self, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
-    def read_joint_firmware_version(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> numpy.typing.NDArray[numpy.uint32]:
+    def read_joint_firmware_version(self, timeout: typing.SupportsFloat = 0.5) -> numpy.typing.NDArray[numpy.uint32]:
         ...
-    def read_joint_firmware_version_async(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[numpy.typing.NDArray[numpy.uint32]]:
+    def read_joint_firmware_version_async(self, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[numpy.typing.NDArray[numpy.uint32]]:
         ...
-    def read_joint_firmware_version_unchecked(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def read_joint_firmware_version_unchecked(self, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
-    def read_joint_lower_limit(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> numpy.typing.NDArray[numpy.float64]:
+    def read_joint_lower_limit(self, timeout: typing.SupportsFloat = 0.5) -> numpy.typing.NDArray[numpy.float64]:
         ...
-    def read_joint_lower_limit_async(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[numpy.typing.NDArray[numpy.float64]]:
+    def read_joint_lower_limit_async(self, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[numpy.typing.NDArray[numpy.float64]]:
         ...
-    def read_joint_lower_limit_unchecked(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def read_joint_lower_limit_unchecked(self, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
-    def read_joint_temperature(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> numpy.typing.NDArray[numpy.float32]:
+    def read_joint_temperature(self, timeout: typing.SupportsFloat = 0.5) -> numpy.typing.NDArray[numpy.float32]:
         ...
-    def read_joint_temperature_async(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[numpy.typing.NDArray[numpy.float32]]:
+    def read_joint_temperature_async(self, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[numpy.typing.NDArray[numpy.float32]]:
         ...
-    def read_joint_temperature_unchecked(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def read_joint_temperature_unchecked(self, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
-    def read_joint_upper_limit(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> numpy.typing.NDArray[numpy.float64]:
+    def read_joint_upper_limit(self, timeout: typing.SupportsFloat = 0.5) -> numpy.typing.NDArray[numpy.float64]:
         ...
-    def read_joint_upper_limit_async(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[numpy.typing.NDArray[numpy.float64]]:
+    def read_joint_upper_limit_async(self, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[numpy.typing.NDArray[numpy.float64]]:
         ...
-    def read_joint_upper_limit_unchecked(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
-        ...
-    @typing.overload
-    def write_joint_control_mode(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def read_joint_upper_limit_unchecked(self, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_control_mode(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.uint16], timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_control_mode(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_control_mode_async(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[None]:
+    def write_joint_control_mode(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.uint16], timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_control_mode_async(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.uint16], timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[None]:
+    def write_joint_control_mode_async(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[None]:
         ...
     @typing.overload
-    def write_joint_control_mode_unchecked(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_control_mode_async(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.uint16], timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[None]:
         ...
     @typing.overload
-    def write_joint_control_mode_unchecked(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.uint16], timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_control_mode_unchecked(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_current_limit(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_control_mode_unchecked(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.uint16], timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_current_limit(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_current_limit(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_current_limit_async(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[None]:
+    def write_joint_current_limit(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_current_limit_async(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[None]:
+    def write_joint_current_limit_async(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[None]:
         ...
     @typing.overload
-    def write_joint_current_limit_unchecked(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_current_limit_async(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[None]:
         ...
     @typing.overload
-    def write_joint_current_limit_unchecked(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_current_limit_unchecked(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_effort_limit(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_current_limit_unchecked(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_effort_limit(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_effort_limit(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_effort_limit_async(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[None]:
+    def write_joint_effort_limit(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_effort_limit_async(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[None]:
+    def write_joint_effort_limit_async(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[None]:
         ...
     @typing.overload
-    def write_joint_effort_limit_unchecked(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_effort_limit_async(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[None]:
         ...
     @typing.overload
-    def write_joint_effort_limit_unchecked(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_effort_limit_unchecked(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_enabled(self, value: bool, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_effort_limit_unchecked(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_enabled(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.bool_], timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_enabled(self, value: bool, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_enabled_async(self, value: bool, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[None]:
+    def write_joint_enabled(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.bool_], timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_enabled_async(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.bool_], timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[None]:
+    def write_joint_enabled_async(self, value: bool, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[None]:
         ...
     @typing.overload
-    def write_joint_enabled_unchecked(self, value: bool, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_enabled_async(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.bool_], timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[None]:
         ...
     @typing.overload
-    def write_joint_enabled_unchecked(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.bool_], timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_enabled_unchecked(self, value: bool, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_reset_error(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_enabled_unchecked(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.bool_], timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_reset_error(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.uint16], timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_reset_error(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_reset_error_async(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[None]:
+    def write_joint_reset_error(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.uint16], timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_reset_error_async(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.uint16], timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[None]:
+    def write_joint_reset_error_async(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[None]:
         ...
     @typing.overload
-    def write_joint_reset_error_unchecked(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_reset_error_async(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.uint16], timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[None]:
         ...
     @typing.overload
-    def write_joint_reset_error_unchecked(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.uint16], timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_reset_error_unchecked(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_sin_level(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_reset_error_unchecked(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.uint16], timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_sin_level(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.uint16], timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_sin_level(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_sin_level_async(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[None]:
+    def write_joint_sin_level(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.uint16], timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_sin_level_async(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.uint16], timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[None]:
+    def write_joint_sin_level_async(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[None]:
         ...
     @typing.overload
-    def write_joint_sin_level_unchecked(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_sin_level_async(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.uint16], timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[None]:
         ...
     @typing.overload
-    def write_joint_sin_level_unchecked(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.uint16], timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_sin_level_unchecked(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_target_position(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_sin_level_unchecked(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.uint16], timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_target_position(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_target_position(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_target_position_async(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[None]:
+    def write_joint_target_position(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_target_position_async(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[None]:
+    def write_joint_target_position_async(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[None]:
         ...
     @typing.overload
-    def write_joint_target_position_unchecked(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_target_position_async(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[None]:
         ...
     @typing.overload
-    def write_joint_target_position_unchecked(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_target_position_unchecked(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> None:
+        ...
+    @typing.overload
+    def write_joint_target_position_unchecked(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], timeout: typing.SupportsFloat = 0.5) -> None:
         ...
 class Hand:
     def __enter__(self) -> Hand:
@@ -266,111 +266,111 @@ class Hand:
         ...
     def get_temperature(self) -> numpy.float32:
         ...
-    def raw_sdo_read(self, finger_id: typing.SupportsInt | typing.SupportsIndex, joint_id: typing.SupportsInt | typing.SupportsIndex, index: typing.SupportsInt | typing.SupportsIndex, sub_index: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> bytes:
+    def raw_sdo_read(self, finger_id: typing.SupportsInt | typing.SupportsIndex, joint_id: typing.SupportsInt | typing.SupportsIndex, index: typing.SupportsInt | typing.SupportsIndex, sub_index: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> bytes:
         ...
-    def raw_sdo_write(self, finger_id: typing.SupportsInt | typing.SupportsIndex, joint_id: typing.SupportsInt | typing.SupportsIndex, index: typing.SupportsInt | typing.SupportsIndex, sub_index: typing.SupportsInt | typing.SupportsIndex, data: bytes, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def raw_sdo_write(self, finger_id: typing.SupportsInt | typing.SupportsIndex, joint_id: typing.SupportsInt | typing.SupportsIndex, index: typing.SupportsInt | typing.SupportsIndex, sub_index: typing.SupportsInt | typing.SupportsIndex, data: bytes, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
-    def read_firmware_date(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> numpy.uint32:
+    def read_firmware_date(self, timeout: typing.SupportsFloat = 0.5) -> numpy.uint32:
         ...
-    def read_firmware_date_async(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[numpy.uint32]:
+    def read_firmware_date_async(self, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[numpy.uint32]:
         ...
-    def read_firmware_date_unchecked(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def read_firmware_date_unchecked(self, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
-    def read_firmware_version(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> numpy.uint32:
+    def read_firmware_version(self, timeout: typing.SupportsFloat = 0.5) -> numpy.uint32:
         ...
-    def read_firmware_version_async(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[numpy.uint32]:
+    def read_firmware_version_async(self, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[numpy.uint32]:
         ...
-    def read_firmware_version_unchecked(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def read_firmware_version_unchecked(self, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
-    def read_full_system_firmware_version(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> numpy.uint32:
+    def read_full_system_firmware_version(self, timeout: typing.SupportsFloat = 0.5) -> numpy.uint32:
         ...
-    def read_full_system_firmware_version_async(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[numpy.uint32]:
+    def read_full_system_firmware_version_async(self, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[numpy.uint32]:
         ...
-    def read_full_system_firmware_version_unchecked(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def read_full_system_firmware_version_unchecked(self, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
-    def read_handedness(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> numpy.uint8:
+    def read_handedness(self, timeout: typing.SupportsFloat = 0.5) -> numpy.uint8:
         ...
-    def read_handedness_async(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[numpy.uint8]:
+    def read_handedness_async(self, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[numpy.uint8]:
         ...
-    def read_handedness_unchecked(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def read_handedness_unchecked(self, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
-    def read_input_voltage(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> numpy.float32:
+    def read_input_voltage(self, timeout: typing.SupportsFloat = 0.5) -> numpy.float32:
         ...
-    def read_input_voltage_async(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[numpy.float32]:
+    def read_input_voltage_async(self, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[numpy.float32]:
         ...
-    def read_input_voltage_unchecked(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def read_input_voltage_unchecked(self, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
-    def read_joint_actual_position(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> numpy.typing.NDArray[numpy.float64]:
+    def read_joint_actual_position(self, timeout: typing.SupportsFloat = 0.5) -> numpy.typing.NDArray[numpy.float64]:
         ...
-    def read_joint_actual_position_async(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[numpy.typing.NDArray[numpy.float64]]:
+    def read_joint_actual_position_async(self, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[numpy.typing.NDArray[numpy.float64]]:
         ...
-    def read_joint_actual_position_unchecked(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def read_joint_actual_position_unchecked(self, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
-    def read_joint_bus_voltage(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> numpy.typing.NDArray[numpy.float32]:
+    def read_joint_bus_voltage(self, timeout: typing.SupportsFloat = 0.5) -> numpy.typing.NDArray[numpy.float32]:
         ...
-    def read_joint_bus_voltage_async(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[numpy.typing.NDArray[numpy.float32]]:
+    def read_joint_bus_voltage_async(self, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[numpy.typing.NDArray[numpy.float32]]:
         ...
-    def read_joint_bus_voltage_unchecked(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def read_joint_bus_voltage_unchecked(self, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
-    def read_joint_current_limit(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> numpy.typing.NDArray[numpy.float64]:
+    def read_joint_current_limit(self, timeout: typing.SupportsFloat = 0.5) -> numpy.typing.NDArray[numpy.float64]:
         ...
-    def read_joint_current_limit_async(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[numpy.typing.NDArray[numpy.float64]]:
+    def read_joint_current_limit_async(self, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[numpy.typing.NDArray[numpy.float64]]:
         ...
-    def read_joint_current_limit_unchecked(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def read_joint_current_limit_unchecked(self, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
-    def read_joint_effort_limit(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> numpy.typing.NDArray[numpy.float64]:
+    def read_joint_effort_limit(self, timeout: typing.SupportsFloat = 0.5) -> numpy.typing.NDArray[numpy.float64]:
         ...
-    def read_joint_effort_limit_async(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[numpy.typing.NDArray[numpy.float64]]:
+    def read_joint_effort_limit_async(self, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[numpy.typing.NDArray[numpy.float64]]:
         ...
-    def read_joint_effort_limit_unchecked(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def read_joint_effort_limit_unchecked(self, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
-    def read_joint_error_code(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> numpy.typing.NDArray[numpy.uint32]:
+    def read_joint_error_code(self, timeout: typing.SupportsFloat = 0.5) -> numpy.typing.NDArray[numpy.uint32]:
         ...
-    def read_joint_error_code_async(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[numpy.typing.NDArray[numpy.uint32]]:
+    def read_joint_error_code_async(self, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[numpy.typing.NDArray[numpy.uint32]]:
         ...
-    def read_joint_error_code_unchecked(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def read_joint_error_code_unchecked(self, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
-    def read_joint_firmware_date(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> numpy.typing.NDArray[numpy.uint32]:
+    def read_joint_firmware_date(self, timeout: typing.SupportsFloat = 0.5) -> numpy.typing.NDArray[numpy.uint32]:
         ...
-    def read_joint_firmware_date_async(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[numpy.typing.NDArray[numpy.uint32]]:
+    def read_joint_firmware_date_async(self, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[numpy.typing.NDArray[numpy.uint32]]:
         ...
-    def read_joint_firmware_date_unchecked(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def read_joint_firmware_date_unchecked(self, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
-    def read_joint_firmware_version(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> numpy.typing.NDArray[numpy.uint32]:
+    def read_joint_firmware_version(self, timeout: typing.SupportsFloat = 0.5) -> numpy.typing.NDArray[numpy.uint32]:
         ...
-    def read_joint_firmware_version_async(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[numpy.typing.NDArray[numpy.uint32]]:
+    def read_joint_firmware_version_async(self, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[numpy.typing.NDArray[numpy.uint32]]:
         ...
-    def read_joint_firmware_version_unchecked(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def read_joint_firmware_version_unchecked(self, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
-    def read_joint_lower_limit(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> numpy.typing.NDArray[numpy.float64]:
+    def read_joint_lower_limit(self, timeout: typing.SupportsFloat = 0.5) -> numpy.typing.NDArray[numpy.float64]:
         ...
-    def read_joint_lower_limit_async(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[numpy.typing.NDArray[numpy.float64]]:
+    def read_joint_lower_limit_async(self, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[numpy.typing.NDArray[numpy.float64]]:
         ...
-    def read_joint_lower_limit_unchecked(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def read_joint_lower_limit_unchecked(self, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
-    def read_joint_temperature(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> numpy.typing.NDArray[numpy.float32]:
+    def read_joint_temperature(self, timeout: typing.SupportsFloat = 0.5) -> numpy.typing.NDArray[numpy.float32]:
         ...
-    def read_joint_temperature_async(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[numpy.typing.NDArray[numpy.float32]]:
+    def read_joint_temperature_async(self, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[numpy.typing.NDArray[numpy.float32]]:
         ...
-    def read_joint_temperature_unchecked(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def read_joint_temperature_unchecked(self, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
-    def read_joint_upper_limit(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> numpy.typing.NDArray[numpy.float64]:
+    def read_joint_upper_limit(self, timeout: typing.SupportsFloat = 0.5) -> numpy.typing.NDArray[numpy.float64]:
         ...
-    def read_joint_upper_limit_async(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[numpy.typing.NDArray[numpy.float64]]:
+    def read_joint_upper_limit_async(self, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[numpy.typing.NDArray[numpy.float64]]:
         ...
-    def read_joint_upper_limit_unchecked(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def read_joint_upper_limit_unchecked(self, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
-    def read_system_time(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> numpy.uint32:
+    def read_system_time(self, timeout: typing.SupportsFloat = 0.5) -> numpy.uint32:
         ...
-    def read_system_time_async(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[numpy.uint32]:
+    def read_system_time_async(self, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[numpy.uint32]:
         ...
-    def read_system_time_unchecked(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def read_system_time_unchecked(self, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
-    def read_temperature(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> numpy.float32:
+    def read_temperature(self, timeout: typing.SupportsFloat = 0.5) -> numpy.float32:
         ...
-    def read_temperature_async(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[numpy.float32]:
+    def read_temperature_async(self, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[numpy.float32]:
         ...
-    def read_temperature_unchecked(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def read_temperature_unchecked(self, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     def realtime_controller(self, enable_upstream: bool, filter: filter.IFilter) -> IController:
         ...
@@ -379,130 +379,130 @@ class Hand:
     def stop_latency_test(self) -> None:
         ...
     @typing.overload
-    def write_joint_control_mode(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_control_mode(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_control_mode(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.uint16], timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_control_mode(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.uint16], timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_control_mode_async(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[None]:
+    def write_joint_control_mode_async(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[None]:
         ...
     @typing.overload
-    def write_joint_control_mode_async(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.uint16], timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[None]:
+    def write_joint_control_mode_async(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.uint16], timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[None]:
         ...
     @typing.overload
-    def write_joint_control_mode_unchecked(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_control_mode_unchecked(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_control_mode_unchecked(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.uint16], timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_control_mode_unchecked(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.uint16], timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_current_limit(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_current_limit(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_current_limit(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_current_limit(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_current_limit_async(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[None]:
+    def write_joint_current_limit_async(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[None]:
         ...
     @typing.overload
-    def write_joint_current_limit_async(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[None]:
+    def write_joint_current_limit_async(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[None]:
         ...
     @typing.overload
-    def write_joint_current_limit_unchecked(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_current_limit_unchecked(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_current_limit_unchecked(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_current_limit_unchecked(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_effort_limit(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_effort_limit(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_effort_limit(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_effort_limit(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_effort_limit_async(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[None]:
+    def write_joint_effort_limit_async(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[None]:
         ...
     @typing.overload
-    def write_joint_effort_limit_async(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[None]:
+    def write_joint_effort_limit_async(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[None]:
         ...
     @typing.overload
-    def write_joint_effort_limit_unchecked(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_effort_limit_unchecked(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_effort_limit_unchecked(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_effort_limit_unchecked(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_enabled(self, value: bool, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_enabled(self, value: bool, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_enabled(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.bool_], timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_enabled(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.bool_], timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_enabled_async(self, value: bool, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[None]:
+    def write_joint_enabled_async(self, value: bool, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[None]:
         ...
     @typing.overload
-    def write_joint_enabled_async(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.bool_], timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[None]:
+    def write_joint_enabled_async(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.bool_], timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[None]:
         ...
     @typing.overload
-    def write_joint_enabled_unchecked(self, value: bool, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_enabled_unchecked(self, value: bool, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_enabled_unchecked(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.bool_], timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_enabled_unchecked(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.bool_], timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_reset_error(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_reset_error(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_reset_error(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.uint16], timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_reset_error(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.uint16], timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_reset_error_async(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[None]:
+    def write_joint_reset_error_async(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[None]:
         ...
     @typing.overload
-    def write_joint_reset_error_async(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.uint16], timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[None]:
+    def write_joint_reset_error_async(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.uint16], timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[None]:
         ...
     @typing.overload
-    def write_joint_reset_error_unchecked(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_reset_error_unchecked(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_reset_error_unchecked(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.uint16], timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_reset_error_unchecked(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.uint16], timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_sin_level(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_sin_level(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_sin_level(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.uint16], timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_sin_level(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.uint16], timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_sin_level_async(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[None]:
+    def write_joint_sin_level_async(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[None]:
         ...
     @typing.overload
-    def write_joint_sin_level_async(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.uint16], timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[None]:
+    def write_joint_sin_level_async(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.uint16], timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[None]:
         ...
     @typing.overload
-    def write_joint_sin_level_unchecked(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_sin_level_unchecked(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_sin_level_unchecked(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.uint16], timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_sin_level_unchecked(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.uint16], timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_target_position(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_target_position(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_target_position(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_target_position(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_target_position_async(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[None]:
+    def write_joint_target_position_async(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[None]:
         ...
     @typing.overload
-    def write_joint_target_position_async(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[None]:
+    def write_joint_target_position_async(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[None]:
         ...
     @typing.overload
-    def write_joint_target_position_unchecked(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_target_position_unchecked(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
     @typing.overload
-    def write_joint_target_position_unchecked(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_target_position_unchecked(self, value_array: typing.Annotated[numpy.typing.ArrayLike, numpy.float64], timeout: typing.SupportsFloat = 0.5) -> None:
         ...
 class IController:
     def __enter__(self) -> IController:
@@ -538,105 +538,105 @@ class Joint:
         ...
     def get_joint_upper_limit(self) -> numpy.float64:
         ...
-    def read_joint_actual_position(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> numpy.float64:
+    def read_joint_actual_position(self, timeout: typing.SupportsFloat = 0.5) -> numpy.float64:
         ...
-    def read_joint_actual_position_async(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[numpy.float64]:
+    def read_joint_actual_position_async(self, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[numpy.float64]:
         ...
-    def read_joint_actual_position_unchecked(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def read_joint_actual_position_unchecked(self, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
-    def read_joint_bus_voltage(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> numpy.float32:
+    def read_joint_bus_voltage(self, timeout: typing.SupportsFloat = 0.5) -> numpy.float32:
         ...
-    def read_joint_bus_voltage_async(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[numpy.float32]:
+    def read_joint_bus_voltage_async(self, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[numpy.float32]:
         ...
-    def read_joint_bus_voltage_unchecked(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def read_joint_bus_voltage_unchecked(self, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
-    def read_joint_current_limit(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> numpy.float64:
+    def read_joint_current_limit(self, timeout: typing.SupportsFloat = 0.5) -> numpy.float64:
         ...
-    def read_joint_current_limit_async(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[numpy.float64]:
+    def read_joint_current_limit_async(self, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[numpy.float64]:
         ...
-    def read_joint_current_limit_unchecked(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def read_joint_current_limit_unchecked(self, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
-    def read_joint_effort_limit(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> numpy.float64:
+    def read_joint_effort_limit(self, timeout: typing.SupportsFloat = 0.5) -> numpy.float64:
         ...
-    def read_joint_effort_limit_async(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[numpy.float64]:
+    def read_joint_effort_limit_async(self, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[numpy.float64]:
         ...
-    def read_joint_effort_limit_unchecked(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def read_joint_effort_limit_unchecked(self, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
-    def read_joint_error_code(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> numpy.uint32:
+    def read_joint_error_code(self, timeout: typing.SupportsFloat = 0.5) -> numpy.uint32:
         ...
-    def read_joint_error_code_async(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[numpy.uint32]:
+    def read_joint_error_code_async(self, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[numpy.uint32]:
         ...
-    def read_joint_error_code_unchecked(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def read_joint_error_code_unchecked(self, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
-    def read_joint_firmware_date(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> numpy.uint32:
+    def read_joint_firmware_date(self, timeout: typing.SupportsFloat = 0.5) -> numpy.uint32:
         ...
-    def read_joint_firmware_date_async(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[numpy.uint32]:
+    def read_joint_firmware_date_async(self, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[numpy.uint32]:
         ...
-    def read_joint_firmware_date_unchecked(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def read_joint_firmware_date_unchecked(self, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
-    def read_joint_firmware_version(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> numpy.uint32:
+    def read_joint_firmware_version(self, timeout: typing.SupportsFloat = 0.5) -> numpy.uint32:
         ...
-    def read_joint_firmware_version_async(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[numpy.uint32]:
+    def read_joint_firmware_version_async(self, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[numpy.uint32]:
         ...
-    def read_joint_firmware_version_unchecked(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def read_joint_firmware_version_unchecked(self, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
-    def read_joint_lower_limit(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> numpy.float64:
+    def read_joint_lower_limit(self, timeout: typing.SupportsFloat = 0.5) -> numpy.float64:
         ...
-    def read_joint_lower_limit_async(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[numpy.float64]:
+    def read_joint_lower_limit_async(self, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[numpy.float64]:
         ...
-    def read_joint_lower_limit_unchecked(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def read_joint_lower_limit_unchecked(self, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
-    def read_joint_temperature(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> numpy.float32:
+    def read_joint_temperature(self, timeout: typing.SupportsFloat = 0.5) -> numpy.float32:
         ...
-    def read_joint_temperature_async(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[numpy.float32]:
+    def read_joint_temperature_async(self, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[numpy.float32]:
         ...
-    def read_joint_temperature_unchecked(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def read_joint_temperature_unchecked(self, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
-    def read_joint_upper_limit(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> numpy.float64:
+    def read_joint_upper_limit(self, timeout: typing.SupportsFloat = 0.5) -> numpy.float64:
         ...
-    def read_joint_upper_limit_async(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[numpy.float64]:
+    def read_joint_upper_limit_async(self, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[numpy.float64]:
         ...
-    def read_joint_upper_limit_unchecked(self, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def read_joint_upper_limit_unchecked(self, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
-    def write_joint_control_mode(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_control_mode(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
-    def write_joint_control_mode_async(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[None]:
+    def write_joint_control_mode_async(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[None]:
         ...
-    def write_joint_control_mode_unchecked(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_control_mode_unchecked(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
-    def write_joint_current_limit(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_current_limit(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
-    def write_joint_current_limit_async(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[None]:
+    def write_joint_current_limit_async(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[None]:
         ...
-    def write_joint_current_limit_unchecked(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_current_limit_unchecked(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
-    def write_joint_effort_limit(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_effort_limit(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
-    def write_joint_effort_limit_async(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[None]:
+    def write_joint_effort_limit_async(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[None]:
         ...
-    def write_joint_effort_limit_unchecked(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_effort_limit_unchecked(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
-    def write_joint_enabled(self, value: bool, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_enabled(self, value: bool, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
-    def write_joint_enabled_async(self, value: bool, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[None]:
+    def write_joint_enabled_async(self, value: bool, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[None]:
         ...
-    def write_joint_enabled_unchecked(self, value: bool, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_enabled_unchecked(self, value: bool, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
-    def write_joint_reset_error(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_reset_error(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
-    def write_joint_reset_error_async(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[None]:
+    def write_joint_reset_error_async(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[None]:
         ...
-    def write_joint_reset_error_unchecked(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_reset_error_unchecked(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
-    def write_joint_sin_level(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_sin_level(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
-    def write_joint_sin_level_async(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[None]:
+    def write_joint_sin_level_async(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[None]:
         ...
-    def write_joint_sin_level_unchecked(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_sin_level_unchecked(self, value: typing.SupportsInt | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
-    def write_joint_target_position(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_target_position(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> None:
         ...
-    def write_joint_target_position_async(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> typing.Awaitable[None]:
+    def write_joint_target_position_async(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> typing.Awaitable[None]:
         ...
-    def write_joint_target_position_unchecked(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat | typing.SupportsIndex = 0.5) -> None:
+    def write_joint_target_position_unchecked(self, value: typing.SupportsFloat | typing.SupportsIndex, timeout: typing.SupportsFloat = 0.5) -> None:
         ...

@@ -24,22 +24,22 @@ struct FwBuild {
 
 /// Reply payload of `GET_DIAGNOSTICS` (spec §3.2.1, 18 B).
 struct Diagnostics {
-    uint32_t uptime_ms;
-    uint32_t frame_count;
-    uint32_t crc_err_count;
-    uint32_t dropout_count;
-    uint16_t usb_reset_count;
+    uint32_t uptime_ms{};
+    uint32_t frame_count{};
+    uint32_t crc_err_count{};
+    uint32_t dropout_count{};
+    uint16_t usb_reset_count{};
 };
 
 /// Reply payload of `GET_DEVICE_TIME` (spec §3.5.1, 8 B).
 struct DeviceTime {
-    uint64_t device_monotonic_ns;
+    uint64_t device_monotonic_ns{};
 };
 
 /// Reply payload of `SYNC_HOST_EPOCH` (spec §3.5.2, 16 B).
 struct SyncResult {
-    uint64_t device_ns_at_sync;
-    uint64_t host_ns_echo;
+    uint64_t device_ns_at_sync{};
+    uint64_t host_ns_echo{};
 };
 
 }  // namespace tactile

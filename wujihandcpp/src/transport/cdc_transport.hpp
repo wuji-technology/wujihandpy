@@ -23,7 +23,7 @@ struct DeviceInfo {
 
 /// Scan /sys/class/tty for USB CDC ACM devices matching vid:pid.
 /// @return list of matching devices, ordered by ttyACM index.
-std::vector<DeviceInfo> discover_devices(uint16_t vid, uint16_t pid);
+[[nodiscard]] std::vector<DeviceInfo> discover_devices(uint16_t vid, uint16_t pid);
 
 }  // namespace cdc
 }  // namespace wujihandcpp

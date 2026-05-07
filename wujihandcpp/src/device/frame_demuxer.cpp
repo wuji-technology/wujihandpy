@@ -46,6 +46,13 @@ FrameDemuxer::~FrameDemuxer() {
 }
 
 void FrameDemuxer::start() {
+    // Fail fast if the caller forgot the "must not be called twice"
+    // contract. Without this, assigning a fresh thread to thread_ while
+    // a previous one is still joinable triggers std::terminate inside
+    // std::thread::operator=, which would take down the whole process.
+    if (thread_.joinable()) {
+        throw std::logic_error("FrameDemuxer::start() called twice");
+    }
     // Keep the demuxer alive until reader_loop exits, including the
     // self-detach teardown path from inside the reader thread.
     auto self = shared_from_this();
@@ -101,15 +108,26 @@ bool FrameDemuxer::wait_data_frame(uint8_t out[protocol::FRAME_SIZE],
 }
 
 // Single retry on BadCrc per spec §2.4. Other statuses surface to the caller.
+// Both attempts share `timeout_ms` as a single deadline so the caller's total
+// wait budget is honoured (otherwise a BadCrc on attempt 1 would let attempt
+// 2 spend a full fresh `timeout_ms`, doubling the upper bound).
 std::vector<uint8_t>
 FrameDemuxer::command_with_bad_crc_retry(Cmd cmd, const uint8_t* payload,
                                          size_t payload_len, uint32_t timeout_ms) {
+    const auto deadline =
+        std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
     try {
         return single_command(cmd, payload, payload_len, timeout_ms);
     } catch (const Error& e) {
         if (e.status() != Status::BadCrc) throw;
-        return single_command(cmd, payload, payload_len, timeout_ms);
     }
+    const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+        deadline - std::chrono::steady_clock::now()).count();
+    if (remaining <= 0) {
+        throw Error(Status::BadCrc, "BadCrc retry: deadline exceeded");
+    }
+    return single_command(cmd, payload, payload_len,
+                          static_cast<uint32_t>(remaining));
 }
 
 std::vector<uint8_t> FrameDemuxer::command(Cmd cmd, const uint8_t* payload,

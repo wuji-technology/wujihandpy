@@ -19,6 +19,7 @@ namespace tactile {
 
 /// Exception thrown when USB CDC connection is lost during read
 class WUJIHANDCPP_API ConnectionLostError : public std::runtime_error {
+public:
     using std::runtime_error::runtime_error;
 };
 

@@ -4,7 +4,9 @@ import sys
 from typing import TYPE_CHECKING, Annotated, SupportsInt
 
 from . import _core
-from ._core import Finger, Joint, IController, filter, logging  # noqa: F401
+# `filter` and `logging` are wujihandpy submodules; the same-name shadowing
+# of Python builtins is intentional and part of the public API surface.
+from ._core import Finger, Joint, IController, filter, logging  # noqa: F401, A004
 from ._upgrade_check import trigger_check_in_background
 from ._version import __version__
 

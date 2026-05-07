@@ -153,6 +153,11 @@ ssize_t CdcByteStream::write(const uint8_t* buf, size_t len, uint32_t timeout_ms
             return -1;
         }
         if (n == 0) {
+            // POSIX leaves write() returning 0 on a non-zero count effectively
+            // unspecified; for tty/CDC fds it indicates the kernel rejected
+            // the write without setting errno. Treat as a hard failure rather
+            // than spinning — the caller's retry loop is bounded by the
+            // outer deadline and we don't want a runaway 0-byte write spin.
             return -1;
         }
         total += static_cast<size_t>(n);

@@ -13,7 +13,7 @@ def main():
     with tactile.Glove() as glove:
         info = glove.get_device_info()
         build = glove.get_fw_build()
-        print(f"Tactile glove")
+        print("Tactile glove")
         print(f"  serial:      {info.serial}")
         print(f"  hw_revision: {tuple(info.hw_revision)}")
         print(f"  fw_version:  {tuple(info.fw_version)}  (build {build.git_short_sha})")

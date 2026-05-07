@@ -9,11 +9,12 @@ import pybind11_stubgen
 def main():
     pybind11_stubgen.main(["wujihandpy._core", "-o", "src"])
     post_process_async_function()
+    post_process_tactile_callbacks()
     write_top_level_tactile_stub()
 
 
 def post_process_async_function():
-    with open("src/wujihandpy/_core/__init__.pyi", "r") as file:
+    with open("src/wujihandpy/_core/__init__.pyi", "r", encoding="utf-8") as file:
         content = file.read()
 
     sections = content.split("class")
@@ -35,7 +36,39 @@ def post_process_async_function():
     content = "class".join(sections)
     content = re.sub(r"\bnumpy\.bool\b", "numpy.bool_", content)
 
-    with open("src/wujihandpy/_core/__init__.pyi", "w") as file:
+    # pybind11_stubgen emits `typing.SupportsFloat | typing.SupportsIndex` for
+    # every `double` arg because pybind11's float coercion accepts ints. The
+    # SupportsIndex branch is semantically misleading for timeout/duration
+    # arguments — narrow to plain SupportsFloat.
+    content = re.sub(
+        r"timeout: typing\.SupportsFloat \| typing\.SupportsIndex",
+        "timeout: typing.SupportsFloat",
+        content,
+    )
+
+    with open("src/wujihandpy/_core/__init__.pyi", "w", encoding="utf-8") as file:
+        file.write(content)
+
+
+def post_process_tactile_callbacks():
+    """Tighten `Callable` -> typed callbacks in tactile.pyi.
+
+    pybind11_stubgen emits `collections.abc.Callable` (no parameter types) for
+    pybind11 std::function bindings; for our two well-known callbacks we know
+    the exact signature and want it surfaced in IDEs/type-checkers.
+    """
+    path = "src/wujihandpy/_core/tactile.pyi"
+    with open(path, "r", encoding="utf-8") as file:
+        content = file.read()
+    content = content.replace(
+        "def set_disconnect_callback(self, callback: collections.abc.Callable) -> None:",
+        "def set_disconnect_callback(self, callback: collections.abc.Callable[[], None]) -> None:",
+    )
+    content = content.replace(
+        "def start_streaming(self, callback: collections.abc.Callable) -> None:",
+        "def start_streaming(self, callback: collections.abc.Callable[[Frame], None]) -> None:",
+    )
+    with open(path, "w", encoding="utf-8") as file:
         file.write(content)
 
 
@@ -51,7 +84,7 @@ def _all_assignment(node):
 
 def write_top_level_tactile_stub():
     """Generate src/wujihandpy/tactile.pyi from _core/tactile.pyi's __all__."""
-    with open("src/wujihandpy/_core/tactile.pyi", "r") as f:
+    with open("src/wujihandpy/_core/tactile.pyi", "r", encoding="utf-8") as f:
         tree = ast.parse(f.read())
 
     names = None
@@ -78,7 +111,7 @@ def write_top_level_tactile_stub():
         + ']\n'
     )
 
-    with open("src/wujihandpy/tactile.pyi", "w") as f:
+    with open("src/wujihandpy/tactile.pyi", "w", encoding="utf-8") as f:
         f.write(body)
 
 

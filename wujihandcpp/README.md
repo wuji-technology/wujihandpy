@@ -111,8 +111,11 @@ wujihandcpp::device::Hand hand{"3385385F3233"};
 ```
 
 完整签名见 `wujihandcpp/device/hand.hpp`：
-`Hand(const char* serial_number = nullptr, int32_t usb_pid = 0x2000,`
-`     uint16_t usb_vid = 0x0483, uint32_t mask = 0)`。
+
+```cpp
+Hand(const char* serial_number = nullptr, int32_t usb_pid = 0x2000,
+     uint16_t usb_vid = 0x0483, uint32_t mask = 0);
+```
 
 ### 读数据
 
