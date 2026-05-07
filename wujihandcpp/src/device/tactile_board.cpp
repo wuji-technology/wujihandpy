@@ -541,55 +541,37 @@ void Board::set_streaming(bool enable) {
     impl_->command(Cmd::SetStreaming, &payload, 1);
 }
 
-void Board::reset_device() {
-    // The device tears down USB after sending OK, so the response usually
-    // never reaches us — that's the success path. Swallow the exception
-    // classes that all map to "command sent (or sent-ish), then the
-    // device went away" so callers don't have to care which exact wire
-    // edge fired:
-    //   - ResponseTimeoutError              — device jumped before the reply
-    //   - DisconnectedDuringRequestError    — device dropped USB during the wait
-    //   - WriteFailedError                  — write() raced with the kernel
-    //                                          tearing the CDC fd down (-EIO);
-    //                                          functionally identical to a
-    //                                          mid-request disconnect from the
-    //                                          caller's point of view
-    // Other exceptions (NotConnectedError because the SDK was already
-    // disconnected, non-Ok Error from the firmware) propagate so the
-    // caller can distinguish a real failure from "device is gone now".
+namespace {
+
+// reset_device + enter_bootloader both expect the device to vanish: the
+// firmware tears down USB after acking, so any of these three exceptions
+// means "command landed, device is now gone" and should be swallowed.
+// NotConnectedError + non-Ok Error still propagate so callers can tell
+// "the device is gone" from "the call never made it to the wire".
+template <typename Fn>
+void run_expecting_teardown(Fn&& fn) {
     try {
-        impl_->command(Cmd::Reset, nullptr, 0, 100);
+        fn();
     } catch (const ResponseTimeoutError&) {
     } catch (const DisconnectedDuringRequestError&) {
     } catch (const WriteFailedError&) {
     }
-    // Either we got OK, or the device is gone. In both cases this SDK
-    // handle is no longer connected to a live device — drop the demuxer so
-    // is_connected() reports the truth without waiting for the kernel
-    // disconnect notification.
+}
+
+}  // namespace
+
+void Board::reset_device() {
+    run_expecting_teardown([&] { impl_->command(Cmd::Reset, nullptr, 0, 100); });
     disconnect();
 }
 
 void Board::enter_bootloader(uint32_t magic) {
     uint8_t payload[4];
     write_le32(payload, magic);
-    try {
+    run_expecting_teardown([&] {
         impl_->command(Cmd::EnterBootloader, payload, 4, 100);
-    } catch (const ResponseTimeoutError&) {
-        // Device jumped to bootloader before the reply landed.
-    } catch (const DisconnectedDuringRequestError&) {
-        // Device dropped USB during/after the write — same success path.
-    } catch (const WriteFailedError&) {
-        // write() returned -EIO mid-call because the kernel tore the
-        // CDC fd down between our snapshot and the syscall. Same
-        // outcome as DisconnectedDuringRequestError for our purposes:
-        // the device is gone, switch our connected state to match.
-    }
-    // Reaching this point means we got OK, hit a timeout, or saw the device
-    // drop — all "bootloader is now running" outcomes. Other exceptions
-    // (BadPayload for wrong magic, NotConnectedError) propagate from
-    // command() and skip this teardown. The device re-enumerates as PID
-    // 0x5701; the caller must connect to that handle.
+    });
+    // Device re-enumerates as PID 0x5701; caller must connect to that handle.
     disconnect();
 }
 

@@ -109,42 +109,33 @@ bool FrameDemuxer::wait_data_frame(uint8_t out[protocol::FRAME_SIZE],
     return true;
 }
 
-std::vector<uint8_t> FrameDemuxer::command(Cmd cmd, const uint8_t* payload,
+// Single retry on BadCrc per spec §2.4. Other statuses surface to the caller.
+std::vector<uint8_t>
+FrameDemuxer::command_with_bad_crc_retry(Cmd cmd, const uint8_t* payload,
                                          size_t payload_len, uint32_t timeout_ms) {
-    // Spec §2.4: requests are strictly serial. Hold this mutex through
-    // build → send → wait so concurrent callers queue.
-    std::lock_guard<std::mutex> serial(command_mu_);
-
-    // Single retry on BadCrc, surfacing every other status to the caller.
     try {
         return single_command(cmd, payload, payload_len, timeout_ms);
     } catch (const Error& e) {
-        if (e.status() == Status::BadCrc) {
-            return single_command(cmd, payload, payload_len, timeout_ms);
-        }
-        throw;
+        if (e.status() != Status::BadCrc) throw;
+        return single_command(cmd, payload, payload_len, timeout_ms);
     }
 }
 
+std::vector<uint8_t> FrameDemuxer::command(Cmd cmd, const uint8_t* payload,
+                                           size_t payload_len, uint32_t timeout_ms) {
+    // Spec §2.4: requests are strictly serial.
+    std::lock_guard<std::mutex> serial(command_mu_);
+    return command_with_bad_crc_retry(cmd, payload, payload_len, timeout_ms);
+}
+
+// try_command yields when the serializer is busy — used by pollers (e.g. the
+// ROS diagnostics timer) so they don't queue behind user-issued commands.
 std::optional<std::vector<uint8_t>>
 FrameDemuxer::try_command(Cmd cmd, const uint8_t* payload,
-                        size_t payload_len, uint32_t timeout_ms) {
-    // Non-blocking acquire of the command serializer. If another caller
-    // currently holds it, return nullopt — the caller decides whether to
-    // skip this iteration or retry. This is the SDK-side hook that lets the
-    // ROS diagnostics timer yield to user-issued service calls instead of
-    // queueing behind them on a slow command.
+                          size_t payload_len, uint32_t timeout_ms) {
     std::unique_lock<std::mutex> serial(command_mu_, std::try_to_lock);
     if (!serial.owns_lock()) return std::nullopt;
-
-    try {
-        return single_command(cmd, payload, payload_len, timeout_ms);
-    } catch (const Error& e) {
-        if (e.status() == Status::BadCrc) {
-            return single_command(cmd, payload, payload_len, timeout_ms);
-        }
-        throw;
-    }
+    return command_with_bad_crc_retry(cmd, payload, payload_len, timeout_ms);
 }
 
 std::vector<uint8_t> FrameDemuxer::single_command(Cmd cmd, const uint8_t* payload,

@@ -62,15 +62,9 @@ file(GLOB_RECURSE PROJECT_SOURCE CONFIGURE_DEPENDS
 )
 
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    # Tactile-board CDC stack is Linux-only: cdc_byte_stream.cpp uses
-    # termios + poll(2) + /sys/class/tty (the latter via
-    # cdc_transport.cpp::discover_devices), and tactile_board.cpp /
-    # frame_demuxer.cpp build on top of those Linux-specific kernel
-    # interfaces. The public tactile headers are gated on
-    # `#if defined(__linux__)` so non-Linux consumers also see them as
-    # empty — keeping the exclusion list and the header gates aligned
-    # is what stops `find_package(wujihandcpp)` consumers from
-    # hitting an unresolved-symbol link error on macOS / Windows.
+    # Tactile transport is Linux-only (termios + poll + /sys/class/tty).
+    # Keep this in sync with the `#if defined(__linux__)` gates in the
+    # public tactile headers.
     list(REMOVE_ITEM PROJECT_SOURCE
         ${PROJECT_SOURCE_DIR}/src/device/tactile_board.cpp
         ${PROJECT_SOURCE_DIR}/src/device/frame_demuxer.cpp

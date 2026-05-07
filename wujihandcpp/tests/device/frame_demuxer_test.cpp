@@ -1,17 +1,4 @@
-// Tests for FrameDemuxer using a fake IByteStream, exercising the
-// framing logic against the round-1 testing reviewer's gaps:
-//   - CRC16 over reference vectors (via parse_frame round-trip)
-//   - Sync-byte classifier on adversarial inputs (partial frames,
-//     unknown sync byte, AA56 host echo drained, AA55 + AA57 mixed)
-//   - BadCrc retry-once policy: 1× retry success, 2× retry surfaces
-//   - (seq, cmd_id) collision resistance: same seq + wrong cmd_id
-//     does NOT satisfy the in-flight waiter
-//   - Disconnect-mid-request raises DisconnectedDuringRequestError
-//
-// The test harness lives entirely in this file. FakeByteStream is an
-// in-memory IByteStream backed by a deque<uint8_t>; it deliberately
-// exercises the same code path the production CdcByteStream does
-// (read with deadline, write returns -1 on disconnect).
+// FrameDemuxer tests using an in-memory IByteStream.
 
 #include <algorithm>
 #include <chrono>
@@ -56,15 +43,6 @@ public:
         std::lock_guard<std::mutex> lock(mu_);
         disconnected_ = true;
         cv_.notify_all();
-    }
-
-    // Return everything the demuxer has written since the last call,
-    // and clear the buffer.
-    std::vector<uint8_t> drain_writes() {
-        std::lock_guard<std::mutex> lock(mu_);
-        std::vector<uint8_t> v(write_buf_.begin(), write_buf_.end());
-        write_buf_.clear();
-        return v;
     }
 
     // Block (up to 200 ms) until at least `min` bytes have been

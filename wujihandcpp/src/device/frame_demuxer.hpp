@@ -113,6 +113,9 @@ private:
     bool read_drain(size_t count, uint32_t timeout_ms);
     std::vector<uint8_t> single_command(Cmd cmd, const uint8_t* payload,
                                         size_t payload_len, uint32_t timeout_ms);
+    std::vector<uint8_t> command_with_bad_crc_retry(Cmd cmd, const uint8_t* payload,
+                                                    size_t payload_len,
+                                                    uint32_t timeout_ms);
 
     std::shared_ptr<transport::IByteStream> stream_;
     std::thread thread_;

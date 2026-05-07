@@ -16,17 +16,46 @@ namespace py = pybind11;
 
 namespace tactile_binding {
 
-// Register pybind classes into the `wujihandpy._core.tactile` submodule.
-// The `wujihandpy.tactile` user-facing import path is provided by a small
-// Python wrapper at `src/wujihandpy/tactile.py` that re-exports from here.
+namespace {
+
+// Wrap a Python callable as a C++ functor that acquires the GIL on each
+// call. Held by shared_ptr with a GIL-aware deleter so the captured
+// py::function can be destroyed even if the last ref drops on a non-Python
+// thread (e.g. the SDK reader thread on shutdown).
+template <typename... Args>
+auto make_python_callback(py::function py_cb, const char* error_context) {
+    auto cb = std::shared_ptr<py::function>(
+        new py::function(std::move(py_cb)),
+        [](py::function* p) {
+            py::gil_scoped_acquire acquire;
+            delete p;
+        });
+    return [cb = std::move(cb), error_context](Args... args) {
+        py::gil_scoped_acquire acquire;
+        try {
+            (*cb)(std::forward<Args>(args)...);
+        } catch (py::error_already_set& e) {
+            // discard_as_unraisable restores the cached error indicator
+            // and routes it through sys.unraisablehook. Without it, the
+            // error_already_set ctor's fetch+clear leaves nothing for
+            // PyErr_WriteUnraisable to print.
+            e.discard_as_unraisable(*cb);
+            if (error_context) throw std::runtime_error(error_context);
+        }
+    };
+}
+
+}  // namespace
+
 inline void init_module(py::module_& parent) {
     using namespace wujihandcpp::tactile;
+    using py::call_guard;
+    using release_gil = py::gil_scoped_release;
 
     py::module_ m = parent.def_submodule(
         "tactile",
         "Tactile board API (wujihandcpp::tactile namespace).");
 
-    // --- Enums ---
     py::enum_<Handedness>(m, "Handedness")
         .value("LEFT", Handedness::LEFT)
         .value("RIGHT", Handedness::RIGHT);
@@ -38,24 +67,20 @@ inline void init_module(py::module_& parent) {
         .value("UNKNOWN_CMD", Status::UnknownCmd)
         .value("BAD_PAYLOAD", Status::BadPayload);
 
-    // --- Exception (status is encoded in the message string for now) ---
     py::register_exception<Error>(m, "Error");
 
-    // --- Frame ---
     py::class_<Frame>(m, "Frame")
         .def_readonly("hand", &Frame::hand)
         .def_readonly("sequence", &Frame::sequence)
         .def_readonly("timestamp_ms", &Frame::timestamp_ms)
         .def_property_readonly("pressure", [](const Frame& f) {
-            // Return a 24x32 float32 numpy array. memcpy preserves NaN bit
-            // patterns; callers detect invalid cells via numpy.isnan().
+            // memcpy preserves NaN bit patterns; callers use numpy.isnan().
             auto* buf = new float[24 * 32];
             std::memcpy(buf, &f.pressure[0][0], 24 * 32 * sizeof(float));
             py::capsule free(buf, [](void* p) { delete[] static_cast<float*>(p); });
             return py::array_t<float>({24, 32}, buf, free);
         });
 
-    // --- POD reply types ---
     py::class_<DeviceInfo>(m, "DeviceInfo")
         .def_readonly("serial", &DeviceInfo::serial)
         .def_readonly("hw_revision", &DeviceInfo::hw_revision)
@@ -78,12 +103,9 @@ inline void init_module(py::module_& parent) {
         .def_readonly("device_ns_at_sync", &SyncResult::device_ns_at_sync)
         .def_readonly("host_ns_echo", &SyncResult::host_ns_echo);
 
-    // --- Board device ---
-    //
-    // Held by shared_ptr with a custom GIL-releasing deleter so that when
-    // Python GC destroys the wrapper while a streaming thread is exiting,
-    // the destructor does not block on a thread that needs the GIL to
-    // destroy its captured Python callback (see deleter pattern below).
+    // Board is held by shared_ptr with a GIL-releasing deleter: ~Board joins
+    // streaming / reader threads, which may need the GIL to destroy captured
+    // Python callbacks. Holding the GIL through the join would deadlock.
     py::class_<Board, std::shared_ptr<Board>>(m, "Board")
         .def(py::init([](std::optional<std::string> serial_number) {
             const char* sn = serial_number.has_value()
@@ -91,176 +113,68 @@ inline void init_module(py::module_& parent) {
             return std::shared_ptr<Board>(
                 new Board(sn),
                 [](Board* p) {
-                    // Release the GIL before running ~Board, which calls
-                    // disconnect() and joins the streaming / demuxer-reader
-                    // threads. Either of those threads may need to acquire
-                    // the GIL to destroy a captured py::function — without
-                    // this release we deadlock.
                     py::gil_scoped_release release;
                     delete p;
                 });
         }), py::arg("serial_number") = py::none())
 
-        // Connection
-        .def("connect", [](Board& self) {
-            py::gil_scoped_release release;
-            return self.connect();
-        })
-        .def("disconnect", [](Board& self) {
-            py::gil_scoped_release release;
-            self.disconnect();
-        })
-        .def("is_connected", &Board::is_connected)
+        .def("connect",          &Board::connect,          call_guard<release_gil>())
+        .def("disconnect",       &Board::disconnect,       call_guard<release_gil>())
+        .def("is_connected",     &Board::is_connected)
+        .def("read_frame",       &Board::read_frame,       py::arg("timeout_ms") = 100,
+                                                           call_guard<release_gil>())
+        .def("stop_streaming",   &Board::stop_streaming,   call_guard<release_gil>())
 
-        // Frame reading
-        .def("read_frame", [](Board& self, uint32_t timeout_ms) {
+        .def("start_streaming", [](Board& self, py::function cb) {
+            auto wrapped = make_python_callback<const Frame&>(
+                std::move(cb),
+                "tactile.Board: Python frame callback raised an exception");
             py::gil_scoped_release release;
-            return self.read_frame(timeout_ms);
-        }, py::arg("timeout_ms") = 100)
-
-        // Streaming
-        .def("start_streaming", [](Board& self, py::function callback) {
-            // Wrap user callback in a shared_ptr that releases under GIL on dtor.
-            auto callback_ptr = std::shared_ptr<py::function>(
-                new py::function(std::move(callback)),
-                [](py::function* cb) {
-                    py::gil_scoped_acquire acquire;
-                    delete cb;
-                });
-            auto cpp_cb = [cb = std::move(callback_ptr)](const Frame& frame) {
-                py::gil_scoped_acquire acquire;
-                try {
-                    (*cb)(frame);
-                } catch (py::error_already_set& e) {
-                    // Surface the Python traceback via sys.unraisablehook
-                    // so the user sees what went wrong before the
-                    // streaming consumer tears down. pybind11's
-                    // `discard_as_unraisable` is the correct one-call:
-                    // it RESTORES the cached error to the Python error
-                    // indicator and calls PyErr_WriteUnraisable internally.
-                    // Calling PyErr_WriteUnraisable directly without the
-                    // restore is a no-op — error_already_set's constructor
-                    // already fetched + cleared the indicator, so there's
-                    // no exception left to print.
-                    e.discard_as_unraisable(*cb);
-                    throw std::runtime_error(
-                        "tactile.Board: Python frame callback raised an exception");
-                }
-            };
-            // Release the GIL across self.start_streaming(...) — internally
-            // it joins any previously-exited streaming thread, and that
-            // thread's destruction needs the GIL to drop its captured
-            // py::function. Holding the GIL here would deadlock.
-            py::gil_scoped_release release;
-            self.start_streaming(std::move(cpp_cb));
+            self.start_streaming(std::move(wrapped));
         }, py::arg("callback"))
 
-        .def("stop_streaming", [](Board& self) {
+        .def("set_disconnect_callback", [](Board& self, py::function cb) {
+            // Disconnect-callback exceptions are intentionally swallowed
+            // (SDK contract — can't unwind the reader thread mid-shutdown);
+            // pass nullptr to suppress the C++ rethrow.
+            auto wrapped = make_python_callback<>(std::move(cb), nullptr);
             py::gil_scoped_release release;
-            self.stop_streaming();
-        })
-
-        .def("set_disconnect_callback", [](Board& self, py::function callback) {
-            auto callback_ptr = std::shared_ptr<py::function>(
-                new py::function(std::move(callback)),
-                [](py::function* cb) {
-                    py::gil_scoped_acquire acquire;
-                    delete cb;
-                });
-            auto cpp_cb = [cb = std::move(callback_ptr)]() {
-                py::gil_scoped_acquire acquire;
-                try {
-                    (*cb)();
-                } catch (py::error_already_set& e) {
-                    // Disconnect callback exceptions are intentionally
-                    // swallowed (see C++ Board::set_disconnect_callback
-                    // contract — the disconnect path can't unwind the
-                    // SDK reader thread cleanly mid-shutdown). Use
-                    // pybind11's `discard_as_unraisable` to restore the
-                    // cached error AND print the traceback via
-                    // sys.unraisablehook in one call. Calling
-                    // PyErr_WriteUnraisable alone (or `e.restore();
-                    // PyErr_Clear()`) was a silent no-op — both paths
-                    // depended on the error indicator being live, but
-                    // error_already_set's constructor already fetched
-                    // and cleared it.
-                    e.discard_as_unraisable(*cb);
-                }
-            };
-            // Release the GIL — set_disconnect_callback may drop the
-            // previous callback's shared_ptr, whose deleter needs the GIL.
-            py::gil_scoped_release release;
-            self.set_disconnect_callback(std::move(cpp_cb));
+            self.set_disconnect_callback(std::move(wrapped));
         }, py::arg("callback"))
 
         // Identity (spec §3.1)
-        .def("get_device_info", [](Board& self) {
-            py::gil_scoped_release release;
-            return self.get_device_info();
-        })
-        .def("get_fw_build", [](Board& self) {
-            py::gil_scoped_release release;
-            return self.get_fw_build();
-        })
-        .def("get_handedness", [](Board& self) {
-            py::gil_scoped_release release;
-            return self.get_handedness();
-        })
+        .def("get_device_info",  &Board::get_device_info,  call_guard<release_gil>())
+        .def("get_fw_build",     &Board::get_fw_build,     call_guard<release_gil>())
+        .def("get_handedness",   &Board::get_handedness,   call_guard<release_gil>())
 
         // Diagnostics (spec §3.2)
-        .def("get_diagnostics", [](Board& self) {
-            py::gil_scoped_release release;
-            return self.get_diagnostics();
-        })
-        .def("reset_counters", [](Board& self) {
-            py::gil_scoped_release release;
-            self.reset_counters();
-        })
+        .def("get_diagnostics",  &Board::get_diagnostics,  call_guard<release_gil>())
+        .def("reset_counters",   &Board::reset_counters,   call_guard<release_gil>())
 
         // Lifecycle (spec §3.3)
-        .def("set_streaming", [](Board& self, bool enable) {
-            py::gil_scoped_release release;
-            self.set_streaming(enable);
-        }, py::arg("enable"))
-        .def("reset_device", [](Board& self) {
-            py::gil_scoped_release release;
-            self.reset_device();
-        })
-        .def("enter_bootloader", [](Board& self, uint32_t magic) {
-            py::gil_scoped_release release;
-            self.enter_bootloader(magic);
-        }, py::arg("magic"))
+        .def("set_streaming",    &Board::set_streaming,    py::arg("enable"),
+                                                           call_guard<release_gil>())
+        .def("reset_device",     &Board::reset_device,     call_guard<release_gil>())
+        .def("enter_bootloader", &Board::enter_bootloader, py::arg("magic"),
+                                                           call_guard<release_gil>())
 
         // Configuration (spec §3.4)
-        .def("get_sample_rate_hz", [](Board& self) {
-            py::gil_scoped_release release;
-            return self.get_sample_rate_hz();
-        })
-        .def("set_sample_rate_hz", [](Board& self, uint16_t hz) {
-            py::gil_scoped_release release;
-            self.set_sample_rate_hz(hz);
-        }, py::arg("sample_rate_hz"))
-        .def("get_streaming_enabled", [](Board& self) {
-            py::gil_scoped_release release;
-            return self.get_streaming_enabled();
-        })
+        .def("get_sample_rate_hz",    &Board::get_sample_rate_hz,
+                                      call_guard<release_gil>())
+        .def("set_sample_rate_hz",    &Board::set_sample_rate_hz,
+                                      py::arg("sample_rate_hz"),
+                                      call_guard<release_gil>())
+        .def("get_streaming_enabled", &Board::get_streaming_enabled,
+                                      call_guard<release_gil>())
 
         // Time sync (spec §3.5)
-        .def("get_device_time", [](Board& self) {
-            py::gil_scoped_release release;
-            return self.get_device_time();
-        })
-        .def("sync_host_epoch", [](Board& self, uint64_t host_unix_ns) {
-            py::gil_scoped_release release;
-            return self.sync_host_epoch(host_unix_ns);
-        }, py::arg("host_unix_ns"))
+        .def("get_device_time",  &Board::get_device_time,  call_guard<release_gil>())
+        .def("sync_host_epoch",  &Board::sync_host_epoch,  py::arg("host_unix_ns"),
+                                                           call_guard<release_gil>())
 
-        // Context manager
         .def("__enter__", [](Board& self) -> Board& {
             bool ok;
             { py::gil_scoped_release release; ok = self.connect(); }
-            // NotConnectedError → Python ConnectionError (see main.cpp), so
-            // `except ConnectionError` matches the rest of the tactile surface.
             if (!ok) throw NotConnectedError("tactile.Board: device not found");
             return self;
         })
@@ -270,26 +184,16 @@ inline void init_module(py::module_& parent) {
             self.disconnect();
         });
 
-    // Module-level constants on the submodule, not the class.
     m.attr("BOOTLOADER_MAGIC") = BOOTLOADER_MAGIC;
 
-    // Publish __all__ so `from wujihandpy._core.tactile import *` works and so
-    // wrapper tooling (src/wujihandpy/tactile.py + update_stubs.py) reads a
-    // single source of truth for the public submodule surface. Derive it
-    // from the module's own dict — every public binding registered above
-    // shows up automatically; adding a new py::class_ or m.attr never needs
-    // a paired __all__ edit, eliminating the wrapper/stub-drift class
-    // documented in the round-1 review.
-    {
-        py::list names;
-        for (auto item : m.attr("__dict__").cast<py::dict>()) {
-            std::string name = item.first.cast<std::string>();
-            if (!name.empty() && name[0] != '_') {
-                names.append(name);
-            }
-        }
-        m.attr("__all__") = py::module_::import("builtins").attr("sorted")(names);
+    // Auto-generate __all__ from public attributes so update_stubs.py and the
+    // tactile.py wrapper read a single source of truth — never hand-edited.
+    py::list names;
+    for (auto item : m.attr("__dict__").cast<py::dict>()) {
+        std::string name = item.first.cast<std::string>();
+        if (!name.empty() && name[0] != '_') names.append(name);
     }
+    m.attr("__all__") = py::module_::import("builtins").attr("sorted")(names);
 }
 
 }  // namespace tactile_binding
