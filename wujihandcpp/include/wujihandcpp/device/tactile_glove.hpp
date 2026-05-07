@@ -39,7 +39,11 @@ class WUJIHANDCPP_API Glove {
 public:
     /// Construct a Glove handle.
     /// @param serial_number  If non-null, match this USB serial number.
-    ///                       If null, use the first device with PID=0x5700.
+    ///                       If null, succeed only when exactly one
+    ///                       PID=0x5700 device is on the bus; if more
+    ///                       than one is present, connect() throws
+    ///                       std::runtime_error listing the found
+    ///                       serials so the caller can disambiguate.
     explicit Glove(const char* serial_number = nullptr);
     ~Glove();
 

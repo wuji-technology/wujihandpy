@@ -50,11 +50,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   spdlog Config alongside (`SPDLOG_INSTALL=ON`); the Python wheel build
   opts out via `WUJIHANDCPP_INSTALL=OFF` so neither pollutes the wheel.
 
-- **`wujihandpy.Hand` default `usb_pid` changed from `-1` (any) to
-  `0x2000`**. The old default was set when the joint controller was the
-  only product under VID 0x0483; the tactile glove (PID 0x5700) shares
-  the VID, so `Hand()` would silently match the glove and fail with
-  "multiple devices found". Single-hand setups are unaffected. Users on
+- **`Hand` default `usb_pid` changed from `-1` (any) to `0x2000`** in
+  both `wujihandpy.Hand` (Python) and `wujihandcpp::device::Hand` (C++).
+  The old default was set when the joint controller was the only product
+  under VID 0x0483; the tactile glove (PID 0x5700) shares the VID, so
+  `Hand()` would silently match the glove and fail with "multiple
+  devices found". Single-hand setups are unaffected. Users on
   pre-production firmware with non-`0x2000` PIDs must now pass
   `usb_pid=` explicitly.
 
