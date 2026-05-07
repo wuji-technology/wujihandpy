@@ -394,7 +394,15 @@ private:
         void detach() override {
             if (!controller_)
                 return;
-            hand_.detach_realtime_controller();
+            // Always null out controller_, even on exception: the underlying
+            // controller may have been released by handler-level detach before
+            // the throw, leaving this pointer dangling.
+            try {
+                hand_.detach_realtime_controller();
+            } catch (...) {
+                controller_ = nullptr;
+                throw;
+            }
             controller_ = nullptr;
         }
 
@@ -437,7 +445,14 @@ private:
         void detach() override {
             if (!controller_)
                 return;
-            hand_.detach_realtime_controller();
+            // See same-named method above for why controller_ must always be
+            // nulled out, including on the exception path.
+            try {
+                hand_.detach_realtime_controller();
+            } catch (...) {
+                controller_ = nullptr;
+                throw;
+            }
             controller_ = nullptr;
         }
 
