@@ -76,14 +76,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `Hand` and `tactile.Glove` use independent transports/threads and
     can be composed without coordination.
 
-### Added
-
-- `wujihandpy.Hand` now supports `with` syntax for parity with
-  `tactile.Glove`. NOTE: `__exit__` is a no-op — Hand opens USB in its
-  constructor and the underlying libusb handle is released when the
-  Python object is garbage-collected. Use `del hand` or let the binding
-  leave scope for explicit teardown.
-
 ## [1.6.0] - 2026-04-27
 
 ### Changed

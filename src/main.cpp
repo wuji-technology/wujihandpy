@@ -85,16 +85,11 @@ PYBIND11_MODULE(_core, m) {
         py::init<std::optional<std::string>, int32_t, uint16_t, std::optional<py::array_t<bool>>>(),
         py::arg("serial_number") = py::none(), py::arg("usb_pid") = 0x2000,
         py::arg("usb_vid") = 0x0483, py::arg("mask") = py::none());
-    // Context-manager support, parallel to tactile.Glove. NOTE: __exit__ is
-    // a no-op — the Hand opens USB in its constructor and the underlying
-    // libusb handle is released when the Python object is garbage-
-    // collected. This gives `with wujihandpy.Hand() as hand: ...` syntactic
-    // parity with `with tactile.Glove() as glove: ...`, but unlike Glove,
-    // exiting the with-block does NOT proactively close the USB device.
-    // Explicit teardown requires `del hand` or letting it leave scope.
-    hand.def("__enter__", [](Hand& self) -> Hand& { return self; });
-    hand.def(
-        "__exit__", [](Hand&, const py::object&, const py::object&, const py::object&) {});
+    // No __enter__/__exit__: Hand opens USB in its C++ ctor and there is
+    // no idempotent close() path on the underlying device::Hand today, so
+    // a `with` block could not deterministically release the device at
+    // exit. Use `del hand` or let the binding leave scope. (tactile.Glove
+    // does support `with` because its USB lifecycle is genuinely lazy.)
 
     register_py_interface<data::hand::Handedness>("handedness", hand);
     register_py_interface<data::hand::FirmwareVersion>("firmware_version", hand);

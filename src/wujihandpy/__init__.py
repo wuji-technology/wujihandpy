@@ -10,12 +10,20 @@ from ._core import Finger, Joint, IController, filter, logging  # noqa: F401, A0
 from ._upgrade_check import trigger_check_in_background
 from ._version import __version__
 
-# Tactile bindings are Linux-only; keep the rest of wujihandpy importable elsewhere.
+# Tactile bindings are Linux-only; keep the rest of wujihandpy importable
+# elsewhere. The except is narrow on purpose: only "the submodule itself
+# isn't shipped on this platform" should downgrade silently. Anything else
+# (ABI mismatch, missing transitive dep, syntax error in tactile.py, an
+# AttributeError raised inside the import) must propagate so users can
+# diagnose the real failure instead of silently losing the API surface.
 try:
     from . import tactile  # type: ignore[attr-defined]
-    _HAS_TACTILE = True
-except (ImportError, AttributeError):
+except ModuleNotFoundError as _tactile_err:
+    if _tactile_err.name != f"{__name__}.tactile":
+        raise
     _HAS_TACTILE = False
+else:
+    _HAS_TACTILE = True
 
 if TYPE_CHECKING:
     import numpy
