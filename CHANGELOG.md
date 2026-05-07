@@ -50,11 +50,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   spdlog Config alongside (`SPDLOG_INSTALL=ON`); the Python wheel build
   opts out via `WUJIHANDCPP_INSTALL=OFF` so neither pollutes the wheel.
 
+- **`wujihandpy.Hand` default `usb_pid` changed from `-1` (any) to
+  `0x2000`**. The old default was set when the joint controller was the
+  only product under VID 0x0483; the tactile glove (PID 0x5700) shares
+  the VID, so `Hand()` would silently match the glove and fail with
+  "multiple devices found". Single-hand setups are unaffected. Users on
+  pre-production firmware with non-`0x2000` PIDs must now pass
+  `usb_pid=` explicitly.
+
 - **Examples reorganized** by subsystem:
   - `example/joint/{1.read,2.write,3.realtime,4.async,5.multithread}.py`
     (unchanged content, moved into a subdirectory).
   - `example/tactile/basic.py` (was `example/6.tactile.py`); rewritten
     to use the new `from wujihandpy import tactile` import.
+  - `example/joint_with_tactile.py` — new; drives joint motion while
+    streaming tactile frames in the same process, demonstrating that
+    `Hand` and `tactile.Glove` use independent transports/threads and
+    can be composed without coordination.
 
 ### Added
 

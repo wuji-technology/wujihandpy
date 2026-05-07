@@ -78,8 +78,8 @@ PYBIND11_MODULE(_core, m) {
     auto hand = py::class_<Hand>(m, "Hand");
     hand.def(
         py::init<std::optional<std::string>, int32_t, uint16_t, std::optional<py::array_t<bool>>>(),
-        py::arg("serial_number") = py::none(), py::arg("usb_pid") = -1, py::arg("usb_vid") = 0x0483,
-        py::arg("mask") = py::none());
+        py::arg("serial_number") = py::none(), py::arg("usb_pid") = 0x2000,
+        py::arg("usb_vid") = 0x0483, py::arg("mask") = py::none());
 
     register_py_interface<data::hand::Handedness>("handedness", hand);
     register_py_interface<data::hand::FirmwareVersion>("firmware_version", hand);
