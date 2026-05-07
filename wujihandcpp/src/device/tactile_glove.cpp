@@ -1,4 +1,4 @@
-#include "wujihandcpp/device/tactile_board.hpp"
+#include "wujihandcpp/device/tactile_glove.hpp"
 
 #include <atomic>
 #include <cstring>
@@ -73,7 +73,7 @@ std::string trim_ascii(const uint8_t* p, size_t len) {
 // Impl
 // ---------------------------------------------------------------------------
 
-struct Board::Impl {
+struct Glove::Impl {
     std::string serial_filter;
     std::string tty_path;
 
@@ -144,7 +144,7 @@ struct Board::Impl {
         // Internal disconnect wrapper: flip `connected` BEFORE invoking the
         // user callback so anything checking is_connected() (including
         // streaming_loop) sees the new state immediately. Captures `this`
-        // (= Impl*); ~Board runs disconnect() which drops the demuxer's ref
+        // (= Impl*); ~Glove runs disconnect() which drops the demuxer's ref
         // before Impl is freed, so the demuxer can never invoke this lambda
         // after Impl is gone.
         new_demuxer->set_disconnect_callback([this]() {
@@ -207,7 +207,7 @@ struct Board::Impl {
     std::vector<uint8_t> command(Cmd cmd, const uint8_t* payload, size_t len,
                                  uint32_t timeout_ms = DEFAULT_TIMEOUT_MS) {
         auto dx = snapshot_demuxer();
-        if (!dx) throw NotConnectedError("tactile::Board: not connected");
+        if (!dx) throw NotConnectedError("tactile::Glove: not connected");
         return dx->command(cmd, payload, len, timeout_ms);
     }
 };
@@ -216,22 +216,22 @@ struct Board::Impl {
 // Public API — connection / streaming
 // ---------------------------------------------------------------------------
 
-Board::Board(const char* serial_number)
+Glove::Glove(const char* serial_number)
     : impl_(std::make_shared<Impl>()) {
     if (serial_number) impl_->serial_filter = serial_number;
 }
 
-Board::~Board() {
+Glove::~Glove() {
     disconnect();
 }
 
-bool Board::connect() {
+bool Glove::connect() {
     std::lock_guard<std::mutex> lock(impl_->lifecycle_mu);
     if (impl_->connected.load(std::memory_order_acquire)) return true;
     return impl_->open_device_locked();
 }
 
-void Board::disconnect() {
+void Glove::disconnect() {
     // Move teardown state under lifecycle_mu, then wake/join outside it.
     // Clearing streaming and moving the token while locked keeps a concurrent
     // start_streaming() from clobbering either session's state.
@@ -251,7 +251,7 @@ void Board::disconnect() {
     if (thread_to_handle.joinable()) {
         if (thread_to_handle.get_id() == std::this_thread::get_id()) {
             // Called from the streaming thread itself (e.g. user destroyed
-            // the Board or invoked disconnect() from inside a frame
+            // the Glove or invoked disconnect() from inside a frame
             // callback). Joining would self-deadlock and ~thread() would
             // std::terminate. Detach and let the thread exit naturally —
             // its lambda holds a shared_ptr<Impl>, so Impl + demuxer stay
@@ -266,11 +266,11 @@ void Board::disconnect() {
     // ref; the stream's destructor closes the underlying fd.
 }
 
-bool Board::is_connected() const {
+bool Glove::is_connected() const {
     return impl_->connected.load(std::memory_order_acquire);
 }
 
-Frame Board::read_frame(uint32_t timeout_ms) {
+Frame Glove::read_frame(uint32_t timeout_ms) {
     // Snapshot the demuxer AND the streaming flag atomically under
     // lifecycle_mu. Doing them as two separate atomic loads opens a
     // race: read_frame's streaming-check passes while a concurrent
@@ -282,10 +282,10 @@ Frame Board::read_frame(uint32_t timeout_ms) {
     {
         std::lock_guard<std::mutex> lock(impl_->lifecycle_mu);
         dx = impl_->demuxer;
-        if (!dx) throw NotConnectedError("tactile::Board: not connected");
+        if (!dx) throw NotConnectedError("tactile::Glove: not connected");
         if (impl_->streaming.load(std::memory_order_acquire))
             throw std::logic_error(
-                "tactile::Board: cannot call read_frame() while streaming");
+                "tactile::Glove: cannot call read_frame() while streaming");
     }
 
     uint8_t buf[protocol::FRAME_SIZE];
@@ -294,12 +294,12 @@ Frame Board::read_frame(uint32_t timeout_ms) {
             throw ConnectionLostError("USB CDC device disconnected");
         // Use the typed exception so Python callers see TimeoutError, matching
         // the rest of the tactile command surface.
-        throw ResponseTimeoutError("tactile::Board: read_frame timeout");
+        throw ResponseTimeoutError("tactile::Glove: read_frame timeout");
     }
     return protocol::parse_frame(buf);
 }
 
-void Board::start_streaming(FrameCallback callback) {
+void Glove::start_streaming(FrameCallback callback) {
     std::shared_ptr<FrameDemuxer> dx;
     std::thread old_thread;
     std::shared_ptr<Impl::StreamingToken> token;
@@ -307,9 +307,9 @@ void Board::start_streaming(FrameCallback callback) {
     {
         std::lock_guard<std::mutex> lock(impl_->lifecycle_mu);
         if (!impl_->connected.load(std::memory_order_acquire))
-            throw NotConnectedError("tactile::Board: not connected");
+            throw NotConnectedError("tactile::Glove: not connected");
         if (impl_->streaming.load(std::memory_order_acquire))
-            throw std::logic_error("tactile::Board: already streaming");
+            throw std::logic_error("tactile::Glove: already streaming");
         dx = impl_->demuxer;
         // A previous streaming thread may have exited via disconnect /
         // user-callback exception; harvest it for joining outside the lock.
@@ -357,7 +357,7 @@ void Board::start_streaming(FrameCallback callback) {
             impl_->streaming.store(false, std::memory_order_release);
         }
         throw NotConnectedError(
-            "tactile::Board: disconnected before streaming could start");
+            "tactile::Glove: disconnected before streaming could start");
     }
     try {
         // Capture shared_ptr<Impl> by value so the thread's lambda keeps
@@ -384,7 +384,7 @@ void Board::start_streaming(FrameCallback callback) {
     }
 }
 
-void Board::stop_streaming() {
+void Glove::stop_streaming() {
     // Same lock discipline as disconnect(): clear streaming + move the
     // token out under the lock so a concurrent start cannot clobber state.
     std::shared_ptr<Impl::StreamingToken> token;
@@ -406,7 +406,7 @@ void Board::stop_streaming() {
     }
 }
 
-void Board::set_disconnect_callback(DisconnectCallback callback) {
+void Glove::set_disconnect_callback(DisconnectCallback callback) {
     // Update the user-facing slot. The internal wrapper installed in
     // open_device_locked() reads this slot when the demuxer fires.
     std::lock_guard<std::mutex> lock(impl_->disconnect_cb_mu);
@@ -417,7 +417,7 @@ void Board::set_disconnect_callback(DisconnectCallback callback) {
 // Public API — commands (spec §3)
 // ---------------------------------------------------------------------------
 
-DeviceInfo Board::get_device_info() {
+DeviceInfo Glove::get_device_info() {
     auto resp = impl_->command(Cmd::GetDeviceInfo, nullptr, 0);
     if (resp.size() != 32) {
         throw std::runtime_error("get_device_info: unexpected payload size");
@@ -429,7 +429,7 @@ DeviceInfo Board::get_device_info() {
     return info;
 }
 
-FwBuild Board::get_fw_build() {
+FwBuild Glove::get_fw_build() {
     auto resp = impl_->command(Cmd::GetFwBuild, nullptr, 0);
     if (resp.size() != 8) {
         throw std::runtime_error("get_fw_build: unexpected payload size");
@@ -439,7 +439,7 @@ FwBuild Board::get_fw_build() {
     return build;
 }
 
-Handedness Board::get_handedness() {
+Handedness Glove::get_handedness() {
     auto resp = impl_->command(Cmd::GetHandedness, nullptr, 0);
     if (resp.size() != 1) {
         throw std::runtime_error("get_handedness: unexpected payload size");
@@ -462,25 +462,25 @@ Diagnostics decode_diagnostics(const std::vector<uint8_t>& resp) {
 }
 }  // namespace
 
-Diagnostics Board::get_diagnostics() {
+Diagnostics Glove::get_diagnostics() {
     auto resp = impl_->command(Cmd::GetDiagnostics, nullptr, 0);
     return decode_diagnostics(resp);
 }
 
-bool Board::try_get_diagnostics(Diagnostics& out) {
+bool Glove::try_get_diagnostics(Diagnostics& out) {
     auto dx = impl_->snapshot_demuxer();
-    if (!dx) throw NotConnectedError("tactile::Board: not connected");
+    if (!dx) throw NotConnectedError("tactile::Glove: not connected");
     auto resp = dx->try_command(Cmd::GetDiagnostics, nullptr, 0);
     if (!resp.has_value()) return false;  // command channel busy; caller skips
     out = decode_diagnostics(*resp);
     return true;
 }
 
-void Board::reset_counters() {
+void Glove::reset_counters() {
     impl_->command(Cmd::ResetCounters, nullptr, 0);
 }
 
-void Board::set_streaming(bool enable) {
+void Glove::set_streaming(bool enable) {
     uint8_t payload = enable ? 1 : 0;
     impl_->command(Cmd::SetStreaming, &payload, 1);
 }
@@ -504,12 +504,12 @@ void run_expecting_teardown(Fn&& fn) {
 
 }  // namespace
 
-void Board::reset_device() {
+void Glove::reset_device() {
     run_expecting_teardown([&] { impl_->command(Cmd::Reset, nullptr, 0, 100); });
     disconnect();
 }
 
-void Board::enter_bootloader(uint32_t magic) {
+void Glove::enter_bootloader(uint32_t magic) {
     uint8_t payload[4];
     write_le32(payload, magic);
     run_expecting_teardown([&] {
@@ -519,7 +519,7 @@ void Board::enter_bootloader(uint32_t magic) {
     disconnect();
 }
 
-uint16_t Board::get_sample_rate_hz() {
+uint16_t Glove::get_sample_rate_hz() {
     uint8_t req[2];
     write_le16(req, static_cast<uint16_t>(ConfigKey::SampleRateHz));
     auto resp = impl_->command(Cmd::GetConfig, req, 2);
@@ -529,7 +529,7 @@ uint16_t Board::get_sample_rate_hz() {
     return read_le16(resp.data() + 1);
 }
 
-void Board::set_sample_rate_hz(uint16_t hz) {
+void Glove::set_sample_rate_hz(uint16_t hz) {
     uint8_t req[5];
     write_le16(req, static_cast<uint16_t>(ConfigKey::SampleRateHz));
     req[2] = static_cast<uint8_t>(ConfigType::U16);
@@ -537,7 +537,7 @@ void Board::set_sample_rate_hz(uint16_t hz) {
     impl_->command(Cmd::SetConfig, req, 5);
 }
 
-bool Board::get_streaming_enabled() {
+bool Glove::get_streaming_enabled() {
     uint8_t req[2];
     write_le16(req, static_cast<uint16_t>(ConfigKey::StreamingEnabled));
     auto resp = impl_->command(Cmd::GetConfig, req, 2);
@@ -547,7 +547,7 @@ bool Board::get_streaming_enabled() {
     return resp[1] != 0;
 }
 
-DeviceTime Board::get_device_time() {
+DeviceTime Glove::get_device_time() {
     auto resp = impl_->command(Cmd::GetDeviceTime, nullptr, 0);
     if (resp.size() != 8) {
         throw std::runtime_error("get_device_time: unexpected payload size");
@@ -555,7 +555,7 @@ DeviceTime Board::get_device_time() {
     return DeviceTime{read_le64(resp.data())};
 }
 
-SyncResult Board::sync_host_epoch(uint64_t host_unix_ns) {
+SyncResult Glove::sync_host_epoch(uint64_t host_unix_ns) {
     uint8_t req[8];
     write_le64(req, host_unix_ns);
     auto resp = impl_->command(Cmd::SyncHostEpoch, req, 8);

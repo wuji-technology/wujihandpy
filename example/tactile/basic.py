@@ -1,4 +1,4 @@
-"""Tactile board example: identity, diagnostics, sample-rate change, streaming.
+"""Tactile glove example: identity, diagnostics, sample-rate change, streaming.
 
 Requires firmware tactile-wire-protocol v1.0 or newer (see
 wh110-firmware-tactile-api/docs/tactile-wire-protocol.md).
@@ -10,20 +10,20 @@ from wujihandpy import tactile
 
 
 def main():
-    with tactile.Board() as tb:
-        info = tb.get_device_info()
-        build = tb.get_fw_build()
-        print(f"Tactile board")
+    with tactile.Glove() as glove:
+        info = glove.get_device_info()
+        build = glove.get_fw_build()
+        print(f"Tactile glove")
         print(f"  serial:      {info.serial}")
         print(f"  hw_revision: {tuple(info.hw_revision)}")
         print(f"  fw_version:  {tuple(info.fw_version)}  (build {build.git_short_sha})")
-        print(f"  handedness:  {tb.get_handedness()}")
+        print(f"  handedness:  {glove.get_handedness()}")
 
         # Slow down a bit so the print loop can keep up.
-        tb.set_sample_rate_hz(60)
-        print(f"  sample_rate: {tb.get_sample_rate_hz()} Hz")
+        glove.set_sample_rate_hz(60)
+        print(f"  sample_rate: {glove.get_sample_rate_hz()} Hz")
 
-        tb.set_disconnect_callback(lambda: print("[disconnect] USB lost"))
+        glove.set_disconnect_callback(lambda: print("[disconnect] USB lost"))
 
         seen = 0
         def on_frame(f):
@@ -35,11 +35,11 @@ def main():
             if seen % 30 == 0:
                 print(f"  seq={f.sequence:5d}  valid={n_valid}/{24*32}  peak={peak:.3f}")
 
-        tb.start_streaming(on_frame)
+        glove.start_streaming(on_frame)
         time.sleep(2.0)
-        tb.stop_streaming()
+        glove.stop_streaming()
 
-        d = tb.get_diagnostics()
+        d = glove.get_diagnostics()
         print(
             f"Diagnostics: uptime={d.uptime_ms} ms  frames={d.frame_count}  "
             f"crc_err={d.crc_err_count}  dropouts={d.dropout_count}  "

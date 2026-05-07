@@ -9,7 +9,7 @@
 
 #include <wujihandcpp/data/tactile.hpp>
 #include <wujihandcpp/data/tactile_device.hpp>
-#include <wujihandcpp/device/tactile_board.hpp>
+#include <wujihandcpp/device/tactile_glove.hpp>
 #include <wujihandcpp/protocol/tactile_command.hpp>
 
 namespace py = pybind11;
@@ -100,37 +100,37 @@ inline void init_module(py::module_& parent) {
         .def_readonly("device_ns_at_sync", &SyncResult::device_ns_at_sync)
         .def_readonly("host_ns_echo", &SyncResult::host_ns_echo);
 
-    // Board is held by shared_ptr with a GIL-releasing deleter: ~Board joins
+    // Glove is held by shared_ptr with a GIL-releasing deleter: ~Glove joins
     // streaming / reader threads, which may need the GIL to destroy captured
     // Python callbacks. Holding the GIL through the join would deadlock.
-    py::class_<Board, std::shared_ptr<Board>>(m, "Board")
+    py::class_<Glove, std::shared_ptr<Glove>>(m, "Glove")
         .def(py::init([](std::optional<std::string> serial_number) {
             const char* sn = serial_number.has_value()
                 ? serial_number.value().c_str() : nullptr;
-            return std::shared_ptr<Board>(
-                new Board(sn),
-                [](Board* p) {
+            return std::shared_ptr<Glove>(
+                new Glove(sn),
+                [](Glove* p) {
                     py::gil_scoped_release release;
                     delete p;
                 });
         }), py::arg("serial_number") = py::none())
 
-        .def("connect",          &Board::connect,          call_guard<release_gil>())
-        .def("disconnect",       &Board::disconnect,       call_guard<release_gil>())
-        .def("is_connected",     &Board::is_connected)
-        .def("read_frame",       &Board::read_frame,       py::arg("timeout_ms") = 100,
+        .def("connect",          &Glove::connect,          call_guard<release_gil>())
+        .def("disconnect",       &Glove::disconnect,       call_guard<release_gil>())
+        .def("is_connected",     &Glove::is_connected)
+        .def("read_frame",       &Glove::read_frame,       py::arg("timeout_ms") = 100,
                                                            call_guard<release_gil>())
-        .def("stop_streaming",   &Board::stop_streaming,   call_guard<release_gil>())
+        .def("stop_streaming",   &Glove::stop_streaming,   call_guard<release_gil>())
 
-        .def("start_streaming", [](Board& self, py::function cb) {
+        .def("start_streaming", [](Glove& self, py::function cb) {
             auto wrapped = make_python_callback<const Frame&>(
                 std::move(cb),
-                "tactile.Board: Python frame callback raised an exception");
+                "tactile.Glove: Python frame callback raised an exception");
             py::gil_scoped_release release;
             self.start_streaming(std::move(wrapped));
         }, py::arg("callback"))
 
-        .def("set_disconnect_callback", [](Board& self, py::function cb) {
+        .def("set_disconnect_callback", [](Glove& self, py::function cb) {
             // Disconnect-callback exceptions are intentionally swallowed
             // (SDK contract — can't unwind the reader thread mid-shutdown);
             // pass nullptr to suppress the C++ rethrow.
@@ -139,31 +139,31 @@ inline void init_module(py::module_& parent) {
             self.set_disconnect_callback(std::move(wrapped));
         }, py::arg("callback"))
 
-        .def("get_device_info",       &Board::get_device_info,       call_guard<release_gil>())
-        .def("get_fw_build",          &Board::get_fw_build,          call_guard<release_gil>())
-        .def("get_handedness",        &Board::get_handedness,        call_guard<release_gil>())
-        .def("get_diagnostics",       &Board::get_diagnostics,       call_guard<release_gil>())
-        .def("reset_counters",        &Board::reset_counters,        call_guard<release_gil>())
-        .def("set_streaming",         &Board::set_streaming,         py::arg("enable"),
+        .def("get_device_info",       &Glove::get_device_info,       call_guard<release_gil>())
+        .def("get_fw_build",          &Glove::get_fw_build,          call_guard<release_gil>())
+        .def("get_handedness",        &Glove::get_handedness,        call_guard<release_gil>())
+        .def("get_diagnostics",       &Glove::get_diagnostics,       call_guard<release_gil>())
+        .def("reset_counters",        &Glove::reset_counters,        call_guard<release_gil>())
+        .def("set_streaming",         &Glove::set_streaming,         py::arg("enable"),
                                                                      call_guard<release_gil>())
-        .def("reset_device",          &Board::reset_device,          call_guard<release_gil>())
-        .def("enter_bootloader",      &Board::enter_bootloader,      py::arg("magic"),
+        .def("reset_device",          &Glove::reset_device,          call_guard<release_gil>())
+        .def("enter_bootloader",      &Glove::enter_bootloader,      py::arg("magic"),
                                                                      call_guard<release_gil>())
-        .def("get_sample_rate_hz",    &Board::get_sample_rate_hz,    call_guard<release_gil>())
-        .def("set_sample_rate_hz",    &Board::set_sample_rate_hz,    py::arg("sample_rate_hz"),
+        .def("get_sample_rate_hz",    &Glove::get_sample_rate_hz,    call_guard<release_gil>())
+        .def("set_sample_rate_hz",    &Glove::set_sample_rate_hz,    py::arg("sample_rate_hz"),
                                                                      call_guard<release_gil>())
-        .def("get_streaming_enabled", &Board::get_streaming_enabled, call_guard<release_gil>())
-        .def("get_device_time",       &Board::get_device_time,       call_guard<release_gil>())
-        .def("sync_host_epoch",       &Board::sync_host_epoch,       py::arg("host_unix_ns"),
+        .def("get_streaming_enabled", &Glove::get_streaming_enabled, call_guard<release_gil>())
+        .def("get_device_time",       &Glove::get_device_time,       call_guard<release_gil>())
+        .def("sync_host_epoch",       &Glove::sync_host_epoch,       py::arg("host_unix_ns"),
                                                                      call_guard<release_gil>())
 
-        .def("__enter__", [](Board& self) -> Board& {
+        .def("__enter__", [](Glove& self) -> Glove& {
             bool ok;
             { py::gil_scoped_release release; ok = self.connect(); }
-            if (!ok) throw NotConnectedError("tactile.Board: device not found");
+            if (!ok) throw NotConnectedError("tactile.Glove: device not found");
             return self;
         })
-        .def("__exit__", [](Board& self, const py::object&,
+        .def("__exit__", [](Glove& self, const py::object&,
                             const py::object&, const py::object&) {
             py::gil_scoped_release release;
             self.disconnect();

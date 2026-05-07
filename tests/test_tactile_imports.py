@@ -36,15 +36,15 @@ def test_wrapper_all_matches_native():
 
 
 def test_three_import_paths_resolve_identically():
-    """`from wujihandpy.tactile import Board`,
-       `from wujihandpy import tactile; tactile.Board`,
-       `import wujihandpy.tactile; wujihandpy.tactile.Board` —
+    """`from wujihandpy.tactile import Glove`,
+       `from wujihandpy import tactile; tactile.Glove`,
+       `import wujihandpy.tactile; wujihandpy.tactile.Glove` —
     all three must resolve to the same class object."""
-    from wujihandpy.tactile import Board as B1
+    from wujihandpy.tactile import Glove as B1
     from wujihandpy import tactile
-    B2 = tactile.Board
+    B2 = tactile.Glove
     import wujihandpy.tactile as t3
-    B3 = t3.Board
+    B3 = t3.Glove
     assert B1 is B2 is B3
 
 
@@ -57,7 +57,7 @@ def test_native_all_is_populated():
     assert hasattr(mod, "__all__"), \
         "_core.tactile.__all__ missing — wrapper.tactile.py would break"
     # Sanity check: __all__ must contain at least the headline classes.
-    must_have = {"Board", "Frame", "Error", "BOOTLOADER_MAGIC"}
+    must_have = {"Glove", "Frame", "Error", "BOOTLOADER_MAGIC"}
     assert must_have.issubset(set(mod.__all__))
 
 

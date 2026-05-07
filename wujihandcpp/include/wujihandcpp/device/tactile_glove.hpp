@@ -22,30 +22,29 @@ class WUJIHANDCPP_API ConnectionLostError : public std::runtime_error {
     using std::runtime_error::runtime_error;
 };
 
-/// USB CDC driver for the WujiHand tactile sensor board (tboard).
+/// USB CDC driver for the WujiHand tactile glove (G-Board PID 0x5700).
 ///
-/// The board transmits 24x32 f32 pressure frames over USB CDC
-/// (VID=0x0483, PID=0x5700). Default and upper sample rate is 120 Hz; the
-/// effective rate is set via SET_CONFIG `sample_rate_hz` (1–120). This class
-/// handles device discovery, frame synchronization, CRC validation, and
-/// streaming. See `docs/tactile-wire-protocol.md` in the firmware repo for
-/// the wire format and command set.
+/// The glove transmits 24x32 f32 pressure frames at up to 120 Hz; the
+/// effective rate is set via SET_CONFIG `sample_rate_hz` (1–120). This
+/// class handles device discovery, frame synchronization, CRC validation,
+/// and streaming. See `docs/tactile-wire-protocol.md` in the firmware repo
+/// for the wire format and command set.
 ///
 /// Thread safety:
 ///   - is_connected() and get_handedness() are thread-safe.
 ///   - read_frame() and start_streaming() are mutually exclusive.
 ///   - disconnect() can be called from any thread; it stops streaming.
 ///   - After disconnect, connect() can be called again to reconnect.
-class WUJIHANDCPP_API Board {
+class WUJIHANDCPP_API Glove {
 public:
-    /// Construct a Board.
+    /// Construct a Glove handle.
     /// @param serial_number  If non-null, match this USB serial number.
     ///                       If null, use the first device with PID=0x5700.
-    explicit Board(const char* serial_number = nullptr);
-    ~Board();
+    explicit Glove(const char* serial_number = nullptr);
+    ~Glove();
 
-    Board(const Board&) = delete;
-    Board& operator=(const Board&) = delete;
+    Glove(const Glove&) = delete;
+    Glove& operator=(const Glove&) = delete;
 
     // -- Connection management --
 
@@ -157,7 +156,7 @@ public:
 private:
     struct Impl;
     // shared_ptr so the streaming-thread lambda can hold its own ref.
-    // When the board is destroyed from inside a frame callback running on
+    // When the glove is destroyed from inside a frame callback running on
     // the streaming thread, disconnect() detaches instead of self-joining
     // and the thread keeps Impl alive until it unwinds.
     std::shared_ptr<Impl> impl_;

@@ -66,7 +66,7 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
     # Keep this in sync with the `#if defined(__linux__)` gates in the
     # public tactile headers.
     list(REMOVE_ITEM PROJECT_SOURCE
-        ${PROJECT_SOURCE_DIR}/src/device/tactile_board.cpp
+        ${PROJECT_SOURCE_DIR}/src/device/tactile_glove.cpp
         ${PROJECT_SOURCE_DIR}/src/device/frame_demuxer.cpp
         ${PROJECT_SOURCE_DIR}/src/transport/cdc_byte_stream.cpp
         ${PROJECT_SOURCE_DIR}/src/transport/cdc_transport.cpp

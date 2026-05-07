@@ -23,11 +23,11 @@ import wujihandpy.tactile as tactile  # noqa: E402
 
 
 def _board_not_connected():
-    """Construct a Board against a nonexistent serial; connect()
+    """Construct a Glove against a nonexistent serial; connect()
     returns False and the SDK stays disconnected. Subsequent calls
     must raise ConnectionError, not bare RuntimeError or anything
     else."""
-    b = tactile.Board(serial_number="ci-nonexistent-serial-zzz")
+    b = tactile.Glove(serial_number="ci-nonexistent-serial-zzz")
     assert b.connect() is False
     return b
 
@@ -63,12 +63,12 @@ def test_start_streaming_on_disconnected_raises_ConnectionError():
 
 
 def test_enter_context_on_missing_device_raises_ConnectionError():
-    """`with tactile.Board(serial=...)` should raise ConnectionError
+    """`with tactile.Glove(serial=...)` should raise ConnectionError
     on missing device, not bare RuntimeError. Matches stdlib idioms
     where `socket.connect()` raises ConnectionRefusedError /
     ConnectionError."""
     with pytest.raises(ConnectionError):
-        with tactile.Board(serial_number="ci-nonexistent-serial-zzz"):
+        with tactile.Glove(serial_number="ci-nonexistent-serial-zzz"):
             pass
 
 

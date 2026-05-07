@@ -15,13 +15,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     with `NaN` marking invalid cells (was inverted-polarity `int16`).
   - All tactile types live under the `wujihandcpp::tactile` C++
     namespace and the `wujihandpy.tactile` Python submodule. The
-    redundant `Tactile` prefix is dropped from every type name —
-    `wujihandpy.tactile.Board` (was `wujihandpy.TactileBoard`),
-    `tactile.Frame`, `tactile.DeviceInfo`, `tactile.FwBuild`,
-    `tactile.Diagnostics`, `tactile.DeviceTime`, `tactile.SyncResult`,
-    `tactile.Status`, `tactile.Error`, `tactile.BOOTLOADER_MAGIC`.
+    redundant `Tactile` prefix is dropped from every type name. The
+    device class is `wujihandpy.tactile.Glove` (was
+    `wujihandpy.TactileBoard`) — named for the physical accessory, not
+    the PCB inside it. Other types: `tactile.Frame`, `tactile.DeviceInfo`,
+    `tactile.FwBuild`, `tactile.Diagnostics`, `tactile.DeviceTime`,
+    `tactile.SyncResult`, `tactile.Status`, `tactile.Error`,
+    `tactile.BOOTLOADER_MAGIC`.
   - `tactile.Frame.pressure` is exposed as a `numpy.float32` 24×32 array.
-  - New commands on `tactile.Board`: `get_device_info`, `get_fw_build`,
+  - New commands on `tactile.Glove`: `get_device_info`, `get_fw_build`,
     `get_handedness`, `get_diagnostics`, `reset_counters`, `set_streaming`,
     `reset_device`, `enter_bootloader`, `get_sample_rate_hz`,
     `set_sample_rate_hz`, `get_streaming_enabled`, `get_device_time`,
