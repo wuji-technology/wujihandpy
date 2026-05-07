@@ -98,33 +98,15 @@ struct Board::Impl {
     std::thread streaming_thread;
     std::atomic<bool> streaming{false};
 
-    // Per-streaming-session stop token. start_streaming() creates a fresh
-    // one each call and stashes it here; stop_streaming() / disconnect()
-    // *move* the slot out and flip the moved token's `stop` to true. The
-    // spawned consumer thread captured its own token by shared_ptr, so a
-    // later start_streaming() that creates a NEW token cannot accidentally
-    // clear the old session's stop signal — closing a race where:
-    //   T_A: stop_streaming() sets old global stop=true, joins (slow)
-    //   T_B: start_streaming() lock; sees streaming=false; clears
-    //        global stop back to false; bumps gen, sets streaming=true
-    //   old streaming thread reads stop=false → keeps running →
-    //   T_A's join hangs / new and old thread both consume the same
-    //   demuxer queue.
-    // The previous global `stop_streaming_requested` atomic was the
-    // shared signal that race exploited. Per-token isolation kills it.
+    // Per-session stop token. Moving the slot out in stop/disconnect preserves
+    // the old thread's stop signal while a later start installs a fresh token.
     struct StreamingToken {
         std::atomic<bool> stop{false};
     };
     std::shared_ptr<StreamingToken> streaming_token;
 
-    // Bumped by every successful start_streaming(). Each spawned thread
-    // captures the value it was started with; on exit it only clears the
-    // `streaming` flag if the current generation still matches its own.
-    // This closes a separate window where a self-detached old streaming
-    // thread exits AFTER a disconnect→reconnect→start_streaming cycle has
-    // spawned a fresh thread, and would otherwise clobber that fresh
-    // thread's `streaming=true` back to false. Generation guard and stop
-    // token solve adjacent but distinct races; both are needed.
+    // Generation counter for the streaming.store(false) clobber-guard at the
+    // tail of streaming_loop. Adjacent to the stop token, both are needed.
     std::atomic<uint64_t> streaming_generation{0};
 
     // User-facing disconnect callback. Held here so it survives across
@@ -269,27 +251,9 @@ bool Board::connect() {
 }
 
 void Board::disconnect() {
-    // Pull the demuxer + streaming thread out under lifecycle_mu_; do the
-    // potentially-slow wakes/joins outside the lock so concurrent commands
-    // (which only hold the lock to snapshot, not for the blocking call) are
-    // not blocked waiting for the streaming thread to drain its callback.
-    //
-    // streaming.store(false) is performed INSIDE the lock so a concurrent
-    // start_streaming() that races with this disconnect() observes a
-    // consistent (connected=false, streaming=false) snapshot. Storing it
-    // after the unbounded join() outside the lock would let the following
-    // sequence clobber a fresh streaming thread:
-    //   T_A: lock; move dx + thread; unlock
-    //   T_A: dx->stop(); thread.join();   // slow
-    //   T_B: connect(); start_streaming(); // sets streaming=true
-    //   T_A: streaming.store(false);       // clobbers T_B
-    // The next start_streaming() would then pass the "already streaming"
-    // guard and spawn a second consumer on the same demuxer queue.
-    //
-    // The streaming-token slot is *moved* out under the lock so a
-    // concurrent start_streaming() (that creates a fresh token after we
-    // unlock) cannot install its new token over our `stop=true` write.
-    // The captured shared_ptr keeps the moved token alive for our store.
+    // Move teardown state under lifecycle_mu, then wake/join outside it.
+    // Clearing streaming and moving the token while locked keeps a concurrent
+    // start_streaming() from clobbering either session's state.
     std::shared_ptr<FrameDemuxer> dx;
     std::shared_ptr<Impl::StreamingToken> token;
     std::thread thread_to_handle;
@@ -440,20 +404,8 @@ void Board::start_streaming(FrameCallback callback) {
 }
 
 void Board::stop_streaming() {
-    // streaming.store(false) is performed INSIDE the lock for the same
-    // reason as disconnect(): the unbounded join() below releases the lock
-    // while a concurrent start_streaming() could spawn a fresh consumer; if
-    // we cleared `streaming` after the join we would clobber that fresh
-    // generation's `streaming=true` and a third start_streaming() would
-    // then spawn a second concurrent consumer on the same demuxer queue.
-    //
-    // The streaming-token slot is *moved* out under the lock and we flip
-    // the moved token's `stop` to true. A concurrent start_streaming()
-    // creating a fresh token after we unlock cannot reach back into this
-    // moved token, so the prior session's stop signal is preserved even
-    // while the prior thread is still mid-join. The previous global
-    // `stop_streaming_requested` flag had the opposite property — start
-    // could clear it back to false and let the prior thread keep running.
+    // Same lock discipline as disconnect(): clear streaming + move the
+    // token out under the lock so a concurrent start cannot clobber state.
     std::shared_ptr<Impl::StreamingToken> token;
     std::thread thread_to_handle;
     {

@@ -1,16 +1,6 @@
-"""Tactile module import-surface invariants — no hardware needed.
+"""Tactile import-surface invariants; no hardware needed.
 
-These run in CI on every PR and lock the public API shape so a future
-edit to the C++ binding can't silently desync the wrapper / stub.
-
-Platform handling: the tactile bindings are Linux-only (root
-CMakeLists.txt gates WUJIHANDPY_ENABLE_TACTILE on CMAKE_SYSTEM_NAME==
-"Linux"). On non-Linux this test file is SKIPPED at module level —
-`_core` ships without the tactile submodule there. On Linux, however,
-the tactile binding MUST exist; importorskip-everywhere would silently
-pass on a regression where the binding accidentally fails to compile
-or is mis-built. Use a platform-conditional skip so Linux runs see
-import errors as test failures, not "skipped — nothing to do".
+Skip only on non-Linux. On Linux, missing tactile bindings are failures.
 """
 from __future__ import annotations
 

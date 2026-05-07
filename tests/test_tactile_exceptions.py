@@ -73,10 +73,7 @@ def test_enter_context_on_missing_device_raises_ConnectionError():
 
 
 def test_exception_classes_distinct_from_runtime_error():
-    """Sanity check: the four wire-failure classes must not collapse
-    to bare RuntimeError. They translate to ConnectionError /
-    TimeoutError in main.cpp and a regression there would silently
-    break user `except ConnectionError:` clauses."""
+    """Wire-failure classes should remain stdlib-catchable."""
     b = _board_not_connected()
     try:
         b.read_frame(timeout_ms=5)

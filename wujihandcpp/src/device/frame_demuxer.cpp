@@ -46,13 +46,8 @@ FrameDemuxer::~FrameDemuxer() {
 }
 
 void FrameDemuxer::start() {
-    // Capture shared_from_this() so the reader thread keeps the demuxer
-    // alive for as long as the loop runs. Required for the self-detach path
-    // in stop(): if stop() is called from inside the reader thread (via the
-    // user-installed disconnect callback, which we invoke synchronously),
-    // we cannot join ourselves and must detach. After detach the lifecycle
-    // owner may drop its shared_ptr, but the captured `self` here keeps the
-    // demuxer alive until reader_loop returns.
+    // Keep the demuxer alive until reader_loop exits, including the
+    // self-detach teardown path from inside the reader thread.
     auto self = shared_from_this();
     thread_ = std::thread([self]() { self->reader_loop(); });
 }
@@ -177,19 +172,9 @@ std::vector<uint8_t> FrameDemuxer::single_command(Cmd cmd, const uint8_t* payloa
         pending_payload_.clear();
     }
 
-    // Bound the write to the per-command deadline. Without this the
-    // documented 2 s budget is unbounded — a stuck cdc-acm URB queue
-    // can park write() forever even though the firmware would have
-    // answered in milliseconds. A short-write (<length) is treated
-    // as a write failure for the purposes of the command channel:
-    // the wire frame is unparseable on a partial write, so the
-    // device couldn't act on it anyway.
-    //
-    // Deadline math: split the per-command timeout between write and
-    // response-wait by using a single absolute deadline. write_exact
-    // returns when its slice expires; the wait_for below uses
-    // (deadline - now) so the cumulative worst-case is timeout_ms,
-    // not 2 * timeout_ms.
+    // Share one absolute deadline between write and response wait so the
+    // per-command worst case is timeout_ms, not 2 × timeout_ms. A short
+    // write cannot form a valid wire frame, so it's treated as failure.
     auto deadline = std::chrono::steady_clock::now()
                     + std::chrono::milliseconds(timeout_ms);
     if (stream_->write(buf, length, timeout_ms)
