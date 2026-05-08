@@ -100,15 +100,21 @@ LDFLAGS += -lwujihandcpp
 ### 连接至灵巧手
 
 ```cpp
-wujihandcpp::device::Hand hand{usb_vid, usb_pid};
+wujihandcpp::device::Hand hand;
 ```
 
-定义一个 `Hand` 对象，并传入其 USB VID 和 PID 即可连接。
-
-在目前的固件实现中，所有灵巧手的 VID 固定为 `0x0483`，PID 固定为 `0x7530`：
+无参构造即可连接：默认 VID `0x0483` + PID `0x2000`（生产固件值）。
+若总线上有多台同型号设备，传入 USB 序列号区分：
 
 ```cpp
-wujihandcpp::device::Hand hand{0x0483, 0x7530};
+wujihandcpp::device::Hand hand{"3385385F3233"};
+```
+
+完整签名见 `wujihandcpp/device/hand.hpp`：
+
+```cpp
+Hand(const char* serial_number = nullptr, int32_t usb_pid = 0x2000,
+     uint16_t usb_vid = 0x0483, uint32_t mask = 0);
 ```
 
 ### 读数据

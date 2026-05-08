@@ -20,6 +20,12 @@ src/wujihandpy/_version.py
 
 docs/plans/
 
+# HIL test scripts are local-only (need a physical board; this is a
+# public repo). Gate the script entry with WUJIHAND_HIL=1 (see
+# tests/README.md). Use the .local_*.py prefix for personal one-offs.
+tests/hil_*.py
+tests/.local_*.py
+
 # Claude-mem generated files (keep root CLAUDE.md)
 **/CLAUDE.md
 !/CLAUDE.md

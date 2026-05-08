@@ -12,6 +12,8 @@
 
 #include <libusb.h>
 
+#include "wujihandcpp/device/latch.hpp"
+
 #include "logging/logging.hpp"
 #include "transport/transport.hpp"
 #include "utility/cross_os.hpp"
@@ -26,7 +28,7 @@ public:
         : logger_(logging::get_logger())
         , free_transmit_transfers_(transmit_transfer_count_) {
         if (!usb_init(usb_vid, usb_pid, serial_number)) {
-            throw std::runtime_error{"Failed to init."};
+            throw device::ConnectionError{"Failed to init."};
         }
 
         init_transmit_transfers();
@@ -82,7 +84,7 @@ public:
 
         int ret = libusb_submit_transfer(transfer);
         if (ret != 0) [[unlikely]] {
-            throw std::runtime_error(
+            throw device::ConnectionError(
                 std::format(
                     "Failed to submit transmit transfer: {} ({})", ret, libusb_errname(ret)));
         }
@@ -362,7 +364,7 @@ private:
             int ret = libusb_submit_transfer(transfer);
             if (ret != 0) [[unlikely]] {
                 destroy_libusb_transfer(transfer);
-                throw std::runtime_error(
+                throw device::ConnectionError(
                     std::format(
                         "Failed to submit receive transfer: {} ({})", ret, libusb_errname(ret)));
             }

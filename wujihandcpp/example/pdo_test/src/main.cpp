@@ -18,7 +18,7 @@ int main() {
     static std::atomic<bool> running{true};
     std::signal(SIGINT, [](int) { running.store(false, std::memory_order_relaxed); });
 
-    device::Hand hand{0x0483, 0x7530};
+    device::Hand hand;
 
     // Set control mode & enable all joints
     hand.write<data::joint::ControlMode>(2);

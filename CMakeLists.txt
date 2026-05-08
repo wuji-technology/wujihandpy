@@ -31,22 +31,19 @@ project(wujihandpy)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 set(BUILD_STATIC_WUJIHANDCPP ON CACHE BOOL "" FORCE)
+# Wheel build: wujihandcpp is embedded into _core.so; do not also install it
+# (or its bundled spdlog) into the wheel.
+set(WUJIHANDCPP_INSTALL OFF CACHE BOOL "" FORCE)
+set(SPDLOG_INSTALL OFF CACHE BOOL "" FORCE)
 add_subdirectory(wujihandcpp EXCLUDE_FROM_ALL)
 
-
-# Set C++ standard to C++20
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
-
-# Set C standard to C11
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED True)
-
-# Disable GNU extensions
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_C_EXTENSIONS OFF)
 
-# Set default build type to Release
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
 endif()
@@ -80,6 +77,11 @@ target_link_libraries(_core PRIVATE pybind11::module)
 
 target_link_directories(_core PRIVATE ${CMAKE_BINARY_DIR}/wujihandcpp)
 target_link_libraries(_core PRIVATE wujihandcpp)
+
+# Keep this gate aligned with the Linux-only tactile headers and transport sources.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    target_compile_definitions(_core PRIVATE WUJIHANDPY_ENABLE_TACTILE)
+endif()
 
 # The install directory is the output (wheel) directory
 install(TARGETS _core DESTINATION wujihandpy)
