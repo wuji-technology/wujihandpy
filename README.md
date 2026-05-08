@@ -22,7 +22,7 @@ Wuji Hand SDK: C++ core with Python bindings, for controlling and communicating 
 │   │   ├── 3.realtime.py
 │   │   ├── 4.async.py
 │   │   └── 5.multithread.py
-│   ├── tactile/                  # Tactile glove
+│   ├── tactile/                  # Tactile sensing glove
 │   │   └── basic.py
 │   └── joint_with_tactile.py     # Drive both subsystems together
 ├── wujihandcpp/                  # Underlying C++ SDK implementation

@@ -9,13 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Tactile glove support** (Linux only): top-level `wujihandpy.TactileGlove` plus typed companions `TactileFrame`, `TactileError`, `TactileHandedness`, and POD types for device info, diagnostics, firmware build, and time sync. Pressure frames are `numpy.float32` 24×32 arrays in `[0, 1]` with `NaN` for invalid cells. Hand and TactileGlove can coexist in one process—see `example/joint_with_tactile.py`.
+- **Tactile sensing glove support** (Linux only): top-level `wujihandpy.TactileGlove` plus typed companions `TactileFrame`, `TactileError`, `TactileHandedness`, and POD types for device info, diagnostics, firmware build, and time sync. Pressure frames are `numpy.float32` 24×32 arrays in `[0, 1]` with `NaN` for invalid cells. Hand and TactileGlove can coexist in one process—see `example/joint_with_tactile.py`.
 
 ### Changed
 
-- **`Hand` default `usb_pid`**: `-1` → `0x2000`, to avoid silently matching the tactile glove (shared VID `0x0483`). Pre-production firmware with other PIDs must pass `usb_pid=` explicitly.
+- **`Hand` default `usb_pid`**: `-1` → `0x2000`, to avoid silently matching the tactile sensing glove (shared VID `0x0483`). Pre-production firmware with other PIDs must pass `usb_pid=` explicitly.
 - **Hand USB transport failures**: raise `ConnectionError` (was `RuntimeError`), matching `TactileGlove`.
-- **`TactileGlove()` without `serial_number`**: raises `ConnectionError` listing found serials when multiple gloves are on the bus, instead of silently picking the first.
+- **`TactileGlove()` without `serial_number`**: raises `ConnectionError` listing found serials when multiple tactile sensing gloves are on the bus, instead of silently picking the first.
 - **CMake integration** (C++ consumers): now via `find_package(wujihandcpp CONFIG REQUIRED)` + `wujihandcpp::wujihandcpp`.
 - **Examples**: reorganized into `example/joint/`, `example/tactile/basic.py`, and `example/joint_with_tactile.py`.
 

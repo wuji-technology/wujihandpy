@@ -1,4 +1,4 @@
-"""Tactile glove example: identity, diagnostics, sample-rate change, streaming."""
+"""Tactile sensing glove example: identity, diagnostics, sample-rate change, streaming."""
 
 import time
 import numpy as np
@@ -9,7 +9,7 @@ def main():
     with wujihandpy.TactileGlove() as glove:
         info = glove.get_device_info()
         build = glove.get_fw_build()
-        print("Tactile glove")
+        print("Tactile sensing glove")
         print(f"  serial:      {info.serial}")
         print(f"  hw_revision: {tuple(info.hw_revision)}")
         print(f"  fw_version:  {tuple(info.fw_version)}  (build {build.git_short_sha})")

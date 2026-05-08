@@ -7,7 +7,7 @@ joint commands run on whichever thread you call them from.
 
 Hardware:
   - Joint controller (PID 0x2000) on the bus
-  - Tactile glove (PID 0x5700) on the bus
+  - Tactile sensing glove (PID 0x5700) on the bus
 
 When both PIDs share VID 0x0483, `Hand()` is pinned to PID 0x2000 by
 default; pass `serial_number=` if you have more than one of the same

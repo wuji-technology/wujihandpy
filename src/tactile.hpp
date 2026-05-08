@@ -51,7 +51,7 @@ inline void init_module(py::module_& parent) {
 
     py::module_ m = parent.def_submodule(
         "tactile",
-        "Tactile glove API (wujihandcpp::tactile namespace).");
+        "Tactile sensing glove API (wujihandcpp::tactile namespace).");
 
     py::enum_<Handedness>(m, "Handedness")
         .value("LEFT", Handedness::LEFT)
