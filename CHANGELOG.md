@@ -57,6 +57,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   diagnostics, and streaming; new `example/joint_with_tactile.py`
   drives both subsystems from one process.
 
+### Removed
+
+- **Zenoh Bridge (Python + C++)**: removed `@control` acquire/release protocol; SET / PUT writes no longer require an acquire handshake.
+
 ## [1.6.0] - 2026-04-27
 
 ### Changed
