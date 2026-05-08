@@ -329,7 +329,7 @@ def test_capability_sub_resources_have_timestamp_schema():
 # Resource query / fire-and-forget PUT tests
 #
 # Note: writes are no longer gated by an `@control` acquire/release handshake,
-# so SET / target_position PUT succeed without any control-권 setup.
+# so SET / target_position PUT succeed without any acquire/release setup.
 # ---------------------------------------------------------------------------
 
 def test_handle_resource_query_get_replies_with_raw_json():
