@@ -3,8 +3,8 @@
 ## Unit tests (CI-runnable)
 
 `test_*.py` files use `pytest`. They have no hardware dependency and
-run in CI on every PR. Currently this is `test_bridge.py` for the
-Zenoh bridge.
+run in CI on every PR. Examples include `test_bridge.py` (Zenoh bridge),
+`test_tactile_imports.py`, and `test_tactile_exceptions.py`.
 
 ## Hardware-in-the-loop tests (local-only, not in this repo)
 

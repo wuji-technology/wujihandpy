@@ -42,7 +42,7 @@ Wuji Hand SDK: C++ core with Python bindings, for controlling and communicating 
 |-----------|-------------|
 | `src/` | Python binding source code and C++ headers |
 | `src/wujihandpy/` | Python package with type stubs |
-| `example/` | Usage examples for read, write, realtime, and async operations |
+| `example/` | Usage examples — `joint/` for read/write/realtime/async/multithread; `tactile/` for the tactile glove; `joint_with_tactile.py` drives both subsystems together |
 | `wujihandcpp/` | Underlying C++ SDK implementation |
 | `wujihandcpp/include/` | C++ header files |
 | `wujihandcpp/src/` | C++ source files |

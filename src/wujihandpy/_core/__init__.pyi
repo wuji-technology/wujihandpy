@@ -1,11 +1,15 @@
 from __future__ import annotations
+import sys
 import numpy
 import numpy.typing
 import typing
 from . import filter
 from . import logging
-from . import tactile
-__all__: list[str] = ['Finger', 'Hand', 'IController', 'Joint', 'filter', 'logging', 'tactile']
+if sys.platform == 'linux':
+    from . import tactile
+    __all__: list[str] = ['Finger', 'Hand', 'IController', 'Joint', 'filter', 'logging', 'tactile']
+else:
+    __all__: list[str] = ['Finger', 'Hand', 'IController', 'Joint', 'filter', 'logging']
 class Finger:
     def get_joint_actual_position(self) -> numpy.typing.NDArray[numpy.float64]:
         ...

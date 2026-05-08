@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sys
-from typing import TYPE_CHECKING, Annotated, SupportsInt
+from typing import TYPE_CHECKING, Annotated, SupportsIndex
 
 from . import _core
 # `filter` and `logging` are wujihandpy submodules; the same-name shadowing
@@ -52,8 +52,8 @@ class Hand(_core.Hand):
     def __init__(
         self,
         serial_number: str | None = None,
-        usb_pid: SupportsInt = 0x2000,
-        usb_vid: SupportsInt = 0x0483,
+        usb_pid: SupportsIndex = 0x2000,
+        usb_vid: SupportsIndex = 0x0483,
         mask: Annotated[numpy.typing.ArrayLike, numpy.bool_] | None = None,
     ) -> None:
         super().__init__(serial_number, usb_pid, usb_vid, mask)
