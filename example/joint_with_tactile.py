@@ -1,7 +1,7 @@
 """Drive joint motion while reading tactile pressure in the same process.
 
-Hand and Glove use independent USB transports (libusb async vs CDC ACM)
-and independent threads, so the two APIs compose without coordination.
+Hand and TactileGlove use independent USB transports (libusb async vs CDC
+ACM) and independent threads, so the two APIs compose without coordination.
 The frame callback fires on the glove's streaming consumer thread; the
 joint commands run on whichever thread you call them from.
 
@@ -21,12 +21,11 @@ import time
 import numpy as np
 
 import wujihandpy
-import wujihandpy.tactile as tactile
 
 
 def main() -> None:
     hand = wujihandpy.Hand()
-    glove = tactile.Glove()
+    glove = wujihandpy.TactileGlove()
 
     if not glove.connect():
         raise RuntimeError("Glove not found on the bus (PID 0x5700)")
@@ -34,7 +33,7 @@ def main() -> None:
     # Hold the most recent frame for the joint loop to read.
     latest_pressure_max = 0.0
 
-    def on_frame(frame: tactile.Frame) -> None:
+    def on_frame(frame: wujihandpy.TactileFrame) -> None:
         nonlocal latest_pressure_max
         # NaN cells mark invalid taxels — ignore them.
         valid = frame.pressure[~np.isnan(frame.pressure)]

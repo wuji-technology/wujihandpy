@@ -125,7 +125,7 @@ inline void init_module(py::module_& parent) {
         .def("start_streaming", [](Glove& self, py::function cb) {
             auto wrapped = make_python_callback<const Frame&>(
                 std::move(cb),
-                "tactile.Glove: Python frame callback raised an exception");
+                "TactileGlove: Python frame callback raised an exception");
             py::gil_scoped_release release;
             self.start_streaming(std::move(wrapped));
         }, py::arg("callback"))
@@ -160,7 +160,7 @@ inline void init_module(py::module_& parent) {
         .def("__enter__", [](Glove& self) -> Glove& {
             bool ok;
             { py::gil_scoped_release release; ok = self.connect(); }
-            if (!ok) throw NotConnectedError("tactile.Glove: device not found");
+            if (!ok) throw NotConnectedError("TactileGlove: device not found");
             return self;
         })
         .def("__exit__", [](Glove& self, const py::object&,

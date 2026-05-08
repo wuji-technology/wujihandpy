@@ -88,7 +88,7 @@ PYBIND11_MODULE(_core, m) {
     // No __enter__/__exit__: Hand opens USB in its C++ ctor and there is
     // no idempotent close() path on the underlying device::Hand today, so
     // a `with` block could not deterministically release the device at
-    // exit. Use `del hand` or let the binding leave scope. (tactile.Glove
+    // exit. Use `del hand` or let the binding leave scope. (TactileGlove
     // does support `with` because its USB lifecycle is genuinely lazy.)
 
     register_py_interface<data::hand::Handedness>("handedness", hand);

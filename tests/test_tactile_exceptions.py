@@ -19,7 +19,7 @@ if not sys.platform.startswith("linux"):
         allow_module_level=True,
     )
 
-import wujihandpy.tactile as tactile  # noqa: E402
+import wujihandpy  # noqa: E402
 
 
 def _glove_not_connected():
@@ -27,7 +27,7 @@ def _glove_not_connected():
     returns False and the SDK stays disconnected. Subsequent calls
     must raise ConnectionError, not bare RuntimeError or anything
     else."""
-    glove = tactile.Glove(serial_number="ci-nonexistent-serial-zzz")
+    glove = wujihandpy.TactileGlove(serial_number="ci-nonexistent-serial-zzz")
     assert glove.connect() is False
     return glove
 
@@ -63,12 +63,11 @@ def test_start_streaming_on_disconnected_raises_ConnectionError():
 
 
 def test_enter_context_on_missing_device_raises_ConnectionError():
-    """`with tactile.Glove(serial=...)` should raise ConnectionError
-    on missing device, not bare RuntimeError. Matches stdlib idioms
-    where `socket.connect()` raises ConnectionRefusedError /
-    ConnectionError."""
+    """`with TactileGlove(serial=...)` should raise ConnectionError on
+    missing device, not bare RuntimeError. Matches stdlib idioms where
+    `socket.connect()` raises ConnectionRefusedError / ConnectionError."""
     with pytest.raises(ConnectionError):
-        with tactile.Glove(serial_number="ci-nonexistent-serial-zzz"):
+        with wujihandpy.TactileGlove(serial_number="ci-nonexistent-serial-zzz"):
             pass
 
 

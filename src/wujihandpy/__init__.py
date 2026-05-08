@@ -10,16 +10,27 @@ from ._core import Finger, Joint, IController, filter, logging  # noqa: F401, A0
 from ._upgrade_check import trigger_check_in_background
 from ._version import __version__
 
-# Tactile bindings are Linux-only; keep the rest of wujihandpy importable
-# elsewhere. The except is narrow on purpose: only "the submodule itself
-# isn't shipped on this platform" should downgrade silently. Anything else
-# (ABI mismatch, missing transitive dep, syntax error in tactile.py, an
-# AttributeError raised inside the import) must propagate so users can
-# diagnose the real failure instead of silently losing the API surface.
+# Tactile bindings are Linux-only and gated by WUJIHANDPY_ENABLE_TACTILE at
+# build time. Catch only "the native tactile submodule isn't on this wheel" —
+# anything else (ABI mismatch, missing transitive dep, syntax error in an
+# imported file) must propagate so users see the real failure instead of
+# silently losing the API surface.
 try:
-    from . import tactile  # type: ignore[attr-defined]
+    from ._core.tactile import (  # noqa: F401
+        BOOTLOADER_MAGIC as TACTILE_BOOTLOADER_MAGIC,
+        DeviceInfo as TactileDeviceInfo,
+        DeviceTime as TactileDeviceTime,
+        Diagnostics as TactileDiagnostics,
+        Error as TactileError,
+        Frame as TactileFrame,
+        FwBuild as TactileFwBuild,
+        Glove as TactileGlove,
+        Handedness as TactileHandedness,
+        Status as TactileStatus,
+        SyncResult as TactileSyncResult,
+    )
 except ModuleNotFoundError as _tactile_err:
-    if _tactile_err.name != f"{__name__}.tactile":
+    if _tactile_err.name != f"{__name__}._core.tactile":
         raise
     _HAS_TACTILE = False
 else:
@@ -91,4 +102,16 @@ __all__ = [
     "logging",
 ]
 if _HAS_TACTILE:
-    __all__.append("tactile")
+    __all__ += [
+        "TactileGlove",
+        "TactileFrame",
+        "TactileHandedness",
+        "TactileStatus",
+        "TactileError",
+        "TactileDeviceInfo",
+        "TactileFwBuild",
+        "TactileDiagnostics",
+        "TactileDeviceTime",
+        "TactileSyncResult",
+        "TACTILE_BOOTLOADER_MAGIC",
+    ]

@@ -1,16 +1,12 @@
-"""Tactile glove example: identity, diagnostics, sample-rate change, streaming.
-
-Requires firmware tactile-wire-protocol v1.0 or newer (see
-wh110-firmware-tactile-api/docs/tactile-wire-protocol.md).
-"""
+"""Tactile glove example: identity, diagnostics, sample-rate change, streaming."""
 
 import time
 import numpy as np
-from wujihandpy import tactile
+import wujihandpy
 
 
 def main():
-    with tactile.Glove() as glove:
+    with wujihandpy.TactileGlove() as glove:
         info = glove.get_device_info()
         build = glove.get_fw_build()
         print("Tactile glove")

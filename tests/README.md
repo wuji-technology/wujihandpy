@@ -24,11 +24,10 @@ present in CI, so the convention is:
       sys.exit(0)
   ```
 
-- Hardware prerequisites for the tactile suite: a tactile board (USB
-  VID `0x0483`, PID `0x5700`) flashed with firmware from
-  [`wh110-firmware-tactile-api`](https://github.com/wuji-technology/wh110-firmware-tactile-api)
-  PR #30 or newer, with TBIM written via the firmware repo's
-  `tools/prodtest/flash.py device write` step.
+- Hardware prerequisites for the tactile suite: a tactile glove (USB
+  VID `0x0483`, PID `0x5700`) flashed with firmware that implements the
+  tactile wire protocol v1.0+, with TBIM written via the firmware
+  repo's `tools/prodtest/flash.py device write` step.
 
 Personal one-offs that you don't even want to share inside the team
 should use the `tests/.local_*.py` prefix (also gitignored).

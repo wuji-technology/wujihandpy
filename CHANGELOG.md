@@ -7,74 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Tactile glove support** (Linux only). New `wujihandpy.TactileGlove`
+  exposes the device alongside `Hand` at the top level:
+
+  ```python
+  import wujihandpy
+  hand = wujihandpy.Hand()
+  glove = wujihandpy.TactileGlove()
+  ```
+
+  Pressure frames are `numpy.float32` 24×32 arrays in `[0.0, 1.0]`, with
+  `NaN` marking invalid cells. Public types: `TactileGlove`,
+  `TactileFrame`, `TactileHandedness`, `TactileDeviceInfo`,
+  `TactileFwBuild`, `TactileDiagnostics`, `TactileDeviceTime`,
+  `TactileSyncResult`, `TactileStatus`, `TactileError`,
+  `TACTILE_BOOTLOADER_MAGIC`.
+
+  Hand and TactileGlove use independent USB transports and threads, so
+  they can be driven from one process without coordination — see
+  `example/joint_with_tactile.py`.
+
 ### Changed
 
-- **Tactile glove SDK rewritten for the new wire protocol** (firmware
-  `wh110-firmware/docs/tactile-wire-protocol.md`):
-  - Data frame is now 3088 B (was 1550 B); pressure is `float32` in `[0.0, 1.0]`
-    with `NaN` marking invalid cells (was inverted-polarity `int16`).
-  - All tactile types live under the `wujihandcpp::tactile` C++
-    namespace and the `wujihandpy.tactile` Python submodule. The
-    redundant `Tactile` prefix is dropped from every type name. The
-    device class is `wujihandpy.tactile.Glove` (was
-    `wujihandpy.TactileBoard`) — named for the physical accessory, not
-    the PCB inside it. Other types: `tactile.Frame`, `tactile.DeviceInfo`,
-    `tactile.FwBuild`, `tactile.Diagnostics`, `tactile.DeviceTime`,
-    `tactile.SyncResult`, `tactile.Status`, `tactile.Error`,
-    `tactile.BOOTLOADER_MAGIC`.
-  - `tactile.Frame.pressure` is exposed as a `numpy.float32` 24×32 array.
-  - New commands on `tactile.Glove`: `get_device_info`, `get_fw_build`,
-    `get_handedness`, `get_diagnostics`, `reset_counters`, `set_streaming`,
-    `reset_device`, `enter_bootloader`, `get_sample_rate_hz`,
-    `set_sample_rate_hz`, `get_streaming_enabled`, `get_device_time`,
-    `sync_host_epoch`. The frame-derived `handedness()` is replaced by
-    `get_handedness()` (queries the device directly).
-  - `set_disconnect_callback()` replaces the prior "zero-init frame as
-    disconnect signal" hack — `0.0` is now a legitimate pressure value.
-  - `Glove()` without `serial_number` raises `RuntimeError` listing all
-    found serials when more than one glove is on the bus, instead of
-    silently selecting the first device by tty name (whose ordering is
-    not stable across reboots).
-  - Default per-command timeout raised from spec's recommended 500 ms to
-    2000 ms to absorb a sporadic ~0.5 s host-side cdc-acm stall observed on
-    Linux 6.8 (firmware-side counters confirm zero drops/CRC errors during
-    the stall — bytes simply don't surface from the kernel during the
-    window). Demuxer queue sized at 16 frames (~130 ms @ 120 Hz). Tactile
-    consumers must tolerate occasional sub-second sequence gaps.
+- **`Hand` default `usb_pid` changed from `-1` (any) to `0x2000`.** The
+  old default would silently match the tactile glove (PID `0x5700`,
+  same VID `0x0483`) when both were on the bus and fail with "multiple
+  devices found". Single-hand setups are unaffected. Pre-production
+  firmware with non-`0x2000` PIDs must now pass `usb_pid=` explicitly.
 
-- **SDK consumed via CMake Config package**. `find_package(wujihandcpp
-  CONFIG REQUIRED)` now resolves a properly exported
-  `wujihandcpp::wujihandcpp` imported target with transitive
-  spdlog/Threads/usb-1.0 deps wired through. Standalone builds install
-  `lib/cmake/wujihandcpp/wujihandcppConfig.cmake` and the matching
-  spdlog Config alongside (`SPDLOG_INSTALL=ON`); the Python wheel build
-  opts out via `WUJIHANDCPP_INSTALL=OFF` so neither pollutes the wheel.
+- **Hand USB transport failures now raise `ConnectionError`** in Python
+  (was bare `RuntimeError`), mirroring `TactileGlove`. Affects
+  "device not found", "multiple devices match", and libusb transfer
+  failures.
 
-- **`Hand` default `usb_pid` changed from `-1` (any) to `0x2000`** in
-  both `wujihandpy.Hand` (Python) and `wujihandcpp::device::Hand` (C++).
-  The old default was set when the joint controller was the only product
-  under VID 0x0483; the tactile glove (PID 0x5700) shares the VID, so
-  `Hand()` would silently match the glove and fail with "multiple
-  devices found". Single-hand setups are unaffected. Users on
-  pre-production firmware with non-`0x2000` PIDs must now pass
-  `usb_pid=` explicitly.
+- **`TactileGlove()` without `serial_number` raises `ConnectionError`**
+  listing all found serials when more than one glove is on the bus,
+  instead of silently selecting the first one (whose tty ordering is
+  not stable across reboots).
 
-- **Hand USB transport failures map to `ConnectionError`** in Python
-  (was bare `RuntimeError`). Mirrors the tactile.Glove transport-error
-  mapping. New `wujihandcpp::device::ConnectionError` C++ class
-  (inherits `std::runtime_error` so existing C++ catch blocks keep
-  working). Affects "device not found", "multiple devices match", and
-  libusb transfer-submit failures.
+- **SDK consumed via CMake Config package.** Downstream C++ users do
+  `find_package(wujihandcpp CONFIG REQUIRED)` and link against
+  `wujihandcpp::wujihandcpp`; transitive spdlog/Threads/usb-1.0 deps
+  are wired through.
 
-- **Examples reorganized** by subsystem:
-  - `example/joint/{1.read,2.write,3.realtime,4.async,5.multithread}.py`
-    (unchanged content, moved into a subdirectory).
-  - `example/tactile/basic.py` (was `example/6.tactile.py`); rewritten
-    to use the new `from wujihandpy import tactile` import.
-  - `example/joint_with_tactile.py` — new; drives joint motion while
-    streaming tactile frames in the same process, demonstrating that
-    `Hand` and `tactile.Glove` use independent transports/threads and
-    can be composed without coordination.
+- **Examples reorganized.** Joint examples moved into
+  `example/joint/`. New `example/tactile/basic.py` covers identity,
+  diagnostics, and streaming; new `example/joint_with_tactile.py`
+  drives both subsystems from one process.
 
 ## [1.6.0] - 2026-04-27
 
