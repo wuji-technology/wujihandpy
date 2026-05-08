@@ -9,57 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Tactile glove support** (Linux only). New `wujihandpy.TactileGlove`
-  exposes the device alongside `Hand` at the top level:
-
-  ```python
-  import wujihandpy
-  hand = wujihandpy.Hand()
-  glove = wujihandpy.TactileGlove()
-  ```
-
-  Pressure frames are `numpy.float32` 24×32 arrays in `[0.0, 1.0]`, with
-  `NaN` marking invalid cells. Public types: `TactileGlove`,
-  `TactileFrame`, `TactileHandedness`, `TactileDeviceInfo`,
-  `TactileFwBuild`, `TactileDiagnostics`, `TactileDeviceTime`,
-  `TactileSyncResult`, `TactileStatus`, `TactileError`,
-  `TACTILE_BOOTLOADER_MAGIC`.
-
-  Hand and TactileGlove use independent USB transports and threads, so
-  they can be driven from one process without coordination — see
-  `example/joint_with_tactile.py`.
+- **Tactile glove support** (Linux only): top-level `wujihandpy.TactileGlove` and matching `TactileFrame` / `TactileHandedness` / `TactileError` etc. Pressure frames are `numpy.float32` 24×32 arrays in `[0, 1]` with `NaN` for invalid cells. Hand + TactileGlove can run in one process — see `example/joint_with_tactile.py`.
 
 ### Changed
 
-- **`Hand` default `usb_pid` changed from `-1` (any) to `0x2000`.** The
-  old default would silently match the tactile glove (PID `0x5700`,
-  same VID `0x0483`) when both were on the bus and fail with "multiple
-  devices found". Single-hand setups are unaffected. Pre-production
-  firmware with non-`0x2000` PIDs must now pass `usb_pid=` explicitly.
-
-- **Hand USB transport failures now raise `ConnectionError`** in Python
-  (was bare `RuntimeError`), mirroring `TactileGlove`. Affects
-  "device not found", "multiple devices match", and libusb transfer
-  failures.
-
-- **`TactileGlove()` without `serial_number` raises `ConnectionError`**
-  listing all found serials when more than one glove is on the bus,
-  instead of silently selecting the first one (whose tty ordering is
-  not stable across reboots).
-
-- **SDK consumed via CMake Config package.** Downstream C++ users do
-  `find_package(wujihandcpp CONFIG REQUIRED)` and link against
-  `wujihandcpp::wujihandcpp`; transitive spdlog/Threads/usb-1.0 deps
-  are wired through.
-
-- **Examples reorganized.** Joint examples moved into
-  `example/joint/`. New `example/tactile/basic.py` covers identity,
-  diagnostics, and streaming; new `example/joint_with_tactile.py`
-  drives both subsystems from one process.
+- **`Hand` default `usb_pid`**: `-1` → `0x2000`, to avoid silently matching the tactile glove (shared VID `0x0483`). Pre-production firmware with other PIDs must pass `usb_pid=` explicitly.
+- **Hand USB transport failures raise `ConnectionError`** (was `RuntimeError`), matching `TactileGlove`.
+- **`TactileGlove()` without `serial_number`** raises `ConnectionError` listing found serials when multiple gloves are on the bus, instead of silently picking the first.
+- **SDK now consumed via CMake Config**: `find_package(wujihandcpp CONFIG REQUIRED)` + link `wujihandcpp::wujihandcpp`.
+- **Examples reorganized** into `example/joint/`, `example/tactile/basic.py`, and `example/joint_with_tactile.py`.
 
 ### Removed
 
-- **Zenoh Bridge (Python + C++)**: removed `@control` acquire/release protocol; SET / PUT writes no longer require an acquire handshake.
+- **Zenoh Bridge (Python + C++)**: dropped `@control` acquire/release protocol; SET / PUT writes no longer require a handshake.
 
 ## [1.6.0] - 2026-04-27
 
