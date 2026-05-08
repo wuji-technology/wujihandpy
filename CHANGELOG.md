@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- **Zenoh Bridge (Python + C++)**: removed `@control` acquire/release protocol
+  and the liveliness-based owner TTL watcher. Writes (SET resources,
+  fire-and-forget `joint/target_position` PUT) no longer require an acquire
+  handshake or a requester-identity attachment — any client reachable over
+  Zenoh may write. Single-writer protection, if needed, must be enforced by
+  the deployment topology (firewall rules, Zenoh ACL, isolated network).
+
+  Aligns with `wuji-sdk` PR #215 [SWD-1132], which removed the corresponding
+  `acquire_control` / `release_control` SDK API and per-write attachment
+  plumbing. Without this companion change, `wuji-sdk` clients would lose
+  the ability to write WujiHand via this bridge.
+
+  Removed (Python): `_handle_control` / `_get_requester_id` /
+  `_start_owner_watcher` / `_stop_owner_watcher` / `_control_owner_key` /
+  `_control_owner` / `_control_lock` / `_control_owner_watcher` /
+  `decode_zenoh_text` (now unused).
+  Removed (C++): `handle_control` / `start_owner_watcher` /
+  `stop_owner_watcher` / `control_owner_key` / `control_owner_` /
+  `control_mutex_` / `control_owner_watcher_` / `requester_id_from_attachment`.
+  Tests: 14 control-권 / attachment / owner-watcher unit tests removed,
+  replaced with one positive test confirming SET succeeds without an
+  attachment. README "Control Protocol" section replaced with a "Write
+  Access" note explaining the new policy.
+
 ## [1.6.0] - 2026-04-27
 
 ### Changed

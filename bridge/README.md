@@ -80,10 +80,8 @@ def callback(sample):
 
 
 session = zenoh.open(zenoh.Config())
-zid = str(session.zid())
 target = [[0.1, 0.0, 0.1, 0.1] for _ in range(5)]
 sub = None
-owner_token = session.liveliness().declare_token(f"wuji/{sn}/@control_owner/{zid}")
 
 try:
     # 1. Discover devices via liveliness
@@ -92,34 +90,18 @@ try:
     # 2. Query capability
     replies = session.get(f"wuji/{sn}/@capability", timeout=5.0)
 
-    # 3. Acquire control (declare the control-owner liveliness token first)
-    session.get(
-        f"wuji/{sn}/@control",
-        payload=f"acquire:{zid}".encode(),
-        attachment=zid.encode(),
-        timeout=5.0,
-    )
-
-    # 4. Read data (GET)
+    # 3. Read data (GET)
     replies = session.get(f"wuji/{sn}/joint/actual_position", timeout=5.0)
 
-    # 5. Write target position (low-latency fire-and-forget PUT)
+    # 4. Write target position (low-latency fire-and-forget PUT)
     session.put(
         f"wuji/{sn}/joint/target_position",
         json.dumps(target).encode(),
-        attachment=zid.encode(),
     )
 
-    # 6. Subscribe to realtime data (rate controlled by --pub-rate)
+    # 5. Subscribe to realtime data (rate controlled by --pub-rate)
     sub = session.declare_subscriber(f"wuji/{sn}/joint/actual_position", callback)
 finally:
-    session.get(
-        f"wuji/{sn}/@control",
-        payload=f"release:{zid}".encode(),
-        attachment=zid.encode(),
-        timeout=5.0,
-    )
-    owner_token.undeclare()
     if sub is not None:
         sub.undeclare()
     session.close()
@@ -152,8 +134,6 @@ finally:
 
 ### SET Resources
 
-These resources require control ownership.
-
 | Path | Type | Description |
 |------|------|-------------|
 | `joint/target_position` | 5x4 float | Target position |
@@ -179,16 +159,9 @@ By default, SUB resources are published as a timestamped envelope:
 
 **Exception:** `joint_states` is published raw (no envelope) so its schema title remains exactly `sensor_msgs/JointState` for downstream consumers that key on schema name (e.g. Wuji Studio's 3D panel). Ordering for this topic is carried in the standard ROS `header.stamp` field instead of `timestamp_us`.
 
-## Control Protocol
+## Write Access
 
-- Acquire: send `acquire:{your_zid}` and receive `granted` or `denied:{current_owner}`
-- Release: send `release:{your_zid}` and receive `released`
-- Query: send an empty payload and receive the current owner or `none`
-- Auto-release on crash: the bridge watches the owner's Zenoh liveliness token and releases control if that process disappears
-
-Control-changing requests must attach the requester identity in the Zenoh attachment. The bridge verifies that:
-- `@control` acquire/release uses the same requester in both payload and attachment
-- fire-and-forget `joint/target_position` PUT uses the current control owner's requester id in the attachment
+Writes (SET resources, fire-and-forget `joint/target_position` PUT) are **not gated by an `@control` acquire/release handshake**. Any client that can reach the bridge over Zenoh may write. Single-writer protection, if needed, must be enforced by the deployment topology (e.g. firewall rules, Zenoh ACL, or running the bridge on an isolated network).
 
 ## Visualize in Wuji Studio
 

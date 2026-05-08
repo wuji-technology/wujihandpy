@@ -48,25 +48,10 @@ static void log_info(const std::string& msg) {
     logging::log(logging::Level::INFO, msg.c_str(), msg.size());
 }
 
-static void log_warn(const std::string& msg) {
-    logging::log(logging::Level::WARN, msg.c_str(), msg.size());
-}
-
 static void log_error(const std::string& msg) {
     logging::log(logging::Level::ERR, msg.c_str(), msg.size());
 }
 
-static std::optional<std::string> requester_id_from_attachment(
-    const std::optional<std::reference_wrapper<const zenoh::Bytes>>& attachment) {
-    if (!attachment.has_value()) {
-        return std::nullopt;
-    }
-    auto requester = attachment->get().as_string();
-    if (requester.empty()) {
-        return std::nullopt;
-    }
-    return requester;
-}
 
 // ---------------------------------------------------------------------------
 // Resource definitions (must match Python bridge exactly)
@@ -254,16 +239,7 @@ void HandBridge::start() {
         []() {}));
     log_info("@capability queryable declared");
 
-    // 5. Control queryable
-    queryables_.push_back(session_->declare_queryable(
-        zenoh::KeyExpr(key("@control")),
-        [this](zenoh::Query& query) {
-            handle_control(query);
-        },
-        []() {}));
-    log_info("@control queryable declared");
-
-    // 6. Resource queryables + publishers for SUB resources
+    // 5. Resource queryables + publishers for SUB resources
     for (const auto& r : resource_defs()) {
         if (r.can_get || r.can_set) {
             auto r_copy = r;  // capture by value to avoid dangling reference
@@ -282,29 +258,14 @@ void HandBridge::start() {
         }
     }
 
-    // 7. Subscribe to target_position for fire-and-forget writes (low latency)
+    // 6. Subscribe to target_position for fire-and-forget writes (low latency).
+    //    Note: writes are no longer gated by an `@control` acquire/release
+    //    handshake — single-writer protection, if needed, must be enforced by
+    //    the deployment topology (e.g. firewall rules, Zenoh access control).
     subscribers_.push_back(session_->declare_subscriber(
         zenoh::KeyExpr(key("joint/target_position")),
         [this](zenoh::Sample& sample) {
             try {
-                auto requester = requester_id_from_attachment(sample.get_attachment());
-                {
-                    std::lock_guard lock(control_mutex_);
-                    if (control_owner_.empty()) {
-                        log_warn("Ignoring target_position PUT without control owner");
-                        return;
-                    }
-                    if (!requester.has_value()) {
-                        log_warn("Ignoring target_position PUT without requester attachment");
-                        return;
-                    }
-                    if (*requester != control_owner_) {
-                        log_warn(
-                            "Ignoring target_position PUT from non-owner requester " + *requester + " (owner=" +
-                            control_owner_ + ")");
-                        return;
-                    }
-                }
                 auto value = json::parse(sample.get_payload().as_string());
                 write_resource("joint/target_position", value);
             } catch (const std::exception& e) {
@@ -314,7 +275,7 @@ void HandBridge::start() {
         []() {}));
     log_info("target_position subscriber declared (fire-and-forget path)");
 
-    // 8. Start publisher jthread
+    // 7. Start publisher jthread
     if (!publishers_.empty()) {
         pub_thread_ = std::jthread([this](std::stop_token st) {
             publish_loop(std::move(st));
@@ -347,7 +308,6 @@ void HandBridge::stop() {
     }
 
     // 4. Clear Zenoh resources (RAII)
-    stop_owner_watcher();
     subscribers_.clear();
     queryables_.clear();
     publishers_.clear();
@@ -396,139 +356,6 @@ void HandBridge::stop_realtime_controller() {
 }
 
 // ---------------------------------------------------------------------------
-// Liveliness-based control TTL
-// ---------------------------------------------------------------------------
-std::string HandBridge::control_owner_key(const std::string& owner_zid) const {
-    return key("@control_owner/" + owner_zid);
-}
-
-void HandBridge::start_owner_watcher(const std::string& owner_zid) {
-    stop_owner_watcher();
-
-    auto owner_key = control_owner_key(owner_zid);
-    control_owner_watcher_.emplace(session_->liveliness_declare_subscriber(
-        zenoh::KeyExpr(owner_key),
-        [this, owner_zid](zenoh::Sample& sample) {
-            // SampleKind::Z_SAMPLE_KIND_DELETE means liveliness token dropped (owner crashed)
-            if (sample.get_kind() == Z_SAMPLE_KIND_DELETE) {
-                {
-                    std::lock_guard lock(control_mutex_);
-                    if (control_owner_ == owner_zid) {
-                        log_info("Control owner " + owner_zid + " crashed, auto-releasing");
-                        control_owner_.clear();
-                    }
-                }
-                // Keep the watcher alive until explicit release, replacement, or shutdown.
-                // Resetting the subscriber from inside its own callback is unsafe.
-            }
-        },
-        []() {}));
-    log_info("Owner watcher started for " + owner_zid);
-}
-
-void HandBridge::stop_owner_watcher() {
-    control_owner_watcher_.reset();
-}
-
-// ---------------------------------------------------------------------------
-// handle_control
-// ---------------------------------------------------------------------------
-void HandBridge::handle_control(zenoh::Query& query) {
-    auto key_str = key("@control");
-
-    std::string payload_str;
-    auto payload_opt = query.get_payload();
-    if (payload_opt.has_value()) {
-        payload_str = payload_opt->get().as_string();
-    }
-    auto attachment_requester = requester_id_from_attachment(query.get_attachment());
-
-    if (payload_str.starts_with("acquire:")) {
-        auto requester = payload_str.substr(8);
-        if (!attachment_requester.has_value() || *attachment_requester != requester) {
-            query.reply_err(zenoh::Bytes("identity_mismatch"));
-            log_warn(
-                "Control acquire rejected: payload requester " + requester + " != attachment requester " +
-                attachment_requester.value_or("<missing>"));
-            return;
-        }
-
-        std::string current_owner;
-        {
-            std::lock_guard lock(control_mutex_);
-            current_owner = control_owner_;
-            if (!current_owner.empty() && current_owner != requester) {
-                // handled after releasing the mutex
-            } else {
-                control_owner_ = requester;
-                current_owner.clear();
-            }
-        }
-        if (!current_owner.empty()) {
-            query.reply(zenoh::KeyExpr(key_str),
-                        zenoh::Bytes("denied:" + current_owner));
-            log_info("Control denied to " + requester + ", owner: " + current_owner);
-            return;
-        }
-
-        try {
-            start_owner_watcher(requester);
-            {
-                std::lock_guard lock(control_mutex_);
-                if (control_owner_ != requester) {
-                    throw std::runtime_error("control owner lost before acquire completed");
-                }
-            }
-            query.reply(zenoh::KeyExpr(key_str),
-                        zenoh::Bytes("granted"));
-            log_info("Control granted to " + requester);
-        } catch (const std::exception& e) {
-            {
-                std::lock_guard lock(control_mutex_);
-                if (control_owner_ == requester) {
-                    control_owner_.clear();
-                }
-            }
-            stop_owner_watcher();
-            query.reply_err(zenoh::Bytes(std::string(e.what())));
-            log_error("Control acquire failed for " + requester + ": " + e.what());
-        }
-    } else if (payload_str.starts_with("release:")) {
-        auto requester = payload_str.substr(8);
-        if (!attachment_requester.has_value() || *attachment_requester != requester) {
-            query.reply_err(zenoh::Bytes("identity_mismatch"));
-            log_warn(
-                "Control release rejected: payload requester " + requester + " != attachment requester " +
-                attachment_requester.value_or("<missing>"));
-            return;
-        }
-
-        bool released = false;
-        {
-            std::lock_guard lock(control_mutex_);
-            if (control_owner_ == requester) {
-                control_owner_.clear();
-                released = true;
-            }
-        }
-        if (released) {
-            stop_owner_watcher();
-            query.reply(zenoh::KeyExpr(key_str),
-                        zenoh::Bytes("released"));
-            log_info("Control released by " + requester);
-        } else {
-            query.reply(zenoh::KeyExpr(key_str),
-                        zenoh::Bytes("not_owner"));
-        }
-    } else {
-        std::lock_guard lock(control_mutex_);
-        auto owner = control_owner_.empty() ? std::string("none") : control_owner_;
-        query.reply(zenoh::KeyExpr(key_str),
-                    zenoh::Bytes(owner));
-    }
-}
-
-// ---------------------------------------------------------------------------
 // handle_resource_query
 // ---------------------------------------------------------------------------
 void HandBridge::handle_resource_query(zenoh::Query& query, const ResourceDef& res) {
@@ -561,25 +388,6 @@ void HandBridge::handle_resource_query(zenoh::Query& query, const ResourceDef& r
         if (!res.can_set) {
             query.reply_err(zenoh::Bytes("SET not supported"));
             return;
-        }
-        auto requester = requester_id_from_attachment(query.get_attachment());
-        {
-            std::lock_guard lock(control_mutex_);
-            if (control_owner_.empty()) {
-                query.reply_err(zenoh::Bytes("no control owner"));
-                return;
-            }
-            if (!requester.has_value()) {
-                query.reply_err(zenoh::Bytes("missing requester id"));
-                log_warn("SET " + res.path + " rejected: missing requester attachment");
-                return;
-            }
-            if (*requester != control_owner_) {
-                query.reply_err(zenoh::Bytes("not control owner"));
-                log_warn(
-                    "SET " + res.path + " rejected: requester " + *requester + " != owner " + control_owner_);
-                return;
-            }
         }
         try {
             auto value = json::parse(payload_str);

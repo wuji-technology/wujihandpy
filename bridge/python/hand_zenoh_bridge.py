@@ -38,32 +38,6 @@ def wrap_with_timestamp(value, timestamp_us: Optional[int] = None) -> dict:
     return {"timestamp_us": timestamp_us, "data": value}
 
 
-def decode_zenoh_text(value) -> Optional[str]:
-    """Best-effort decode for Zenoh payload/attachment text fields."""
-    if value is None:
-        return None
-    if isinstance(value, str):
-        return value
-    if isinstance(value, (bytes, bytearray)):
-        return bytes(value).decode("utf-8", errors="replace")
-
-    to_string = getattr(value, "to_string", None)
-    if callable(to_string):
-        decoded = to_string()
-        if isinstance(decoded, str):
-            return decoded
-
-    to_bytes = getattr(value, "to_bytes", None)
-    if callable(to_bytes):
-        decoded = to_bytes()
-        if isinstance(decoded, (bytes, bytearray)):
-            return bytes(decoded).decode("utf-8", errors="replace")
-
-    try:
-        return bytes(value).decode("utf-8", errors="replace")
-    except (TypeError, ValueError):
-        return None
-
 logger = logging.getLogger("hand_bridge")
 
 
@@ -372,14 +346,11 @@ class HandBridge:
         self.session = None
         self._alive_token = None
         self._running = False
-        self._control_owner = None
-        self._control_owner_watcher = None  # liveliness subscriber for owner TTL
         self._threads = []
         self._queryables = []
         self._subscribers = []
         self._publishers = {}
         self._hand_lock = threading.Lock()
-        self._control_lock = threading.Lock()
         # Strictly-monotonic ns timestamp for `header.stamp` on joint_states.
         # Uses CLOCK_MONOTONIC (time.monotonic_ns) so NTP / wall-clock jumps
         # can't cause regressions, plus a +1 floor against same-value reads.
@@ -410,45 +381,6 @@ class HandBridge:
             self._last_stamp_ns = now
             return now
 
-    def _control_owner_key(self, owner_zid: str) -> str:
-        """Liveliness key for tracking a control owner's presence."""
-        return f"wuji/{self.sanitized_sn}/@control_owner/{owner_zid}"
-
-    def _start_owner_watcher(self, owner_zid: str):
-        """Start watching owner's liveliness. Auto-release control if owner crashes."""
-        self._stop_owner_watcher()
-
-        owner_key = self._control_owner_key(owner_zid)
-
-        def on_sample(sample):
-            """Handle liveliness change; auto-release control on owner crash."""
-            # SampleKind.DELETE means the liveliness token was dropped (owner crashed)
-            if hasattr(sample, "kind") and sample.kind == zenoh.SampleKind.DELETE:
-                with self._control_lock:
-                    if self._control_owner == owner_zid:
-                        logger.warning(f"Control owner {owner_zid} crashed, auto-releasing")
-                        self._control_owner = None
-                self._stop_owner_watcher()
-
-        try:
-            watcher = self.session.liveliness().declare_subscriber(owner_key, on_sample)
-            if watcher is None:
-                raise RuntimeError(f"declare_subscriber returned None for {owner_key}")
-            self._control_owner_watcher = watcher
-            logger.debug(f"Owner watcher started for {owner_zid}")
-        except Exception:
-            self._control_owner_watcher = None
-            raise
-
-    def _stop_owner_watcher(self):
-        """Stop watching the current owner's liveliness."""
-        if self._control_owner_watcher is not None:
-            try:
-                self._control_owner_watcher.undeclare()
-            except Exception as e:
-                logger.debug(f"Failed to undeclare owner watcher: {e}")
-            self._control_owner_watcher = None
-
     def _undeclare(self, entity, label: str):
         """Best-effort undeclare for Zenoh entities during shutdown."""
         if entity is None:
@@ -469,13 +401,6 @@ class HandBridge:
             close()
         except Exception as e:
             logger.debug(f"Failed to close Zenoh session: {e}")
-
-    def _get_requester_id(self, message) -> Optional[str]:
-        """Extract requester ZID from a query/sample attachment."""
-        requester = decode_zenoh_text(getattr(message, "attachment", None))
-        if requester:
-            return requester
-        return None
 
     def _start_realtime_controller(self):
         """Enable joints and start realtime controller (raw passthrough)."""
@@ -581,14 +506,7 @@ class HandBridge:
             ))
             logger.info("@capability queryable declared")
 
-            # 5. Control queryable
-            self._queryables.append(self.session.declare_queryable(
-                self._key("@control"),
-                self._handle_control,
-            ))
-            logger.info("@control queryable declared")
-
-            # 6. Resource queryables (GET/SET)
+            # 5. Resource queryables (GET/SET)
             for r in RESOURCE_DEFS:
                 if r["can_get"] or r["can_set"]:
                     q = self.session.declare_queryable(
@@ -598,7 +516,7 @@ class HandBridge:
                     self._queryables.append(q)
                     logger.info(f"Resource queryable: {r['path']}")
 
-            # 7. Subscribe to target_position for fire-and-forget writes (low latency)
+            # 6. Subscribe to target_position for fire-and-forget writes (low latency)
             target_pos_sub = self.session.declare_subscriber(
                 self._key("joint/target_position"),
                 self._handle_target_position_put,
@@ -606,7 +524,7 @@ class HandBridge:
             self._subscribers.append(target_pos_sub)
             logger.info("target_position subscriber declared (fire-and-forget path)")
 
-            # 8. SUB publishers (continuous streams)
+            # 7. SUB publishers (continuous streams)
             for r in RESOURCE_DEFS:
                 if r["can_sub"]:
                     pub = self.session.declare_publisher(self._key(r["path"]))
@@ -641,10 +559,6 @@ class HandBridge:
         except Exception as e:
             logger.warning(f"Failed to stop realtime controller: {e}")
 
-        with self._control_lock:
-            self._control_owner = None
-        self._stop_owner_watcher()
-
         session = self.session
         if session is not None:
             try:
@@ -669,78 +583,15 @@ class HandBridge:
         self._close_session(session)
         logger.info("Bridge stopped")
 
-    def _handle_control(self, query):
-        """Handle @control acquire/release protocol with liveliness-based TTL.
-
-        When control is acquired, a liveliness subscriber watches the owner's
-        presence. If the owner process crashes (liveliness token dropped),
-        control is automatically released.
-        """
-        key = self._key("@control")
-        payload = bytes(query.payload) if query.payload else b""
-        payload_str = payload.decode("utf-8", errors="replace")
-
-        if payload_str.startswith("acquire:"):
-            requester = payload_str[len("acquire:"):]
-            attachment_requester = self._get_requester_id(query)
-            if attachment_requester != requester:
-                query.reply_err(b"identity_mismatch")
-                logger.warning(
-                    "Control acquire rejected: payload requester %r != attachment requester %r",
-                    requester,
-                    attachment_requester,
-                )
-                return
-            with self._control_lock:
-                current_owner = self._control_owner
-                if current_owner is not None and current_owner != requester:
-                    query.reply(key, f"denied:{current_owner}".encode())
-                    logger.info(f"Control denied to {requester}, owner: {current_owner}")
-                    return
-                # Reserve control so competing acquire requests stay serialized while
-                # we establish the liveliness watcher.
-                self._control_owner = requester
-
-            try:
-                self._start_owner_watcher(requester)
-                with self._control_lock:
-                    if self._control_owner != requester:
-                        raise RuntimeError("control owner lost before acquire completed")
-                query.reply(key, b"granted")
-                logger.info(f"Control granted to {requester}")
-            except Exception as e:
-                with self._control_lock:
-                    if self._control_owner == requester:
-                        self._control_owner = None
-                self._stop_owner_watcher()
-                query.reply_err(str(e).encode())
-                logger.error(f"Control acquire failed for {requester}: {e}")
-        elif payload_str.startswith("release:"):
-            requester = payload_str[len("release:"):]
-            attachment_requester = self._get_requester_id(query)
-            if attachment_requester != requester:
-                query.reply_err(b"identity_mismatch")
-                logger.warning(
-                    "Control release rejected: payload requester %r != attachment requester %r",
-                    requester,
-                    attachment_requester,
-                )
-                return
-            with self._control_lock:
-                if self._control_owner == requester:
-                    self._control_owner = None
-                    self._stop_owner_watcher()
-                    query.reply(key, b"released")
-                    logger.info(f"Control released by {requester}")
-                else:
-                    query.reply(key, b"not_owner")
-        else:
-            with self._control_lock:
-                owner = self._control_owner or "none"
-            query.reply(key, owner.encode())
-
     def _handle_resource_query(self, query, resource_def):
-        """Handle GET/SET for a resource."""
+        """Handle GET/SET for a resource.
+
+        Note: write operations (SET / target_position PUT) are no longer gated
+        by an `@control` acquire/release handshake. Any client that can reach
+        this bridge via Zenoh may write. Single-writer protection, if needed,
+        must be enforced by the deployment topology (e.g. firewall rules,
+        Zenoh access control).
+        """
         key = self._key(resource_def["path"])
         payload = bytes(query.payload) if query.payload else b""
 
@@ -760,25 +611,6 @@ class HandBridge:
             if not resource_def["can_set"]:
                 query.reply_err(b"SET not supported")
                 return
-            requester = self._get_requester_id(query)
-            with self._control_lock:
-                owner = self._control_owner
-            if owner is None:
-                query.reply_err(b"no control owner")
-                return
-            if requester is None:
-                query.reply_err(b"missing requester id")
-                logger.warning(f"SET {resource_def['path']} rejected: missing requester attachment")
-                return
-            if requester != owner:
-                query.reply_err(b"not control owner")
-                logger.warning(
-                    "SET %s rejected: requester %s != owner %s",
-                    resource_def["path"],
-                    requester,
-                    owner,
-                )
-                return
             try:
                 value = json.loads(payload.decode("utf-8"))
                 self._write_resource(resource_def["path"], value)
@@ -788,24 +620,12 @@ class HandBridge:
                 query.reply_err(str(e).encode())
 
     def _handle_target_position_put(self, sample):
-        """Handle fire-and-forget PUT for target_position (low-latency path)."""
+        """Handle fire-and-forget PUT for target_position (low-latency path).
+
+        See `_handle_resource_query` for the rationale on dropping the
+        per-write control-owner check.
+        """
         try:
-            requester = self._get_requester_id(sample)
-            with self._control_lock:
-                owner = self._control_owner
-            if owner is None:
-                logger.warning("Ignoring target_position PUT without control owner")
-                return
-            if requester is None:
-                logger.warning("Ignoring target_position PUT without requester attachment")
-                return
-            if requester != owner:
-                logger.warning(
-                    "Ignoring target_position PUT from non-owner requester %s (owner=%s)",
-                    requester,
-                    owner,
-                )
-                return
             value = json.loads(bytes(sample.payload).decode("utf-8"))
             self._write_resource("joint/target_position", value)
         except ValueError as e:
