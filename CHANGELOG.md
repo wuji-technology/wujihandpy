@@ -21,10 +21,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CMake integration** (C++ consumers): now via `find_package(wujihandcpp CONFIG REQUIRED)` + `wujihandcpp::wujihandcpp`.
 - **Examples**: reorganized into `example/joint/`, `example/tactile/basic.py`, and `example/joint_with_tactile.py`.
 
-### Fixed
-
-- Realtime controller cleanup (`Hand.realtime_controller(...)` context exit) no longer throws spurious "No realtime controller attached" when the firmware-filter path is active.
-
 ### Removed
 
 - **Zenoh Bridge (Python + C++)**: dropped `@control` acquire/release protocol; SET / PUT writes no longer require a handshake.
