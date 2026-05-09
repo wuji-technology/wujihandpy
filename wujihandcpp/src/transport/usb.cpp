@@ -406,11 +406,11 @@ private:
             if (ret == LIBUSB_ERROR_NO_DEVICE)
                 logger_.error(
                     "Failed to re-submit receive transfer: Device disconnected. "
-                    "Reporting via on_error.");
+                    "Terminating...");
             else
                 logger_.error(
-                    "Failed to re-submit receive transfer: {} ({}). Reporting via on_error.",
-                    ret, libusb_errname(ret));
+                    "Failed to re-submit receive transfer: {} ({}). Terminating...", ret,
+                    libusb_errname(ret));
             destroy_libusb_transfer(transfer);
 
             receive_error_.store(true, std::memory_order::release);
