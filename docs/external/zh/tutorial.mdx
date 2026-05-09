@@ -142,7 +142,7 @@ positions = hand.read_joint_actual_position()
 ```
 
 ### 2.4 更多示例
-- [example/1.read.py](https://github.com/wuji-technology/wujihandpy/blob/main/example/1.read.py)
+- [example/joint/1.read.py](https://github.com/wuji-technology/wujihandpy/blob/main/example/joint/1.read.py)
 
 
 ## 3. 写入数据
@@ -253,7 +253,7 @@ hand.write_joint_target_position(
 会导致操作失败，抛出 TimeoutError。
 
 ### 3.5 更多示例
-- [example/2.write.py](https://github.com/wuji-technology/wujihandpy/blob/main/example/2.write.py)
+- [example/joint/2.write.py](https://github.com/wuji-technology/wujihandpy/blob/main/example/joint/2.write.py)
 
 
 ## 4. 实时控制
@@ -355,7 +355,7 @@ finally:
 ```
 
 ### 4.6 进阶示例
-- [example/3.realtime.py](https://github.com/wuji-technology/wujihandpy/blob/main/example/3.realtime.py)
+- [example/joint/3.realtime.py](https://github.com/wuji-technology/wujihandpy/blob/main/example/joint/3.realtime.py)
 
 
 ## 5. 异步读/写
@@ -412,7 +412,7 @@ asyncio.run(main())
 ```
 
 ### 5.2 进阶示例
-- [example/4.async.py](https://github.com/wuji-technology/wujihandpy/blob/main/example/4.async.py)
+- [example/joint/4.async.py](https://github.com/wuji-technology/wujihandpy/blob/main/example/joint/4.async.py)
 
 
 ## 6. 多线程操作
@@ -536,4 +536,4 @@ Thread safety check disabled, multi-threaded access enabled
 - F1（拇指）保持不动，F2（食指）、F3（中指）、F4（无名指）、F5（小指）会做周期性弯曲-伸展动作
 
 ### 6.4 进阶示例
-- [example/5.multithread.py](https://github.com/wuji-technology/wujihandpy/blob/main/example/5.multithread.py)
+- [example/joint/5.multithread.py](https://github.com/wuji-technology/wujihandpy/blob/main/example/joint/5.multithread.py)

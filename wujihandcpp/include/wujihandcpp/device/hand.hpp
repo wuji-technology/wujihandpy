@@ -29,7 +29,7 @@ class Hand : public DataOperator<Hand> {
 
 public:
     explicit Hand(
-        const char* serial_number = nullptr, int32_t usb_pid = -1, uint16_t usb_vid = 0x0483,
+        const char* serial_number = nullptr, int32_t usb_pid = 0x2000, uint16_t usb_vid = 0x0483,
         uint32_t mask = 0)
         : handler_(usb_vid, usb_pid, serial_number, data_count()) {
 

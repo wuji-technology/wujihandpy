@@ -10,6 +10,9 @@
 #include "controller.hpp"
 #include "filter.hpp"
 #include "logging.hpp"
+#ifdef WUJIHANDPY_ENABLE_TACTILE
+#include "tactile.hpp"
+#endif
 #include "wrapper.hpp"
 
 namespace py = pybind11;
@@ -31,10 +34,26 @@ PYBIND11_MODULE(_core, m) {
             return;
         try {
             std::rethrow_exception(p);
-        } catch (const wujihandcpp::device::DeviceDisconnectedError& e) {
+#ifdef WUJIHANDPY_ENABLE_TACTILE
+        // Map tactile transport failures onto stdlib exceptions.
+        } catch (const wujihandcpp::tactile::ConnectionLostError& e) {
             PyErr_SetString(PyExc_ConnectionError, e.what());
+        } catch (const wujihandcpp::tactile::DisconnectedDuringRequestError& e) {
+            PyErr_SetString(PyExc_ConnectionError, e.what());
+        } catch (const wujihandcpp::tactile::NotConnectedError& e) {
+            PyErr_SetString(PyExc_ConnectionError, e.what());
+        } catch (const wujihandcpp::tactile::WriteFailedError& e) {
+            PyErr_SetString(PyExc_ConnectionError, e.what());
+        } catch (const wujihandcpp::tactile::ResponseTimeoutError& e) {
+            PyErr_SetString(PyExc_TimeoutError, e.what());
+#endif
         } catch (const wujihandcpp::device::TimeoutError& e) {
             PyErr_SetString(PyExc_TimeoutError, e.what());
+        } catch (const wujihandcpp::device::ConnectionError& e) {
+            // Hand USB transport failures: device-not-found, multi-match
+            // without serial filter, libusb transfer-submit failure, or
+            // runtime disconnection detected by the receive loop.
+            PyErr_SetString(PyExc_ConnectionError, e.what());
         }
     });
 
@@ -54,14 +73,23 @@ PYBIND11_MODULE(_core, m) {
 
     logging::init_module(m);
 
+#ifdef WUJIHANDPY_ENABLE_TACTILE
+    tactile_binding::init_module(m);
+#endif
+
     using namespace wujihandcpp;
 
     using Hand = Wrapper<wujihandcpp::device::Hand>;
     auto hand = py::class_<Hand>(m, "Hand");
     hand.def(
         py::init<std::optional<std::string>, int32_t, uint16_t, std::optional<py::array_t<bool>>>(),
-        py::arg("serial_number") = py::none(), py::arg("usb_pid") = -1, py::arg("usb_vid") = 0x0483,
-        py::arg("mask") = py::none());
+        py::arg("serial_number") = py::none(), py::arg("usb_pid") = 0x2000,
+        py::arg("usb_vid") = 0x0483, py::arg("mask") = py::none());
+    // No __enter__/__exit__: Hand opens USB in its C++ ctor and there is
+    // no idempotent close() path on the underlying device::Hand today, so
+    // a `with` block could not deterministically release the device at
+    // exit. Use `del hand` or let the binding leave scope. (TactileGlove
+    // does support `with` because its USB lifecycle is genuinely lazy.)
 
     register_py_interface<data::hand::Handedness>("handedness", hand);
     register_py_interface<data::hand::FirmwareVersion>("firmware_version", hand);

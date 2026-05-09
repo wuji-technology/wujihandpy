@@ -1,12 +1,40 @@
 from __future__ import annotations
 
 import sys
-from typing import TYPE_CHECKING, Annotated, SupportsInt
+from typing import TYPE_CHECKING, Annotated, SupportsIndex
 
 from . import _core
-from ._core import Finger, Joint, IController, filter, logging  # noqa: F401
+# `filter` and `logging` are wujihandpy submodules; the same-name shadowing
+# of Python builtins is intentional and part of the public API surface.
+from ._core import Finger, Joint, IController, filter, logging  # noqa: F401, A004
 from ._upgrade_check import trigger_check_in_background
 from ._version import __version__
+
+# Tactile bindings are Linux-only and gated by WUJIHANDPY_ENABLE_TACTILE at
+# build time. Catch only "the native tactile submodule isn't on this wheel" —
+# anything else (ABI mismatch, missing transitive dep, syntax error in an
+# imported file) must propagate so users see the real failure instead of
+# silently losing the API surface.
+try:
+    from ._core.tactile import (  # noqa: F401
+        BOOTLOADER_MAGIC as TACTILE_BOOTLOADER_MAGIC,
+        DeviceInfo as TactileDeviceInfo,
+        DeviceTime as TactileDeviceTime,
+        Diagnostics as TactileDiagnostics,
+        Error as TactileError,
+        Frame as TactileFrame,
+        FwBuild as TactileFwBuild,
+        Glove as TactileGlove,
+        Handedness as TactileHandedness,
+        Status as TactileStatus,
+        SyncResult as TactileSyncResult,
+    )
+except ModuleNotFoundError as _tactile_err:
+    if _tactile_err.name != f"{__name__}._core.tactile":
+        raise
+    _HAS_TACTILE = False
+else:
+    _HAS_TACTILE = True
 
 if TYPE_CHECKING:
     import numpy
@@ -24,8 +52,8 @@ class Hand(_core.Hand):
     def __init__(
         self,
         serial_number: str | None = None,
-        usb_pid: SupportsInt = -1,
-        usb_vid: SupportsInt = 0x0483,
+        usb_pid: SupportsIndex = 0x2000,
+        usb_vid: SupportsIndex = 0x0483,
         mask: Annotated[numpy.typing.ArrayLike, numpy.bool_] | None = None,
     ) -> None:
         super().__init__(serial_number, usb_pid, usb_vid, mask)
@@ -64,4 +92,26 @@ class Hand(_core.Hand):
         trigger_check_in_background(sn, raw_version)
 
 
-__all__ = ["__version__", "Hand", "Finger", "Joint", "IController", "filter"]
+__all__ = [
+    "__version__",
+    "Hand",
+    "Finger",
+    "Joint",
+    "IController",
+    "filter",
+    "logging",
+]
+if _HAS_TACTILE:
+    __all__ += [
+        "TactileGlove",
+        "TactileFrame",
+        "TactileHandedness",
+        "TactileStatus",
+        "TactileError",
+        "TactileDeviceInfo",
+        "TactileFwBuild",
+        "TactileDiagnostics",
+        "TactileDeviceTime",
+        "TactileSyncResult",
+        "TACTILE_BOOTLOADER_MAGIC",
+    ]

@@ -61,6 +61,18 @@ file(GLOB_RECURSE PROJECT_SOURCE CONFIGURE_DEPENDS
     ${PROJECT_SOURCE_DIR}/src/*.c
 )
 
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    # Tactile transport is Linux-only (termios + poll + /sys/class/tty).
+    # Keep this in sync with the `#if defined(__linux__)` gates in the
+    # public tactile headers.
+    list(REMOVE_ITEM PROJECT_SOURCE
+        ${PROJECT_SOURCE_DIR}/src/device/tactile_glove.cpp
+        ${PROJECT_SOURCE_DIR}/src/device/frame_demuxer.cpp
+        ${PROJECT_SOURCE_DIR}/src/transport/cdc_byte_stream.cpp
+        ${PROJECT_SOURCE_DIR}/src/transport/cdc_transport.cpp
+    )
+endif()
+
 option(BUILD_STATIC_WUJIHANDCPP "Build static library wujihandcpp" OFF)
 if(BUILD_STATIC_WUJIHANDCPP)
     add_library(
@@ -80,7 +92,13 @@ endif()
 target_compile_definitions(${PROJECT_NAME} PRIVATE BUILDING_WUJIHANDCPP)
 target_compile_definitions(${PROJECT_NAME} PUBLIC WUJIHANDCPP_VERSION="${PROJECT_VERSION}")
 
-target_include_directories(${PROJECT_NAME} PUBLIC ${PROJECT_SOURCE_DIR}/include)
+# Public include split between BUILD and INSTALL interfaces so the install
+# tree (lib/cmake/wujihandcpp/wujihandcppTargets.cmake) records `include`
+# under the install prefix instead of leaking the source-tree path.
+target_include_directories(${PROJECT_NAME} PUBLIC
+    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+)
 target_include_directories(${PROJECT_NAME} PRIVATE ${PROJECT_SOURCE_DIR}/src)
 
 if(WIN32)
@@ -96,6 +114,13 @@ elseif(UNIX)
     target_link_libraries(${PROJECT_NAME} PUBLIC Threads::Threads)
 endif()
 
+# Install rules are gated so embedding builds (e.g. the wujihandpy Python
+# wheel, which embeds wujihandcpp into _core.so via add_subdirectory) can
+# skip them. Standalone builds (and the system .deb/.rpm packaging path)
+# leave it ON to produce a fully consumable install tree. Declared here —
+# before spdlog FetchContent — so SPDLOG_INSTALL can mirror it.
+option(WUJIHANDCPP_INSTALL "Generate install rules for wujihandcpp" ON)
+
 include(FetchContent)
 FetchContent_Declare(
     spdlog
@@ -103,6 +128,17 @@ FetchContent_Declare(
     GIT_TAG v1.16.0
     GIT_SHALLOW TRUE
 )
+# Ship spdlog alongside wujihandcpp when we are installing. Downstream
+# consumers do `find_package(wujihandcpp CONFIG REQUIRED)` which transitively
+# `find_dependency(spdlog)` — that has to resolve, and the simplest place to
+# resolve it is the same prefix wujihandcpp installed into. When wheel /
+# embedding builds set WUJIHANDCPP_INSTALL=OFF, spdlog stays out of the
+# install set too.
+if(WUJIHANDCPP_INSTALL)
+    set(SPDLOG_INSTALL ON CACHE BOOL "" FORCE)
+else()
+    set(SPDLOG_INSTALL OFF CACHE BOOL "" FORCE)
+endif()
 FetchContent_MakeAvailable(spdlog)
 target_link_libraries(${PROJECT_NAME} PUBLIC spdlog::spdlog)
 
@@ -121,13 +157,67 @@ if(NOT MSVC)
     endif()
 endif()
 
-# Enable LTO optimization
-set_target_properties(${PROJECT_NAME} PROPERTIES
-    INTERPROCEDURAL_OPTIMIZATION TRUE
-)
+# LTO is opt-in. Enabling it bakes the host compiler's LTO bytecode into the
+# static archive, which then refuses to link with a different-major-version
+# GCC downstream (we hit this when the SDK was built with GCC 13 and the ROS
+# driver was built with the system GCC 11). Default OFF keeps source-link
+# downstream consumers — like the wujihandros2 driver — portable; release
+# builds that control the whole toolchain can flip it on.
+option(WUJIHANDCPP_ENABLE_IPO "Enable interprocedural optimization (LTO)" OFF)
+if(WUJIHANDCPP_ENABLE_IPO)
+    set_target_properties(${PROJECT_NAME} PROPERTIES
+        INTERPROCEDURAL_OPTIMIZATION TRUE
+    )
+endif()
 
-install(TARGETS ${PROJECT_NAME} LIBRARY DESTINATION lib ARCHIVE DESTINATION lib)
-install(DIRECTORY include/ DESTINATION include)
+if(WUJIHANDCPP_INSTALL)
+    include(GNUInstallDirs)
+    include(CMakePackageConfigHelpers)
+
+    install(TARGETS ${PROJECT_NAME}
+        EXPORT wujihandcppTargets
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    )
+    install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+
+    install(EXPORT wujihandcppTargets
+        FILE wujihandcppTargets.cmake
+        NAMESPACE wujihandcpp::
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/wujihandcpp
+    )
+
+    write_basic_package_version_file(
+        "${CMAKE_CURRENT_BINARY_DIR}/wujihandcppConfigVersion.cmake"
+        VERSION ${PROJECT_VERSION}
+        COMPATIBILITY SameMajorVersion
+    )
+
+    configure_package_config_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/wujihandcppConfig.cmake.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/wujihandcppConfig.cmake"
+        INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/wujihandcpp
+    )
+
+    install(FILES
+        "${CMAKE_CURRENT_BINARY_DIR}/wujihandcppConfig.cmake"
+        "${CMAKE_CURRENT_BINARY_DIR}/wujihandcppConfigVersion.cmake"
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/wujihandcpp
+    )
+
+    # Also export the build tree so consumers can use the SDK without an
+    # install step:
+    #   find_package(wujihandcpp PATHS .../wujihandcpp/build NO_DEFAULT_PATH)
+    # Useful for the local dev loop where SDK and ROS sit side by side.
+    # configure_package_config_file already wrote Config + ConfigVersion to
+    # this binary dir; export(EXPORT) writes the matching Targets file.
+    export(EXPORT wujihandcppTargets
+        FILE "${CMAKE_CURRENT_BINARY_DIR}/wujihandcppTargets.cmake"
+        NAMESPACE wujihandcpp::
+    )
+endif()
 
 include(CTest)
 if(BUILD_TESTING)
@@ -144,10 +234,30 @@ if(BUILD_TESTING)
     file(GLOB_RECURSE WUJIHANDCPP_TEST_SOURCES CONFIGURE_DEPENDS
         ${PROJECT_SOURCE_DIR}/tests/*.cpp
     )
+    # Exclude tests/cpp11_compat/main.cpp from this gtest target — it has
+    # its own int main() and is built as a separate standalone executable
+    # by tests/cpp11_compat/CMakeLists.txt. Without this filter, its main
+    # symbol collides with gtest_main and the gtest binary silently exits
+    # with the cpp11 probe's success message instead of running any tests.
+    list(FILTER WUJIHANDCPP_TEST_SOURCES EXCLUDE REGEX "/cpp11_compat/")
+    # Tactile tests link against frame_demuxer + tactile_glove + cdc_byte_stream,
+    # all Linux-only (matching the .cpp exclusion above and the public-header
+    # `#if defined(__linux__)` gate). Without this filter, BUILD_TESTING=ON on
+    # macOS / Windows still globs frame_demuxer_test.cpp and the test target
+    # fails to compile because `wujihandcpp::tactile::*` is invisible on
+    # those platforms.
+    if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        list(FILTER WUJIHANDCPP_TEST_SOURCES EXCLUDE REGEX "/tests/device/frame_demuxer_test\\.cpp$")
+    endif()
 
     add_executable(wujihandcpp_tests
         ${WUJIHANDCPP_TEST_SOURCES}
     )
+    # Tests need access to private src/ headers (FrameDemuxer + IByteStream
+    # are implementation details, not part of the public API surface). The
+    # main lib only exposes include/ to consumers via PUBLIC; we explicitly
+    # widen the test target's include path here.
+    target_include_directories(wujihandcpp_tests PRIVATE ${PROJECT_SOURCE_DIR}/src)
     target_link_libraries(wujihandcpp_tests PRIVATE gtest_main ${PROJECT_NAME})
 
     add_test(NAME wujihandcpp_tests COMMAND wujihandcpp_tests)

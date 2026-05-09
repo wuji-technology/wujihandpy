@@ -197,7 +197,7 @@ public:
     void throw_if_transport_error() {
         if (transport_error_.load(std::memory_order::acquire)) [[unlikely]] {
             std::lock_guard guard{transport_error_mutex_};
-            throw device::DeviceDisconnectedError(transport_error_message_);
+            throw device::ConnectionError(transport_error_message_);
         }
     }
 
@@ -284,7 +284,7 @@ public:
             unit->in_use.store(false, std::memory_order_release);
 
             if (state == RawSdoUnit::State::FAILED) {
-                throw_if_transport_error(); // throws DeviceDisconnectedError if transport down
+                throw_if_transport_error(); // throws ConnectionError if transport down
                 throw device::TimeoutError(std::format(
                     "Raw SDO read timed out: index=0x{:04X}, sub_index={}", index, sub_index));
             }
@@ -342,7 +342,7 @@ public:
             unit->in_use.store(false, std::memory_order_release);
 
             if (state == RawSdoUnit::State::FAILED) {
-                throw_if_transport_error(); // throws DeviceDisconnectedError if transport down
+                throw_if_transport_error(); // throws ConnectionError if transport down
                 throw device::TimeoutError(std::format(
                     "Raw SDO write timed out: index=0x{:04X}, sub_index={}", index, sub_index));
             }

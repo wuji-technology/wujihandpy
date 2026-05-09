@@ -9,42 +9,34 @@ Wuji Hand SDK: C++ core with Python bindings, for controlling and communicating 
 ## Repository Structure
 
 ```text
-├── src/
-│   ├── wujihandpy/
+├── src/                          # Python binding source code and C++ headers
+│   ├── wujihandpy/               # Python package with type stubs
 │   │   ├── __init__.py
 │   │   └── _core/
 │   ├── main.cpp
 │   └── *.hpp
-├── example/
-│   ├── 1.read.py
-│   ├── 2.write.py
-│   ├── 3.realtime.py
-│   ├── 4.async.py
-│   ├── 5.multithread.py
-│   └── 6.disconnect.py
-├── wujihandcpp/
-│   ├── include/
+├── example/                      # Usage examples
+│   ├── joint/                    # read / write / realtime / async / multithread / disconnect
+│   │   ├── 1.read.py
+│   │   ├── 2.write.py
+│   │   ├── 3.realtime.py
+│   │   ├── 4.async.py
+│   │   ├── 5.multithread.py
+│   │   └── 6.disconnect.py
+│   ├── tactile/                  # Tactile sensing glove
+│   │   └── basic.py
+│   └── joint_with_tactile.py     # Drive both subsystems together
+├── wujihandcpp/                  # Underlying C++ SDK implementation
+│   ├── include/                  # C++ header files
 │   │   └── wujihandcpp/
-│   ├── src/
+│   ├── src/                      # C++ source files
 │   └── tests/
 ├── .github/
-│   └── workflows/
+│   └── workflows/                # CI/CD automation
 ├── pyproject.toml
 ├── CMakeLists.txt
 └── README.md
 ```
-
-### Directory Description
-
-| Directory | Description |
-|-----------|-------------|
-| `src/` | Python binding source code and C++ headers |
-| `src/wujihandpy/` | Python package with type stubs |
-| `example/` | Usage examples for read, write, realtime, async, multi-threaded, and disconnect-handling operations |
-| `wujihandcpp/` | Underlying C++ SDK implementation |
-| `wujihandcpp/include/` | C++ header files |
-| `wujihandcpp/src/` | C++ source files |
-| `.github/workflows/` | CI/CD automation |
 
 ## Quick Start
 

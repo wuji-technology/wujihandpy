@@ -53,9 +53,6 @@ private:
     // Resource definitions
     static const std::vector<ResourceDef>& resource_defs();
 
-    // Control protocol handler
-    void handle_control(zenoh::Query& query);
-
     // Resource queryable handler
     void handle_resource_query(zenoh::Query& query, const ResourceDef& res);
 
@@ -92,14 +89,6 @@ private:
 
     // Thread safety
     std::mutex hand_mutex_;    // Protects SDO read/write operations
-    std::mutex control_mutex_; // Protects control_owner_
-    std::string control_owner_;
-
-    // Liveliness-based control TTL
-    std::optional<zenoh::Subscriber<void>> control_owner_watcher_;
-    void start_owner_watcher(const std::string& owner_zid);
-    void stop_owner_watcher();
-    std::string control_owner_key(const std::string& owner_zid) const;
 
     // Publisher thread
     std::jthread pub_thread_;
