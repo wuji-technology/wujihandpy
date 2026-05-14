@@ -1,7 +1,16 @@
 from __future__ import annotations
 
 import sys
-from typing import TYPE_CHECKING, SupportsIndex
+from typing import TYPE_CHECKING, Optional, SupportsIndex
+
+# `Annotated` only entered `typing` in 3.9; pull it from the
+# `typing_extensions` backport on 3.8 so type annotations referring to it
+# can be resolved at runtime (e.g. `typing.get_type_hints(Hand.__init__)`)
+# on every supported interpreter.
+if sys.version_info >= (3, 9):
+    from typing import Annotated
+else:
+    from typing_extensions import Annotated
 
 from . import _core
 # `filter` and `logging` are wujihandpy submodules; the same-name shadowing
@@ -37,12 +46,6 @@ else:
     _HAS_TACTILE = True
 
 if TYPE_CHECKING:
-    # `Annotated` only exists in `typing` from 3.9+; with `from __future__
-    # import annotations` enabled, annotations are stringified so deferring
-    # the import to the type-checking branch keeps runtime import working
-    # on Python 3.8.
-    from typing import Annotated
-
     import numpy
     import numpy.typing
 
@@ -57,10 +60,10 @@ class Hand(_core.Hand):
 
     def __init__(
         self,
-        serial_number: str | None = None,
+        serial_number: Optional[str] = None,
         usb_pid: SupportsIndex = 0x2000,
         usb_vid: SupportsIndex = 0x0483,
-        mask: Annotated[numpy.typing.ArrayLike, numpy.bool_] | None = None,
+        mask: Optional[Annotated[numpy.typing.ArrayLike, numpy.bool_]] = None,
     ) -> None:
         super().__init__(serial_number, usb_pid, usb_vid, mask)
         # Skip the upgrade check entirely in non-interactive environments

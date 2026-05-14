@@ -11,7 +11,12 @@ readme = "README.md"
 requires-python = ">=3.8"
 authors = [{ name = "Zihan Qin", email = "zihanqin2048@gmail.com" }]
 maintainers = [{ name = "Wuji Technology", email = "support@pan-motor.com" }]
-dependencies = ["numpy"]
+dependencies = [
+    "numpy",
+    # `Annotated` landed in stdlib `typing` only in 3.9; on 3.8 we fall back
+    # to the official backport so `wujihandpy/__init__.py` can resolve it.
+    "typing_extensions; python_version < '3.9'",
+]
 
 [project.urls]
 homepage = "https://github.com/wuji-technology/wujihandpy"
