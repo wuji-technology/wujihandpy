@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sys
-from typing import TYPE_CHECKING, Annotated, SupportsIndex
+from typing import TYPE_CHECKING, SupportsIndex
 
 from . import _core
 # `filter` and `logging` are wujihandpy submodules; the same-name shadowing
@@ -37,6 +37,12 @@ else:
     _HAS_TACTILE = True
 
 if TYPE_CHECKING:
+    # `Annotated` only exists in `typing` from 3.9+; with `from __future__
+    # import annotations` enabled, annotations are stringified so deferring
+    # the import to the type-checking branch keeps runtime import working
+    # on Python 3.8.
+    from typing import Annotated
+
     import numpy
     import numpy.typing
 
