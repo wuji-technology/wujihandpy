@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Tactile sensing glove support** (Linux only): top-level `wujihandpy.TactileGlove` plus typed companions `TactileFrame`, `TactileError`, `TactileHandedness`, and POD types for device info, diagnostics, firmware build, and time sync. Pressure frames are `numpy.float32` 24×32 arrays in `[0, 1]` with `NaN` for invalid cells. Hand and TactileGlove can coexist in one process—see `example/joint_with_tactile.py`.
 - Example: `6.disconnect.py` demonstrating USB disconnect handling.
-- Example: `joint/glove_donning.py` — smoothly drive hand to a measured glove donning/doffing pose (thumb adducted across the palm, fingers nearly extended) at 100 Hz with low-pass filtering. Auto-selects the left- or right-hand pose via `read_handedness()`.
+- Added example `joint/glove_donning.py` that smoothly drives the hand to a measured glove donning/doffing pose (thumb adducted across the palm, fingers nearly extended) at 100 Hz with low-pass filtering. Auto-selects the left- or right-hand pose via `read_handedness()`.
 
 ### Changed
 
