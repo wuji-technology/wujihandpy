@@ -28,7 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Python 3.8 compatibility**: `import wujihandpy` crashed on Python 3.8 with `ImportError: cannot import name 'Annotated' from 'typing'` because the `Hand` wrapper introduced in 1.6.0 used a top-level `from typing import Annotated` (3.9+) plus `X | None` unions (PEP 604, 3.10+) in its `__init__` signature. `Annotated` is now imported via a `sys.version_info` gate (`typing` on 3.9+, `typing_extensions` on 3.8), and the unions are rewritten as `Optional[...]` so `typing.get_type_hints()` resolves on every supported interpreter. Adds `typing_extensions; python_version < '3.9'` as a conditional dependency (3.9+ wheels stay dep-clean).
+- **Python 3.8**: `import wujihandpy` no longer raises `ImportError: cannot import name 'Annotated' from 'typing'` on the cp38 wheel (regression in 1.6.0).
 
 ## [1.6.0] - 2026-04-27
 
