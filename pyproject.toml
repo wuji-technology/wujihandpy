@@ -9,8 +9,8 @@ description = "Python bindings for WujiHandCpp"
 license = { file = "LICENSE" }
 readme = "README.md"
 requires-python = ">=3.8"
-authors = [{ name = "Zihan Qin", email = "zihanqin2048@gmail.com" }]
-maintainers = [{ name = "Wuji Technology", email = "support@pan-motor.com" }]
+authors = [{ name = "Wuji Technology", email = "support@wuji.tech" }]
+maintainers = [{ name = "Wuji Technology", email = "support@wuji.tech" }]
 dependencies = ["numpy"]
 
 [project.urls]
