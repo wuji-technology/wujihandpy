@@ -3,15 +3,6 @@ from __future__ import annotations
 import sys
 from typing import TYPE_CHECKING, Optional, SupportsIndex
 
-# `Annotated` only entered `typing` in 3.9; pull it from the
-# `typing_extensions` backport on 3.8 so type annotations referring to it
-# can be resolved at runtime (e.g. `typing.get_type_hints(Hand.__init__)`)
-# on every supported interpreter.
-if sys.version_info >= (3, 9):
-    from typing import Annotated
-else:
-    from typing_extensions import Annotated
-
 from . import _core
 # `filter` and `logging` are wujihandpy submodules; the same-name shadowing
 # of Python builtins is intentional and part of the public API surface.
@@ -46,6 +37,13 @@ else:
     _HAS_TACTILE = True
 
 if TYPE_CHECKING:
+    # `Annotated` only landed in stdlib `typing` in 3.9; keeping its import
+    # in this block lets static type checkers resolve the `mask` annotation
+    # without forcing a runtime dependency on `typing_extensions` for 3.8
+    # users — `from __future__ import annotations` keeps the annotation a
+    # string at runtime, so the name is never evaluated.
+    from typing import Annotated
+
     import numpy
     import numpy.typing
 
