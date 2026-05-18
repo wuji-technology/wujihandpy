@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-05-18
+
 ### Added
 
 - **Tactile sensing glove support** (Linux only): top-level `wujihandpy.TactileGlove` plus typed companions `TactileFrame`, `TactileError`, `TactileHandedness`, and POD types for device info, diagnostics, firmware build, and time sync. Pressure frames are `numpy.float32` 24×32 arrays in `[0, 1]` with `NaN` for invalid cells. Hand and TactileGlove can coexist in one process—see `example/joint_with_tactile.py`.
@@ -140,7 +142,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Requires firmware v3.0.0+
 
-[Unreleased]: https://github.com/wuji-technology/wujihandpy/compare/v1.6.0...HEAD
+[Unreleased]: https://github.com/wuji-technology/wujihandpy/compare/v1.7.0...HEAD
+[1.7.0]: https://github.com/wuji-technology/wujihandpy/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/wuji-technology/wujihandpy/compare/v1.5.1...v1.6.0
 [1.5.1]: https://github.com/wuji-technology/wujihandpy/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/wuji-technology/wujihandpy/compare/v1.4.0...v1.5.0
