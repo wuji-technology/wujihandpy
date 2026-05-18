@@ -259,7 +259,7 @@ if(BUILD_TESTING)
     # widen the test target's include path here.
     target_include_directories(wujihandcpp_tests PRIVATE ${PROJECT_SOURCE_DIR}/src)
     # FrameDemuxer is intentionally a src/-private class (no
-    # visibility("default")) and the lib is compiled with
+    # visibility("default")) and the SHARED lib is compiled with
     # -fvisibility=hidden, so FrameDemuxer's symbols are stripped from
     # libwujihandcpp.so's dynamic symbol table. Linking the test exe
     # against the .so therefore fails with "undefined reference to
@@ -267,7 +267,13 @@ if(BUILD_TESTING)
     # the test exe so the linker resolves the calls locally, without
     # widening the lib's public ABI. Linux-only — mirrors the
     # PROJECT_SOURCE / TEST_SOURCES platform gates above.
-    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    #
+    # Gated on NOT BUILD_STATIC_WUJIHANDCPP: the static archive keeps all
+    # symbols regardless of visibility, so the test exe can already
+    # resolve FrameDemuxer through ${PROJECT_NAME}. Adding it again
+    # would compile the same TU into both archive and exe → duplicate
+    # symbols at link time.
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT BUILD_STATIC_WUJIHANDCPP)
         target_sources(wujihandcpp_tests PRIVATE
             ${PROJECT_SOURCE_DIR}/src/device/frame_demuxer.cpp
         )
