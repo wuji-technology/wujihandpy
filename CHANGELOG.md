@@ -26,6 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Zenoh Bridge (Python + C++)**: dropped `@control` acquire/release protocol; SET / PUT writes no longer require a handshake.
 
+### Fixed
+
+- Fixed Linux release build (`Dockerfile.package-builder` / cibuildwheel) failing to link `wujihandcpp_tests` with `undefined reference to wujihandcpp::tactile::FrameDemuxer::*`. Root cause was `FrameDemuxer`'s symbols being stripped from `libwujihandcpp.so` by `-fvisibility=hidden` (it's a `src/`-private class with no `visibility("default")` annotation). The test target now compiles `src/device/frame_demuxer.cpp` directly into the executable on Linux + shared-library builds, leaving the library's public ABI unchanged.
+
 ## [1.6.0] - 2026-04-27
 
 ### Changed
