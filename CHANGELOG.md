@@ -7,26 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.7.0] - 2026-05-18
-
 ### Added
 
 - **Tactile sensing glove support** (Linux only): top-level `wujihandpy.TactileGlove` plus typed companions `TactileFrame`, `TactileError`, `TactileHandedness`, and POD types for device info, diagnostics, firmware build, and time sync. Pressure frames are `numpy.float32` 24×32 arrays in `[0, 1]` with `NaN` for invalid cells. Hand and TactileGlove can coexist in one process—see `example/joint_with_tactile.py`.
-- Added example `6.disconnect.py` demonstrating USB disconnect handling.
+- Example: `6.disconnect.py` demonstrating USB disconnect handling.
 - Added example `joint/glove_donning.py` that smoothly drives the hand to a measured glove donning/doffing pose (thumb adducted across the palm, fingers nearly extended) at 100 Hz with low-pass filtering. Auto-selects the left- or right-hand pose via `read_handedness()`.
 
 ### Changed
 
-- Changed `Hand` default `usb_pid` from `-1` to `0x2000`, to avoid silently matching the tactile sensing glove (shared VID `0x0483`). Pre-production firmware with other PIDs must pass `usb_pid=` explicitly.
-- Changed Hand USB transport failures to raise `ConnectionError` (was `RuntimeError`), matching `TactileGlove`. The same `wujihandcpp::device::ConnectionError` (Python `ConnectionError`) is now also raised when the device disconnects mid-runtime — covering blocking SDO calls, in-flight async reads, and raw SDO operations. Pending async callbacks are explicitly woken so callers don't hang. See `example/joint/6.disconnect.py` for the recommended catch pattern.
+- **`Hand` default `usb_pid`**: `-1` → `0x2000`, to avoid silently matching the tactile sensing glove (shared VID `0x0483`). Pre-production firmware with other PIDs must pass `usb_pid=` explicitly.
+- **Hand USB transport failures**: raise `ConnectionError` (was `RuntimeError`), matching `TactileGlove`. The same `wujihandcpp::device::ConnectionError` (Python `ConnectionError`) is now also raised when the device disconnects mid-runtime — covering blocking SDO calls, in-flight async reads, and raw SDO operations. Pending async callbacks are explicitly woken so callers don't hang. See `example/joint/6.disconnect.py` for the recommended catch pattern.
   - Note: in realtime control mode, `IController.get_joint_actual_position` / `set_joint_target_position` go through PDO atomic operations and do NOT raise on disconnect. To detect disconnect inside a realtime loop, periodically issue a SDO probe (e.g. `hand.read_input_voltage()`).
-- Changed `TactileGlove()` without `serial_number` to raise `ConnectionError` listing found serials when multiple tactile sensing gloves are on the bus, instead of silently picking the first.
-- Updated CMake integration for C++ consumers to use `find_package(wujihandcpp CONFIG REQUIRED)` + `wujihandcpp::wujihandcpp`.
-- Reorganized examples into `example/joint/`, `example/tactile/basic.py`, and `example/joint_with_tactile.py`.
+- **`TactileGlove()` without `serial_number`**: raises `ConnectionError` listing found serials when multiple tactile sensing gloves are on the bus, instead of silently picking the first.
+- **CMake integration** (C++ consumers): now via `find_package(wujihandcpp CONFIG REQUIRED)` + `wujihandcpp::wujihandcpp`.
+- **Examples**: reorganized into `example/joint/`, `example/tactile/basic.py`, and `example/joint_with_tactile.py`.
 
 ### Removed
 
-- Removed the `@control` acquire/release protocol from the Zenoh Bridge (Python + C++); SET / PUT writes no longer require a handshake.
+- **Zenoh Bridge (Python + C++)**: dropped `@control` acquire/release protocol; SET / PUT writes no longer require a handshake.
 
 ## [1.6.0] - 2026-04-27
 
@@ -138,8 +136,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Requires firmware v3.0.0+
 
-[Unreleased]: https://github.com/wuji-technology/wujihandpy/compare/v1.7.0...HEAD
-[1.7.0]: https://github.com/wuji-technology/wujihandpy/compare/v1.6.0...v1.7.0
+[Unreleased]: https://github.com/wuji-technology/wujihandpy/compare/v1.6.0...HEAD
 [1.6.0]: https://github.com/wuji-technology/wujihandpy/compare/v1.5.1...v1.6.0
 [1.5.1]: https://github.com/wuji-technology/wujihandpy/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/wuji-technology/wujihandpy/compare/v1.4.0...v1.5.0
