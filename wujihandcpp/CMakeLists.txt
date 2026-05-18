@@ -258,6 +258,20 @@ if(BUILD_TESTING)
     # main lib only exposes include/ to consumers via PUBLIC; we explicitly
     # widen the test target's include path here.
     target_include_directories(wujihandcpp_tests PRIVATE ${PROJECT_SOURCE_DIR}/src)
+    # FrameDemuxer is intentionally a src/-private class (no
+    # visibility("default")) and the lib is compiled with
+    # -fvisibility=hidden, so FrameDemuxer's symbols are stripped from
+    # libwujihandcpp.so's dynamic symbol table. Linking the test exe
+    # against the .so therefore fails with "undefined reference to
+    # FrameDemuxer::*". Compile the same translation unit directly into
+    # the test exe so the linker resolves the calls locally, without
+    # widening the lib's public ABI. Linux-only — mirrors the
+    # PROJECT_SOURCE / TEST_SOURCES platform gates above.
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        target_sources(wujihandcpp_tests PRIVATE
+            ${PROJECT_SOURCE_DIR}/src/device/frame_demuxer.cpp
+        )
+    endif()
     target_link_libraries(wujihandcpp_tests PRIVATE gtest_main ${PROJECT_NAME})
 
     add_test(NAME wujihandcpp_tests COMMAND wujihandcpp_tests)
