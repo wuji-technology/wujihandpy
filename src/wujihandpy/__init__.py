@@ -41,6 +41,26 @@ if TYPE_CHECKING:
     import numpy.typing
 
 
+def _resolve_super_init_args(
+    serial_number: str | None,
+    side: str | None,
+    usb_pid: SupportsIndex,
+    usb_vid: SupportsIndex,
+    mask: object,
+) -> tuple[tuple, dict]:
+    if side is not None and serial_number is not None:
+        raise ValueError("`side` and `serial_number` are mutually exclusive")
+    if side is None:
+        return (serial_number, usb_pid, usb_vid, mask), {}
+    if side == "left":
+        side_enum = _core.Hand.Side.Left
+    elif side == "right":
+        side_enum = _core.Hand.Side.Right
+    else:
+        raise ValueError(f"side must be 'left' or 'right', got {side!r}")
+    return (), {"side": side_enum, "usb_pid": usb_pid, "usb_vid": usb_vid, "mask": mask}
+
+
 class Hand(_core.Hand):
     """Hand with automatic background firmware-upgrade check.
 
@@ -52,11 +72,14 @@ class Hand(_core.Hand):
     def __init__(
         self,
         serial_number: str | None = None,
+        *,
+        side: str | None = None,
         usb_pid: SupportsIndex = 0x2000,
         usb_vid: SupportsIndex = 0x0483,
         mask: Annotated[numpy.typing.ArrayLike, numpy.bool_] | None = None,
     ) -> None:
-        super().__init__(serial_number, usb_pid, usb_vid, mask)
+        args, kwargs = _resolve_super_init_args(serial_number, side, usb_pid, usb_vid, mask)
+        super().__init__(*args, **kwargs)
         # Skip the upgrade check entirely in non-interactive environments
         # (pipes, CI, Jupyter) — saves the synchronous SN read below.
         try:
