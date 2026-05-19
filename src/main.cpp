@@ -85,6 +85,16 @@ PYBIND11_MODULE(_core, m) {
         py::init<std::optional<std::string>, int32_t, uint16_t, std::optional<py::array_t<bool>>>(),
         py::arg("serial_number") = py::none(), py::arg("usb_pid") = 0x2000,
         py::arg("usb_vid") = 0x0483, py::arg("mask") = py::none());
+
+    py::enum_<wujihandcpp::device::Hand::Side>(hand, "Side")
+        .value("Right", wujihandcpp::device::Hand::Side::Right)
+        .value("Left", wujihandcpp::device::Hand::Side::Left);
+
+    hand.def(
+        py::init<
+            wujihandcpp::device::Hand::Side, int32_t, uint16_t, std::optional<py::array_t<bool>>>(),
+        py::arg("side"), py::arg("usb_pid") = 0x2000, py::arg("usb_vid") = 0x0483,
+        py::arg("mask") = py::none());
     // No __enter__/__exit__: Hand opens USB in its C++ ctor and there is
     // no idempotent close() path on the underlying device::Hand today, so
     // a `with` block could not deterministically release the device at

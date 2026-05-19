@@ -33,6 +33,14 @@ public:
         : T(serial_number ? serial_number->c_str() : nullptr, usb_pid, usb_vid,
             parse_array_mask(mask)){};
 
+    // SFINAE-gated: only enabled when T exposes a Side type (i.e. T == Hand),
+    // so that Wrapper<Finger>/Wrapper<Joint> still compile cleanly.
+    template <typename U = T, typename = typename U::Side>
+    explicit Wrapper(
+        typename U::Side side, int32_t usb_pid, uint16_t usb_vid,
+        std::optional<py::array_t<bool>> mask)
+        : T(side, usb_pid, usb_vid, parse_array_mask(mask)) {}
+
     uint32_t parse_array_mask(std::optional<py::array_t<bool>> mask) {
         if (!mask)
             return 0;
