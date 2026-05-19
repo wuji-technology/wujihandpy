@@ -6,8 +6,10 @@
 #include <array>
 #include <atomic>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "wujihandcpp/data/hand.hpp"
@@ -19,6 +21,7 @@
 #include "wujihandcpp/device/finger.hpp"
 #include "wujihandcpp/filter/low_pass.hpp"
 #include "wujihandcpp/protocol/handler.hpp"
+#include "wujihandcpp/transport/usb_enumerate.hpp"
 #include "wujihandcpp/utility/logging.hpp"
 
 namespace wujihandcpp {
@@ -28,6 +31,12 @@ class Hand : public DataOperator<Hand> {
     friend class DataOperator;
 
 public:
+    // Firmware convention: 0 = Right, 1 = Left. Source:
+    // docs/external/en/api-reference.mdx:228 (`read_handedness ... (0=right, 1=left)`).
+    // Note: data/tactile.hpp uses the OPPOSITE convention for tactile gloves; the
+    // dexterous-hand side enum below is the authoritative one for `Hand`.
+    enum class Side : uint8_t { Right = 0, Left = 1 };
+
     explicit Hand(
         const char* serial_number = nullptr, int32_t usb_pid = 0x2000, uint16_t usb_vid = 0x0483,
         uint32_t mask = 0)
@@ -80,6 +89,13 @@ public:
                 throw TimeoutError("Failed to initialize hand: no response from device");
         }
     };
+
+    // Probe each VID/PID-matching USB device, read SDO 0x5090 to learn its
+    // handedness, then forward to the serial-number ctor once a unique match
+    // is found. Throws ConnectionError when zero/multiple devices match.
+    explicit Hand(
+        Side side, int32_t usb_pid = 0x2000, uint16_t usb_vid = 0x0483, uint32_t mask = 0)
+        : Hand(probe_handedness(side, usb_vid, usb_pid).c_str(), usb_pid, usb_vid, mask) {}
 
     void check_firmware_version() {
         Latch latch;
@@ -335,6 +351,8 @@ public:
     }
 
 private:
+    static std::string probe_handedness(Side side, uint16_t vid, int32_t pid);
+
     class CompatibleControllerOperator : public IController {
     public:
         explicit CompatibleControllerOperator(Hand& hand)
@@ -620,6 +638,63 @@ private:
             int(Datas::count + index * Sub::data_count())};
     }
 };
+
+namespace detail {
+
+struct ProbeResult {
+    std::string sn;
+    std::optional<uint8_t> handedness; // std::nullopt when the probe failed
+    std::string failure_reason;        // populated only when probe failed
+};
+
+// Build the (matches, diagnostic) pair from per-device probe results. Pure
+// logic so it can be unit-tested without hardware.
+inline std::pair<std::vector<std::string>, std::string>
+    select_side_matched(Hand::Side side, const std::vector<ProbeResult>& results) {
+    std::vector<std::string> matches;
+    int probe_ok = 0;
+    for (const auto& r : results) {
+        if (!r.handedness)
+            continue;
+        ++probe_ok;
+        if (static_cast<Hand::Side>(*r.handedness) == side)
+            matches.push_back(r.sn);
+    }
+    if (matches.size() == 1)
+        return {matches, std::string{}};
+
+    const char* side_str = (side == Hand::Side::Left) ? "left" : "right";
+    std::string msg = matches.empty() ? std::string("No ") + side_str + " hand found"
+                                      : std::string("Multiple ") + side_str + " hands found";
+
+    msg += "; saw " + std::to_string(results.size()) + " device(s):";
+    for (const auto& r : results)
+        msg += " " + r.sn;
+
+    std::vector<std::string> failures;
+    for (const auto& r : results)
+        if (!r.handedness)
+            failures.push_back(r.sn + "(" + r.failure_reason + ")");
+    if (!failures.empty()) {
+        msg += "; probe failures:";
+        for (const auto& f : failures)
+            msg += " " + f;
+    }
+
+    if (matches.empty()) {
+        // Hint that the SDO read may simply be unsupported. Whether probe_ok==0
+        // or partial, the message is identical; design doc allows a future
+        // tweak to split these branches.
+        (void)probe_ok;
+        msg += "; if firmware does not expose handedness, use serial_number";
+    } else {
+        msg += "; use serial_number to disambiguate";
+    }
+
+    return {matches, msg};
+}
+
+} // namespace detail
 
 } // namespace device
 } // namespace wujihandcpp
