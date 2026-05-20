@@ -102,7 +102,8 @@ std::string Hand::probe_handedness(Side side, uint16_t vid, int32_t pid) {
             protocol::Handler probe(vid, pid, sn.c_str(), /*storage_unit_count=*/0);
             probe.start_transmit_receive();
             auto bytes = probe.raw_sdo_read(
-                /*index=*/0x5090, /*sub_index=*/0, std::chrono::milliseconds{200});
+                data::hand::Handedness::index, data::hand::Handedness::sub_index,
+                std::chrono::milliseconds{200});
             if (bytes.empty())
                 results.push_back({sn, std::nullopt, "empty SDO response"});
             else
