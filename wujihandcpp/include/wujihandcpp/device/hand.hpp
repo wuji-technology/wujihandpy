@@ -27,6 +27,13 @@
 namespace wujihandcpp {
 namespace device {
 
+namespace detail {
+// Defined further below alongside ProbeResult / select_side_matched.
+void register_hand_sn(const std::string& sn);
+void unregister_hand_sn(const std::string& sn);
+std::vector<std::string> held_sns_snapshot();
+} // namespace detail
+
 class Hand : public DataOperator<Hand> {
     friend class DataOperator;
 
@@ -88,7 +95,20 @@ public:
             else
                 throw TimeoutError("Failed to initialize hand: no response from device");
         }
+
+        // Register only after all init succeeded — any throw above unwinds
+        // without dtor (object never finished constructing), so we don't
+        // leave a stale entry.
+        if (serial_number != nullptr) {
+            my_sn_ = serial_number;
+            detail::register_hand_sn(my_sn_);
+        }
     };
+
+    ~Hand() {
+        if (!my_sn_.empty())
+            detail::unregister_hand_sn(my_sn_);
+    }
 
     // Probe each VID/PID-matching USB device, read SDO 0x5090 to learn its
     // handedness, then forward to the serial-number ctor once a unique match
@@ -621,6 +641,10 @@ private:
 
     protocol::Handler handler_;
 
+    // SN this Hand holds, kept in detail::registry while the object is alive.
+    // Empty when constructed via Hand() no-arg (single-device-on-bus path).
+    std::string my_sn_;
+
     bool feature_firmware_filter_ = false;
     bool feature_rpdo_directly_distribute_ = false;
     bool feature_exception_detect_ = false;
@@ -640,6 +664,12 @@ private:
 };
 
 namespace detail {
+
+// Process-local set of SNs currently held by live Hand instances.
+// probe_handedness consults this set so it can skip devices that would
+// otherwise return LIBUSB_ERROR_BUSY when re-opened for the handedness
+// SDO read. Declared near the top of this header (above class Hand) and
+// implemented in src/device/hand.cpp.
 
 struct ProbeResult {
     std::string sn;
