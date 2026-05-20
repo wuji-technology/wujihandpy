@@ -929,6 +929,7 @@ glove.stop_streaming()
 | `get_sample_rate_hz() -> int` | 读取当前采样率 |
 | `set_streaming(enable)` | 开关设备数据帧流 |
 | `get_streaming_enabled() -> bool` | 读取流式输出开关状态 |
+| `set_disconnect_callback(callback)` | 注册 `Callable[[], None]`，USB 设备脱离总线时调用一次 |
 | `get_device_info() -> TactileDeviceInfo` | 读取 `serial`、`hw_revision`、`fw_version` |
 | `get_fw_build() -> TactileFwBuild` | 读取固件构建信息（`git_short_sha`） |
 | `get_diagnostics() -> TactileDiagnostics` | 读取计数器：`uptime_ms`、`frame_count`、`crc_err_count`、`dropout_count`、`usb_reset_count` |

@@ -929,6 +929,7 @@ glove.stop_streaming()
 | `get_sample_rate_hz() -> int` | Read current sample rate |
 | `set_streaming(enable)` | Toggle the device data-frame stream |
 | `get_streaming_enabled() -> bool` | Read the streaming-enabled flag |
+| `set_disconnect_callback(callback)` | Register a `Callable[[], None]` invoked once when the USB device drops off the bus |
 | `get_device_info() -> TactileDeviceInfo` | Read `serial`, `hw_revision`, `fw_version` |
 | `get_fw_build() -> TactileFwBuild` | Read firmware build (`git_short_sha`) |
 | `get_diagnostics() -> TactileDiagnostics` | Read counters: `uptime_ms`, `frame_count`, `crc_err_count`, `dropout_count`, `usb_reset_count` |
