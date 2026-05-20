@@ -652,11 +652,9 @@ struct ProbeResult {
 inline std::pair<std::vector<std::string>, std::string>
     select_side_matched(Hand::Side side, const std::vector<ProbeResult>& results) {
     std::vector<std::string> matches;
-    int probe_ok = 0;
     for (const auto& r : results) {
         if (!r.handedness)
             continue;
-        ++probe_ok;
         if (static_cast<Hand::Side>(*r.handedness) == side)
             matches.push_back(r.sn);
     }
@@ -681,15 +679,10 @@ inline std::pair<std::vector<std::string>, std::string>
             msg += " " + f;
     }
 
-    if (matches.empty()) {
-        // Hint that the SDO read may simply be unsupported. Whether probe_ok==0
-        // or partial, the message is identical; design doc allows a future
-        // tweak to split these branches.
-        (void)probe_ok;
+    if (matches.empty())
         msg += "; if firmware does not expose handedness, use serial_number";
-    } else {
+    else
         msg += "; use serial_number to disambiguate";
-    }
 
     return {matches, msg};
 }
