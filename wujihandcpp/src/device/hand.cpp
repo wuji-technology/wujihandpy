@@ -79,6 +79,20 @@ std::string Hand::probe_handedness(Side side, uint16_t vid, int32_t pid) {
             }),
         serials.end());
 
+    // Special case: every candidate was held by this process. select_side_matched
+    // would produce "saw 0 device(s)" and suggest "if firmware does not expose
+    // handedness, use serial_number" — both misleading. The real cause is that
+    // the caller already opened those devices.
+    if (serials.empty() && !skipped.empty()) {
+        const char* side_str = (side == Side::Left) ? "left" : "right";
+        std::string msg = std::string("No available ") + side_str + " hand found; "
+            + std::to_string(skipped.size()) + " matching device(s) already held by this process:";
+        for (const auto& sn : skipped)
+            msg += " " + sn;
+        msg += "; release the existing Hand or use serial_number= for the other device";
+        throw ConnectionError(msg);
+    }
+
     std::vector<detail::ProbeResult> results;
     results.reserve(serials.size());
     for (const auto& sn : serials) {
