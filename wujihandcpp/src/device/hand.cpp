@@ -42,7 +42,7 @@ void register_hand_sn(const std::string& sn) {
     registry_set().insert(sn);
 }
 
-void unregister_hand_sn(const std::string& sn) {
+void unregister_hand_sn(const std::string& sn) noexcept {
     std::lock_guard guard{registry_mu()};
     registry_set().erase(sn);
 }

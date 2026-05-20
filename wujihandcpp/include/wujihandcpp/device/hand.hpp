@@ -29,8 +29,10 @@ namespace device {
 
 namespace detail {
 // Defined further below alongside ProbeResult / select_side_matched.
+// register_hand_sn can throw bad_alloc (it copies the SN into a set); the
+// other two are noexcept because they only read or erase, never allocate.
 void register_hand_sn(const std::string& sn);
-void unregister_hand_sn(const std::string& sn);
+void unregister_hand_sn(const std::string& sn) noexcept;
 std::vector<std::string> held_sns_snapshot();
 } // namespace detail
 
@@ -105,14 +107,25 @@ public:
         }
     };
 
-    ~Hand() {
-        if (!my_sn_.empty())
-            detail::unregister_hand_sn(my_sn_);
+    ~Hand() noexcept {
+        // Guard against any future change that makes unregister_hand_sn throw:
+        // throwing from a dtor causes std::terminate in C++17+.
+        try {
+            if (!my_sn_.empty())
+                detail::unregister_hand_sn(my_sn_);
+        } catch (...) {
+        }
     }
 
     // Probe each VID/PID-matching USB device, read SDO 0x5090 to learn its
     // handedness, then forward to the serial-number ctor once a unique match
     // is found. Throws ConnectionError when zero/multiple devices match.
+    //
+    // Lifetime note: probe_handedness(...) returns std::string by value. The
+    // temporary lives until the end of the full expression — which spans the
+    // entire delegated ctor call — so .c_str() is valid throughout the
+    // delegated init (see [class.temporary]). The delegated ctor copies the
+    // SN into my_sn_, so no dangling pointer survives this scope.
     explicit Hand(
         Side side, int32_t usb_pid = 0x2000, uint16_t usb_vid = 0x0483, uint32_t mask = 0)
         : Hand(probe_handedness(side, usb_vid, usb_pid).c_str(), usb_pid, usb_vid, mask) {}
