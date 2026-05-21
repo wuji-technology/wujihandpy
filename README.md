@@ -16,13 +16,14 @@ Wuji Hand SDK: C++ core with Python bindings, for controlling and communicating 
 │   ├── main.cpp
 │   └── *.hpp
 ├── example/                      # Usage examples
-│   ├── joint/                    # read / write / realtime / async / multithread / disconnect
+│   ├── joint/                    # read / write / realtime / async / multithread / disconnect / glove donning
 │   │   ├── 1.read.py
 │   │   ├── 2.write.py
 │   │   ├── 3.realtime.py
 │   │   ├── 4.async.py
 │   │   ├── 5.multithread.py
-│   │   └── 6.disconnect.py
+│   │   ├── 6.disconnect.py
+│   │   └── 7.glove_donning.py
 │   ├── tactile/                  # Tactile sensing glove
 │   │   └── basic.py
 │   └── joint_with_tactile.py     # Drive both subsystems together
