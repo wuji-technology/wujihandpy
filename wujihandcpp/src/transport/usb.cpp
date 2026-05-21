@@ -89,12 +89,16 @@ std::vector<EnumeratedDevice> enumerate_matching_devices(
         unsigned char buf[256];
         int n = libusb_get_string_descriptor_ascii(
             handle, desc.iSerialNumber, buf, sizeof(buf) - 1);
-        if (n < 0) {
+        // n == 0 means the descriptor returned an empty string, which is not a
+        // useful identifier — treat it the same as a read failure and skip.
+        if (n <= 0) {
             libusb_close(handle);
             continue;
         }
-        buf[n] = '\0';
-        matched.push_back({handle, std::string(reinterpret_cast<char*>(buf))});
+        // Construct the std::string with explicit length rather than relying on
+        // a trailing '\0' — defensive against descriptors that embed NUL bytes.
+        matched.push_back(
+            {handle, std::string(reinterpret_cast<char*>(buf), static_cast<size_t>(n))});
     }
     return matched;
 }

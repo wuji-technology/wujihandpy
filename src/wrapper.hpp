@@ -42,6 +42,11 @@ public:
         : T(side, usb_pid, usb_vid, parse_array_mask(mask)) {}
 
     uint32_t parse_array_mask(std::optional<py::array_t<bool>> mask) {
+        // Hand's pybind11 init uses py::call_guard<py::gil_scoped_release>,
+        // which releases the GIL across the entire ctor body including this
+        // mem-init helper. Any numpy access here (ndim/shape/unchecked) needs
+        // the GIL, so re-acquire it for the brief duration of mask parsing.
+        py::gil_scoped_acquire acquire;
         if (!mask)
             return 0;
         if (mask->ndim() != 2 || mask->shape()[0] != 5 || mask->shape()[1] != 4)

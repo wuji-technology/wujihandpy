@@ -117,6 +117,15 @@ std::string Hand::probe_handedness(Side side, uint16_t vid, int32_t pid) {
                     "handedness probe {}: empty SDO 0x{:04x} response", sn,
                     data::hand::Handedness::index);
                 results.push_back({sn, false, 0, "no response"});
+            } else if (bytes[0] > 1) {
+                // Firmware contract is 0 = Right, 1 = Left. Anything else means
+                // the field is corrupted or the firmware uses an unexpected
+                // encoding — neither outcome should silently fall into the
+                // "doesn't match side" branch.
+                logger.warn(
+                    "handedness probe {}: invalid handedness value {} (expected 0 or 1)", sn,
+                    bytes[0]);
+                results.push_back({sn, false, 0, "invalid handedness value"});
             } else {
                 results.push_back({sn, true, bytes[0], ""});
             }
@@ -128,6 +137,12 @@ std::string Hand::probe_handedness(Side side, uint16_t vid, int32_t pid) {
         } catch (const ConnectionError& e) {
             logger.warn("handedness probe {}: USB connection failed ({})", sn, e.what());
             results.push_back({sn, false, 0, "connection failed"});
+        } catch (const std::exception& e) {
+            // Defensive catch-all: a single device's unexpected failure
+            // (bad_alloc, libusb misbehavior, anything beyond Timeout/Connection)
+            // should not stop probing of the remaining candidates.
+            logger.warn("handedness probe {}: unexpected error ({})", sn, e.what());
+            results.push_back({sn, false, 0, "probe error"});
         }
     }
 

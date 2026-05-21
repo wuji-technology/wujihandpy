@@ -199,7 +199,7 @@ class Hand(_core.Hand):
 | `Side` enum 值 (0=Right, 1=Left) | **已确认** | 见 `docs/external/en/api-reference.mdx:228` —— `read_handedness ... (0=right, 1=left)`，与触觉模块约定相反 |
 | 同进程并发 `Hand(side='left')` 和 `Hand(side='right')` | **OK** | 每个 Handler 自己 `libusb_init` 拿独立 context；libusb 的 device 级互斥由 `claim_interface` 保证 |
 | 探测中途 USB 拔出 | **OK** | RAII 链完整（`Usb::~Usb` 已处理 release_interface + close + thread join），probe handler 析构干净 |
-| `list_matching_serial_numbers` 失败（libusb_init 出错等） | 抛 `ConnectionError`（与现有路径一致）|
+| `list_matching_serial_numbers` 失败（libusb_init 出错等） | **OK** | 抛 `ConnectionError`（与现有路径一致） |
 
 ## 验收标准
 
