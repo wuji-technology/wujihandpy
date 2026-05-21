@@ -387,7 +387,10 @@ public:
     }
 
 private:
-    static std::string probe_handedness(Side side, uint16_t vid, int32_t pid);
+    // WUJIHANDCPP_API: called from the inline Hand(Side, ...) ctor above,
+    // implementation lives in wujihandcpp/src/device/hand.cpp. External C++
+    // consumers need the symbol exported by the shared library.
+    WUJIHANDCPP_API static std::string probe_handedness(Side side, uint16_t vid, int32_t pid);
 
     class CompatibleControllerOperator : public IController {
     public:
