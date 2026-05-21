@@ -256,65 +256,159 @@ private:
         return true;
     }
 
+    // Restored to match main's behavior verbatim. The side= path resolves the
+    // SN via probe_handedness in hand.cpp and then delegates back through the
+    // standard Hand(serial_number=...) ctor, so select_device only ever sees
+    // either an explicit SN or nullptr (true no-arg). Reading the iSerialNumber
+    // descriptor lazily — only when a SN filter is supplied — keeps the
+    // no-arg path identical to pre-PR behavior.
     bool select_device(uint16_t vendor_id, int32_t product_id, const char* serial_number) {
-        std::vector<EnumeratedDevice> opened;
-        try {
-            opened = enumerate_matching_devices(libusb_context_, vendor_id, product_id);
-        } catch (const device::ConnectionError& e) {
-            logger_.error("{}", e.what());
+        libusb_device** device_list = nullptr;
+        const ssize_t device_count = libusb_get_device_list(libusb_context_, &device_list);
+        if (device_count < 0) {
+            logger_.error(
+                "Failed to get device list: {} ({})", device_count,
+                libusb_errname(static_cast<int>(device_count)));
             return false;
         }
 
-        utility::FinalAction close_all{[&opened]() {
-            for (auto& dev : opened)
-                libusb_close(dev.handle);
-        }};
+        utility::FinalAction free_device_list{
+            [&device_list]() { libusb_free_device_list(device_list, 1); }};
 
-        std::vector<EnumeratedDevice*> matched;
-        for (auto& dev : opened) {
-            if (serial_number && dev.serial_number != serial_number)
+        auto device_descriptors = new libusb_device_descriptor[device_count];
+        utility::FinalAction free_device_descriptors{
+            [&device_descriptors]() { delete[] device_descriptors; }};
+
+        std::vector<libusb_device_handle*> devices_opened;
+
+        for (ssize_t i = 0; i < device_count; i++) {
+            int ret = libusb_get_device_descriptor(device_list[i], &device_descriptors[i]);
+            if (ret != 0 || device_descriptors[i].bLength == 0) {
+                logger_.warn(
+                    "A device descriptor failed to get: {} ({})", ret, libusb_errname(ret));
                 continue;
-            matched.push_back(&dev);
-        }
+            }
+            auto& descriptors = device_descriptors[i];
 
-        if (matched.size() != 1) {
-            const auto count_str = matched.size()
-                ? std::format("{} devices", matched.size())
-                : std::string("No device");
-            const auto pid_str = product_id >= 0
-                ? std::format(", product id (0x{:04x})", product_id)
-                : std::string();
-            const auto sn_str = serial_number
-                ? std::format(", serial number ({})", serial_number)
-                : std::string();
-            logger_.error(
-                "{} found with specified vendor id (0x{:04x}){}{}", count_str, vendor_id, pid_str,
-                sn_str);
+            if (descriptors.idVendor != vendor_id)
+                continue;
+            if (descriptors.iSerialNumber == 0)
+                continue;
+            if (product_id >= 0 && descriptors.idProduct != product_id)
+                continue;
 
-            for (size_t i = 0; i < opened.size(); ++i) {
-                auto& dev = opened[i];
-                const bool is_match = !serial_number || (dev.serial_number == serial_number);
-                logger_.error(
-                    "Device {} : Serial Number = {}{}", i + 1, dev.serial_number,
-                    is_match ? " <-- Matched" : "");
+            libusb_device_handle* handle;
+            ret = libusb_open(device_list[i], &handle);
+            if (ret != 0)
+                continue;
+            utility::FinalAction close_device{[&handle]() { libusb_close(handle); }};
+
+            if (serial_number) {
+                unsigned char serial_buf[256];
+                int n = libusb_get_string_descriptor_ascii(
+                    handle, descriptors.iSerialNumber, serial_buf, sizeof(serial_buf) - 1);
+                if (n < 0)
+                    continue;
+                serial_buf[n] = '\0';
+
+                if (std::strcmp(reinterpret_cast<char*>(serial_buf), serial_number) != 0)
+                    continue;
             }
 
-            if (matched.size() > 1 && !serial_number)
-                logger_.error(
-                    "To ensure correct device selection, please specify the Serial Number");
-            else if (matched.size() > 1)
-                logger_.error(
-                    "Multiple devices found with the same Serial Number, which is unusual");
+            close_device.disable();
+            devices_opened.push_back(handle);
+        }
+
+        if (devices_opened.size() != 1) {
+            for (auto& device : devices_opened)
+                libusb_close(device);
+
+            logger_.error(
+                "{} found with specified vendor id (0x{:04x}){}{}",
+                devices_opened.size() ? std::format("{} devices", devices_opened.size()).c_str()
+                                      : "No device",
+                vendor_id,
+                product_id >= 0 ? std::format(", product id (0x{:04x})", product_id).c_str() : "",
+                serial_number ? std::format(", serial number ({})", serial_number).c_str() : "");
+
+            int relaxing_count = print_matched_unmatched_devices(
+                device_list, device_count, device_descriptors, vendor_id, product_id,
+                serial_number);
+
+            if (devices_opened.size()) {
+                if (!serial_number)
+                    logger_.error(
+                        "To ensure correct device selection, please specify the Serial Number");
+                else
+                    logger_.error(
+                        "Multiple devices found, which is unusual. Consider using a device "
+                        "with a unique Serial Number");
+            } else {
+                if (relaxing_count)
+                    logger_.error("Consider relaxing some filters");
+            }
+
             return false;
         }
 
-        libusb_device_handle_ = matched[0]->handle;
-        // Keep the chosen handle alive; close only the others.
-        close_all.disable();
-        for (auto& dev : opened)
-            if (dev.handle != libusb_device_handle_)
-                libusb_close(dev.handle);
+        libusb_device_handle_ = devices_opened[0];
         return true;
+    }
+
+    int print_matched_unmatched_devices(
+        libusb_device** device_list, ssize_t device_count,
+        libusb_device_descriptor* device_descriptors, uint16_t vendor_id, int32_t product_id,
+        const char* serial_number) {
+
+        int j = 0, k = 0;
+        for (ssize_t i = 0; i < device_count; i++) {
+            auto& descriptors = device_descriptors[i];
+            bool matched = true;
+
+            if (descriptors.idVendor != vendor_id)
+                continue;
+            if (descriptors.iSerialNumber == 0)
+                continue;
+            if (product_id >= 0 && descriptors.idProduct != product_id)
+                matched = false;
+
+            const auto device_str = std::format(
+                "Device {} ({:04x}:{:04x}):", ++j, descriptors.idVendor, descriptors.idProduct);
+
+            libusb_device_handle* handle;
+            int ret = libusb_open(device_list[i], &handle);
+            if (ret != 0) {
+                logger_.error(
+                    "{} Ignored because device could not be opened: {} ({})", device_str, ret,
+                    libusb_errname(ret));
+                continue;
+            }
+            utility::FinalAction close_device{[&handle]() { libusb_close(handle); }};
+
+            unsigned char serial_buf[256];
+            int n = libusb_get_string_descriptor_ascii(
+                handle, descriptors.iSerialNumber, serial_buf, sizeof(serial_buf) - 1);
+            if (n < 0) {
+                logger_.error(
+                    "{} Ignored because descriptor could not be read: {} ({})", device_str, n,
+                    libusb_errname(n));
+                continue;
+            }
+            serial_buf[n] = '\0';
+            const char* serial_str = reinterpret_cast<char*>(serial_buf);
+
+            if (serial_number && std::strcmp(serial_str, serial_number) != 0)
+                matched = false;
+
+            if (matched) {
+                const int match_index = ++k;
+                logger_.error(
+                    "{} Serial Number = {} <-- Matched #{}", device_str, serial_str, match_index);
+            } else {
+                logger_.error("{} Serial Number = {}", device_str, serial_str);
+            }
+        }
+        return j;
     }
 
     void handle_events() {
