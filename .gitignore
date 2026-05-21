@@ -19,6 +19,7 @@ compile_commands.json
 src/wujihandpy/_version.py
 
 docs/plans/
+docs/internal/
 
 # HIL test scripts are local-only (need a physical board; this is a
 # public repo). Gate the script entry with WUJIHAND_HIL=1 (see
