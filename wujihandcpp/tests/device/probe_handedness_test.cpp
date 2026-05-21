@@ -42,7 +42,7 @@ TEST(SelectSideMatched, TwoSameSideAmbiguous) {
     EXPECT_NE(msg.find("Multiple left hands found"), std::string::npos);
     EXPECT_NE(msg.find("SN_A"), std::string::npos);
     EXPECT_NE(msg.find("SN_B"), std::string::npos);
-    EXPECT_NE(msg.find("use serial_number to disambiguate"), std::string::npos);
+    EXPECT_NE(msg.find("use serial_number to specify the device"), std::string::npos);
 }
 
 TEST(SelectSideMatched, UnresponsiveDevicesReportedInDiagnostic) {
@@ -60,5 +60,5 @@ TEST(SelectSideMatched, AllProbesFailedSuggestsSerialNumber) {
     std::vector<ProbeResult> results = {{"SN_A", false, 0, "no response"}};
     auto [matches, msg] = select_side_matched(Hand::Side::Left, results);
     EXPECT_TRUE(matches.empty());
-    EXPECT_NE(msg.find("use serial_number to select a specific device"), std::string::npos);
+    EXPECT_NE(msg.find("use serial_number to specify the device"), std::string::npos);
 }

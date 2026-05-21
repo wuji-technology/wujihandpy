@@ -726,10 +726,7 @@ inline std::pair<std::vector<std::string>, std::string>
             msg += " " + f;
     }
 
-    if (matches.empty())
-        msg += "; use serial_number to select a specific device";
-    else
-        msg += "; use serial_number to disambiguate";
+    msg += "; use serial_number to specify the device";
 
     return {matches, msg};
 }
