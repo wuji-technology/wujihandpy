@@ -26,19 +26,6 @@
 namespace wujihandcpp {
 namespace device {
 
-namespace detail {
-// Defined further below alongside ProbeResult / select_side_matched.
-// register_hand_sn can throw bad_alloc (it copies the SN into a set); the
-// other two are noexcept because they only read or erase, never allocate.
-//
-// WUJIHANDCPP_API: these are called from inline Hand ctor/dtor in this public
-// header, so external consumers linking against the wujihandcpp shared library
-// (built with -fvisibility=hidden) need the symbols exported.
-WUJIHANDCPP_API void register_hand_sn(const std::string& sn);
-WUJIHANDCPP_API void unregister_hand_sn(const std::string& sn) noexcept;
-WUJIHANDCPP_API std::vector<std::string> held_sns_snapshot();
-} // namespace detail
-
 class Hand : public DataOperator<Hand> {
     friend class DataOperator;
 
@@ -49,90 +36,24 @@ public:
     // dexterous-hand side enum below is the authoritative one for `Hand`.
     enum class Side : uint8_t { Right = 0, Left = 1 };
 
-    explicit Hand(
-        const char* serial_number = nullptr, int32_t usb_pid = 0x2000, uint16_t usb_vid = 0x0483,
-        uint32_t mask = 0)
-        : handler_(usb_vid, usb_pid, serial_number, data_count()) {
+    // Open a wujihand by USB serial number (or the unique device on the bus
+    // when serial_number is nullptr). Body is out-of-line in
+    // src/device/hand.cpp so that probe_handedness, the SN registry, and the
+    // selected-SN bookkeeping stay implementation details and don't leak into
+    // the ABI surface.
+    WUJIHANDCPP_API explicit Hand(
+        const char* serial_number = nullptr, int32_t usb_pid = 0x2000,
+        uint16_t usb_vid = 0x0483, uint32_t mask = 0);
 
-        init_storage_info(mask);
-        handler_.start_transmit_receive();
+    // Open a wujihand by handedness. Internally probes every VID/PID match,
+    // reads SDO 0x5090 from each candidate, and delegates to the serial-number
+    // ctor once a unique match is found. Throws ConnectionError on no/multiple
+    // matches. Body is in src/device/hand.cpp; see comments there for the
+    // probe protocol and the temporary-string lifetime caveat.
+    WUJIHANDCPP_API explicit Hand(
+        Side side, int32_t usb_pid = 0x2000, uint16_t usb_vid = 0x0483, uint32_t mask = 0);
 
-        try {
-            check_firmware_version();
-
-            write<data::joint::Enabled>(false);
-
-            Latch latch;
-            write_async<data::joint::ControlMode>(latch, feature_firmware_filter_ ? 9 : 6);
-
-            if (feature_firmware_filter_) {
-                write_async<data::hand::RPdoId>(latch, 0x01);
-                uint16_t tpdo_id = feature_exception_detect_ ? 0x02 : 0x01;
-                write_async<data::hand::TPdoId>(latch, tpdo_id);
-                write_async<data::hand::PdoInterval>(
-                    latch, feature_rpdo_directly_distribute_ ? 1000 : 2000);
-                write_async<data::hand::PdoEnabled>(latch, 1);
-            } else
-                write_async<data::joint::CurrentLimit>(latch, 1000);
-
-            if (feature_rpdo_directly_distribute_)
-                write_async<data::hand::RPdoDirectlyDistribute>(latch, 1);
-            if (feature_tpdo_proactively_report_)
-                write_async<data::hand::TPdoProactivelyReport>(latch, 1);
-
-            latch.wait();
-
-        } catch (const TimeoutError&) {
-            int disconnected_count = 0;
-            std::string disconnected;
-            for (int i = 0; i < sub_count_; i++)
-                for (int j = 0; j < Finger::sub_count_; j++)
-                    if (finger(i).joint(j).get<data::joint::FirmwareVersion>() == 0) {
-                        disconnected_count++;
-                        disconnected +=
-                            " finger(" + std::to_string(i) + ").joint(" + std::to_string(j) + ")";
-                    }
-
-            if (disconnected_count == 0)
-                throw TimeoutError("Failed to initialize hand: configuration timed out");
-            else if (disconnected_count < sub_count_ * Finger::sub_count_)
-                throw TimeoutError(
-                    "Failed to initialize hand: joint(s) not responding:" + disconnected);
-            else
-                throw TimeoutError("Failed to initialize hand: no response from device");
-        }
-
-        // Register the actually selected USB SN (queried from the handler,
-        // not the caller's argument). This way Hand() no-arg and
-        // Hand(serial_number=) both feed the registry the same way, so a
-        // subsequent Hand(side=...) probe correctly skips this device
-        // regardless of which ctor opened it.
-        //
-        // Done after all init succeeded — any throw above unwinds without
-        // sn_guard_ ever holding a non-empty sn, so its dtor is a no-op for
-        // the partially-constructed case.
-        const auto& actual_sn = handler_.selected_serial_number();
-        if (!actual_sn.empty()) {
-            sn_guard_.sn = actual_sn;
-            detail::register_hand_sn(sn_guard_.sn);
-        }
-    };
-
-    // No explicit ~Hand(): the compiler-generated dtor destroys members in
-    // reverse declaration order, which is exactly what we want — handler_
-    // releases the USB claim first, sn_guard_ unregisters the SN last.
-
-    // Probe each VID/PID-matching USB device, read SDO 0x5090 to learn its
-    // handedness, then forward to the serial-number ctor once a unique match
-    // is found. Throws ConnectionError when zero/multiple devices match.
-    //
-    // Lifetime note: probe_handedness(...) returns std::string by value. The
-    // temporary lives until the end of the full expression — which spans the
-    // entire delegated ctor call — so .c_str() is valid throughout the
-    // delegated init (see [class.temporary]). The delegated ctor copies the
-    // SN into sn_guard_.sn, so no dangling pointer survives this scope.
-    explicit Hand(Side side, int32_t usb_pid = 0x2000, uint16_t usb_vid = 0x0483, uint32_t mask = 0)
-        : Hand(probe_handedness(side, usb_vid, usb_pid).c_str(), usb_pid, usb_vid, mask) {}
+    WUJIHANDCPP_API ~Hand() noexcept;
 
     void check_firmware_version() {
         Latch latch;
@@ -388,11 +309,6 @@ public:
     }
 
 private:
-    // WUJIHANDCPP_API: called from the inline Hand(Side, ...) ctor above,
-    // implementation lives in wujihandcpp/src/device/hand.cpp. External C++
-    // consumers need the symbol exported by the shared library.
-    WUJIHANDCPP_API static std::string probe_handedness(Side side, uint16_t vid, int32_t pid);
-
     class CompatibleControllerOperator : public IController {
     public:
         explicit CompatibleControllerOperator(Hand& hand)
@@ -676,14 +592,10 @@ private:
         SnRegistration() = default;
         SnRegistration(const SnRegistration&) = delete;
         SnRegistration& operator=(const SnRegistration&) = delete;
-        ~SnRegistration() noexcept {
-            if (!sn.empty()) {
-                try {
-                    detail::unregister_hand_sn(sn);
-                } catch (...) {
-                }
-            }
-        }
+        // Out-of-line in hand.cpp so that the unregister-from-registry call
+        // stays inside the library (the registry helpers themselves are not
+        // exported from the public header).
+        ~SnRegistration() noexcept;
     };
 
     SnRegistration sn_guard_;

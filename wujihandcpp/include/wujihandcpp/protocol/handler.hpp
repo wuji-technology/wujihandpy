@@ -14,6 +14,9 @@
 #include "wujihandcpp/utility/api.hpp"
 
 namespace wujihandcpp {
+namespace device {
+class Hand; // forward decl for friend access from Hand to Handler internals
+}
 namespace protocol {
 
 class Handler final {
@@ -78,10 +81,6 @@ public:
 
     WUJIHANDCPP_API ~Handler();
 
-    /// USB iSerialNumber descriptor of the device this Handler is bound to.
-    /// Forwards to the underlying transport; see ITransport::selected_serial_number.
-    WUJIHANDCPP_API const std::string& selected_serial_number() const noexcept;
-
     WUJIHANDCPP_API void init_storage_info(int storage_id, StorageInfo info);
 
     WUJIHANDCPP_API void start_transmit_receive();
@@ -134,8 +133,16 @@ public:
         std::chrono::steady_clock::duration timeout);
 
 private:
+    // Library-internal accessor; not WUJIHANDCPP_API-exported. Available to
+    // device::Hand (friend) for SN-registry bookkeeping. External consumers
+    // can't call this even via friend trickery because the symbol is hidden
+    // from the shared library.
+    const std::string& selected_serial_number() const noexcept;
+
     class Impl;
     Impl* impl_;
+
+    friend class wujihandcpp::device::Hand;
 };
 
 } // namespace protocol

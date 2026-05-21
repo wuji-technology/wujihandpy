@@ -1098,7 +1098,7 @@ WUJIHANDCPP_API Handler::Handler(
 
 WUJIHANDCPP_API Handler::~Handler() { delete impl_; }
 
-WUJIHANDCPP_API const std::string& Handler::selected_serial_number() const noexcept {
+const std::string& Handler::selected_serial_number() const noexcept {
     return impl_->selected_serial_number();
 }
 
