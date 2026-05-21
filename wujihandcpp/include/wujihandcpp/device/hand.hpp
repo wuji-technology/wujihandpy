@@ -103,22 +103,17 @@ public:
         }
 
         // Register only after all init succeeded — any throw above unwinds
-        // without dtor (object never finished constructing), so we don't
-        // leave a stale entry.
+        // without sn_guard_ ever holding a non-empty sn, so its dtor is a
+        // no-op for the partially-constructed case.
         if (serial_number != nullptr && serial_number[0] != '\0') {
-            my_sn_ = serial_number;
-            detail::register_hand_sn(my_sn_);
+            sn_guard_.sn = serial_number;
+            detail::register_hand_sn(sn_guard_.sn);
         }
     };
 
-    ~Hand() noexcept {
-        // Guard against any future change that makes unregister_hand_sn throw:
-        // throwing from a dtor causes std::terminate in C++17+.
-        try {
-            if (!my_sn_.empty())
-                detail::unregister_hand_sn(my_sn_);
-        } catch (...) {}
-    }
+    // No explicit ~Hand(): the compiler-generated dtor destroys members in
+    // reverse declaration order, which is exactly what we want — handler_
+    // releases the USB claim first, sn_guard_ unregisters the SN last.
 
     // Probe each VID/PID-matching USB device, read SDO 0x5090 to learn its
     // handedness, then forward to the serial-number ctor once a unique match
@@ -128,7 +123,7 @@ public:
     // temporary lives until the end of the full expression — which spans the
     // entire delegated ctor call — so .c_str() is valid throughout the
     // delegated init (see [class.temporary]). The delegated ctor copies the
-    // SN into my_sn_, so no dangling pointer survives this scope.
+    // SN into sn_guard_.sn, so no dangling pointer survives this scope.
     explicit Hand(Side side, int32_t usb_pid = 0x2000, uint16_t usb_vid = 0x0483, uint32_t mask = 0)
         : Hand(probe_handedness(side, usb_vid, usb_pid).c_str(), usb_pid, usb_vid, mask) {}
 
@@ -655,11 +650,37 @@ private:
         data::hand::TPdoId, data::hand::PdoInterval, data::hand::RPdoTriggerOffset,
         data::hand::TPdoTriggerOffset>;
 
-    protocol::Handler handler_;
+    // RAII guard for the process-local SN registry. Holds the SN this Hand
+    // is registered under (empty for the Hand() no-arg path that doesn't know
+    // its SN). The dtor unregisters.
+    //
+    // Declaration order matters: sn_guard_ MUST be declared before handler_
+    // so it destructs LAST (members destruct in reverse declaration order).
+    // That sequence — handler_ first releases libusb_claim_interface, then
+    // sn_guard_ removes the SN from the registry — keeps the registry's
+    // "skip held devices" invariant honest: while another Hand instance
+    // could conceivably observe the SN missing from the registry just
+    // before the USB claim drops, the inverse race (SN missing while claim
+    // still held) is the noisy one we want to avoid. With this ordering the
+    // claim is gone first; a concurrent probe of the same SN will succeed
+    // cleanly instead of hitting LIBUSB_ERROR_BUSY.
+    struct SnRegistration {
+        std::string sn;
+        SnRegistration() = default;
+        SnRegistration(const SnRegistration&) = delete;
+        SnRegistration& operator=(const SnRegistration&) = delete;
+        ~SnRegistration() noexcept {
+            if (!sn.empty()) {
+                try {
+                    detail::unregister_hand_sn(sn);
+                } catch (...) {
+                }
+            }
+        }
+    };
 
-    // SN this Hand holds, kept in detail::registry while the object is alive.
-    // Empty when constructed via Hand() no-arg (single-device-on-bus path).
-    std::string my_sn_;
+    SnRegistration sn_guard_;
+    protocol::Handler handler_;
 
     bool feature_firmware_filter_ = false;
     bool feature_rpdo_directly_distribute_ = false;
