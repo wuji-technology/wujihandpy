@@ -30,9 +30,13 @@ namespace detail {
 // Defined further below alongside ProbeResult / select_side_matched.
 // register_hand_sn can throw bad_alloc (it copies the SN into a set); the
 // other two are noexcept because they only read or erase, never allocate.
-void register_hand_sn(const std::string& sn);
-void unregister_hand_sn(const std::string& sn) noexcept;
-std::vector<std::string> held_sns_snapshot();
+//
+// WUJIHANDCPP_API: these are called from inline Hand ctor/dtor in this public
+// header, so external consumers linking against the wujihandcpp shared library
+// (built with -fvisibility=hidden) need the symbols exported.
+WUJIHANDCPP_API void register_hand_sn(const std::string& sn);
+WUJIHANDCPP_API void unregister_hand_sn(const std::string& sn) noexcept;
+WUJIHANDCPP_API std::vector<std::string> held_sns_snapshot();
 } // namespace detail
 
 class Hand : public DataOperator<Hand> {
