@@ -89,7 +89,8 @@ public:
                 for (int j = 0; j < Finger::sub_count_; j++)
                     if (finger(i).joint(j).get<data::joint::FirmwareVersion>() == 0) {
                         disconnected_count++;
-                        disconnected += " finger(" + std::to_string(i) + ").joint(" + std::to_string(j) + ")";
+                        disconnected +=
+                            " finger(" + std::to_string(i) + ").joint(" + std::to_string(j) + ")";
                     }
 
             if (disconnected_count == 0)
@@ -104,7 +105,7 @@ public:
         // Register only after all init succeeded — any throw above unwinds
         // without dtor (object never finished constructing), so we don't
         // leave a stale entry.
-        if (serial_number != nullptr) {
+        if (serial_number != nullptr && serial_number[0] != '\0') {
             my_sn_ = serial_number;
             detail::register_hand_sn(my_sn_);
         }
@@ -116,8 +117,7 @@ public:
         try {
             if (!my_sn_.empty())
                 detail::unregister_hand_sn(my_sn_);
-        } catch (...) {
-        }
+        } catch (...) {}
     }
 
     // Probe each VID/PID-matching USB device, read SDO 0x5090 to learn its
@@ -129,8 +129,7 @@ public:
     // entire delegated ctor call — so .c_str() is valid throughout the
     // delegated init (see [class.temporary]). The delegated ctor copies the
     // SN into my_sn_, so no dangling pointer survives this scope.
-    explicit Hand(
-        Side side, int32_t usb_pid = 0x2000, uint16_t usb_vid = 0x0483, uint32_t mask = 0)
+    explicit Hand(Side side, int32_t usb_pid = 0x2000, uint16_t usb_vid = 0x0483, uint32_t mask = 0)
         : Hand(probe_handedness(side, usb_vid, usb_pid).c_str(), usb_pid, usb_vid, mask) {}
 
     void check_firmware_version() {
@@ -444,8 +443,7 @@ private:
                 return;
             try {
                 detach();
-            } catch (...) {
-            }
+            } catch (...) {}
         }
 
         void detach() override {
@@ -495,8 +493,7 @@ private:
                 return;
             try {
                 detach();
-            } catch (...) {
-            }
+            } catch (...) {}
         }
 
         void detach() override {
