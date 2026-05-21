@@ -815,3 +815,217 @@ URDF 文件中的关节范围是理论设计值，经过保守缩放以考虑加
 - **异步操作** (`*_async`)：返回 Awaitable 对象，支持 await 语法
 - **非阻塞操作** (`*_unchecked`)：立即返回，不保证操作成功，适用于高频率场景
 - **缓存获取** (`get_*`)：获取最近一次读取的数据，不阻塞
+
+
+---
+
+## 3. 触觉感知手套
+
+触觉感知手套（Tactile Sensing Glove）是 Wuji Hand 的选配触觉感知配件。SDK 通过 `TactileGlove` 类提供设备连接和数据读取接口。
+
+### 3.1 核心类
+
+#### TactileHandedness
+
+手型枚举：
+- `TactileHandedness.LEFT`（0）：左手
+- `TactileHandedness.RIGHT`（1）：右手
+
+#### TactileFrame
+
+单帧触觉数据，包含以下属性：
+
+| 属性 | 类型 | 说明 |
+|------|------|------|
+| `hand` | `TactileHandedness` | 左手或右手 |
+| `sequence` | `int`（uint16） | 帧计数器，0–65535 循环 |
+| `timestamp_ms` | `int`（uint32） | 设备启动后的毫秒时间戳 |
+| `pressure` | `numpy.ndarray`（24, 32）float32 | 压力矩阵 |
+
+**压力值语义：**
+- 范围：`[0.0, 1.0]`——`0.0` 表示无接触，`1.0` 表示最大接触
+- `NaN` 标记无效单元（不属于任何手指或手掌区域），处理时用 `numpy.isnan()` 跳过
+
+CRC 校验在 SDK 内部完成，调用方拿到的帧均已通过校验。
+
+#### TactileGlove
+
+触觉感知手套设备的连接与数据读取。
+
+**构造函数：**
+```python
+TactileGlove(serial_number: str | None = None)
+```
+- `serial_number`：USB 设备序列号。`None` 时自动发现唯一的设备；若总线上存在多台，会抛出异常
+
+### 3.2 设备连接
+
+#### 自动发现
+```python
+from wujihandpy import TactileGlove
+
+glove = TactileGlove()
+glove.connect()  # 返回 True 表示连接成功
+```
+
+#### 指定设备
+```python
+glove = TactileGlove(serial_number="ABC123")
+glove.connect()
+```
+
+#### Context Manager
+```python
+with TactileGlove() as glove:
+    frame = glove.read_frame()
+```
+
+#### 连接管理方法
+- `connect() -> bool`：连接设备，成功返回 `True`
+- `disconnect() -> None`：断开连接并停止流式读取
+- `is_connected() -> bool`：查询连接状态
+- `get_handedness() -> TactileHandedness`：返回设备手型
+
+### 3.3 数据读取
+
+#### 阻塞读取
+
+```python
+import numpy as np
+
+frame = glove.read_frame(timeout_ms=100)
+print(f"序号: {frame.sequence}")
+print(f"压力矩阵形状: {frame.pressure.shape}")  # (24, 32)
+print(f"最大压力: {np.nanmax(frame.pressure)}")
+```
+
+- 内部执行帧同步和 CRC 校验
+- 超时抛出 `RuntimeError`
+- 连接断开抛出 `RuntimeError`
+
+#### 流式回调
+
+```python
+import numpy as np
+
+def on_frame(frame):
+    print(f"Seq={frame.sequence}, Max={np.nanmax(frame.pressure)}")
+
+glove.start_streaming(on_frame)
+# ... 业务逻辑 ...
+glove.stop_streaming()
+```
+
+- 回调在内部读取线程中调用，不可阻塞
+- 通过 `set_disconnect_callback(fn)` 注册断开回调以响应 USB 拔出；之后流式读取自动停止
+- `start_streaming` 与 `read_frame` 互斥，不可同时使用
+- 所有阻塞操作释放 Python GIL
+
+### 3.4 配置与诊断
+
+| 方法 | 说明 |
+|------|------|
+| `set_sample_rate_hz(hz)` | 设置采样率，范围 1–120 Hz |
+| `get_sample_rate_hz() -> int` | 读取当前采样率 |
+| `set_streaming(enable)` | 开关设备数据帧流 |
+| `get_streaming_enabled() -> bool` | 读取流式输出开关状态 |
+| `set_disconnect_callback(callback)` | 注册 `Callable[[], None]`，USB 设备脱离总线时调用一次 |
+| `get_device_info() -> TactileDeviceInfo` | 读取 `serial`、`hw_revision`、`fw_version` |
+| `get_fw_build() -> TactileFwBuild` | 读取固件构建信息（`git_short_sha`） |
+| `get_diagnostics() -> TactileDiagnostics` | 读取计数器：`uptime_ms`、`frame_count`、`crc_err_count`、`dropout_count`、`usb_reset_count` |
+| `reset_counters()` | 清零诊断计数器 |
+| `get_device_time() -> TactileDeviceTime` | 读取设备单调时钟（`device_monotonic_ns`） |
+| `sync_host_epoch(host_unix_ns) -> TactileSyncResult` | 用主机 UTC 纳秒交换同一时刻的设备时钟 |
+| `reset_device()` | 软复位；句柄失效，调用方需重新连接 |
+| `enter_bootloader(magic)` | 跳转至 bootloader 以执行 OTA；传入 `TACTILE_BOOTLOADER_MAGIC` |
+
+### 3.5 异常处理
+
+| 异常 | 触发场景 |
+|------|----------|
+| `RuntimeError` | `read_frame` 超时、读取期间 USB 断开、未连接时调用 `read_frame`，或在已流式时重复调用 `start_streaming` |
+| `TactileError` | 命令返回设备协议错误（长度错误、CRC 错误、未知命令、负载错误） |
+
+### 3.6 完整示例
+
+```python
+import time
+import numpy as np
+from wujihandpy import TactileGlove, TactileHandedness
+
+# 连接设备
+glove = TactileGlove()
+if not glove.connect():
+    print("未找到触觉感知手套")
+    exit(1)
+
+hand = glove.get_handedness()
+print(f"已连接 {'左' if hand == TactileHandedness.LEFT else '右'}手触觉感知手套")
+
+# 流式采集
+frames = []
+
+def collect(frame):
+    frames.append(frame.pressure.copy())
+
+try:
+    glove.start_streaming(collect)
+    time.sleep(5)  # 采集 5 秒
+finally:
+    try:
+        glove.stop_streaming()
+    finally:
+        glove.disconnect()
+
+# 保存数据
+if frames:
+    data = np.stack(frames)  # shape: (N, 24, 32)，dtype: float32
+    np.save("tactile_data.npy", data)
+    print(f"采集 {len(frames)} 帧，保存至 tactile_data.npy")
+else:
+    print("未采集到帧")
+```
+
+### 3.7 与 Wuji Hand 联合使用
+
+`Hand` 与 `TactileGlove` 使用独立的 USB 传输和线程，可在同一进程内并行使用，无需额外协调。帧回调在触觉手套的流式消费线程中触发，关节命令运行在调用它们的线程上。该模式适合用触觉反馈驱动运动控制的闭环场景，例如根据当前压力峰值动态缩放关节运动幅度。
+
+可参考 wujihandpy 仓库的 `example/joint_with_tactile.py` 示例。
+
+### 3.8 协议参考
+
+本节面向需要自行解析触觉数据帧的高级开发者。使用 SDK 的 `TactileGlove` 类时无需关注协议细节。
+
+#### 数据帧格式
+
+触觉感知手套通过 USB CDC（虚拟串口）以最高 120 Hz 输出固定 3088 字节的数据帧。实际速率由 `set_sample_rate_hz`（1–120 Hz）控制：
+
+| 偏移量 | 长度 | 字段 | 类型 | 说明 |
+|--------|------|------|------|------|
+| 0–1 | 2 | 帧头 | u8[2] | 固定 `0xAA 0x55` |
+| 2–3 | 2 | 帧长度 | u16 LE | 固定 3088 |
+| 4 | 1 | 手型 | u8 | `0x00` = 左手，`0x01` = 右手 |
+| 5–7 | 3 | 填充 | u8[3] | 将触觉数据对齐到 4 字节边界 |
+| 8–3079 | 3072 | 触觉数据 | f32[24][32] LE | 压力矩阵，行优先，`[0.0, 1.0]`；`NaN` = 无效单元 |
+| 3080–3081 | 2 | 序号 | u16 LE | 帧计数器，0–65535 循环 |
+| 3082–3085 | 4 | 时间戳 | u32 LE | 设备启动后毫秒数 |
+| 3086–3087 | 2 | CRC16 | u16 LE | CRC16-CCITT 校验 |
+
+#### CRC16-CCITT
+
+- 多项式：`0x1021`，初始值：`0xFFFF`
+- 校验范围：字节 `[2, 3086)`（帧长度到时间戳，共 3084 字节）
+- 不含帧头和 CRC 字段本身
+
+#### 帧同步算法
+
+1. 逐字节扫描，匹配帧头 `0xAA 0x55`
+2. 读取字节 2–3，验证帧长度 == 3088
+3. 读取剩余字节，凑满完整帧
+4. 计算 CRC16 并比对
+5. CRC 失败：丢弃，从 header_position + 1 继续扫描
+6. CRC 成功：解析并交付帧
+
+<Callout type="info">
+`0xAA 0x55` 可能出现在压力数据中（伪帧头），CRC 校验是区分真伪帧头的唯一可靠手段。
+</Callout>

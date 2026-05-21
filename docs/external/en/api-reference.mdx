@@ -815,3 +815,217 @@ This field records the lower position limit of the joint.
 - **Asynchronous Operations** (`*_async`): Returns Awaitable objects, supports await syntax
 - **Non-blocking Operations** (`*_unchecked`): Returns immediately, does not guarantee operation success, suitable for high-frequency scenarios
 - **Cached Retrieval** (`get_*`): Gets the most recently read data, does not block
+
+
+---
+
+## 3. Tactile Sensing Glove
+
+The Tactile Sensing Glove is an optional tactile perception accessory for Wuji Hand. The SDK provides device connection and data reading through the `TactileGlove` class.
+
+### 3.1 Core Classes
+
+#### TactileHandedness
+
+Handedness enum:
+- `TactileHandedness.LEFT` (0): Left hand
+- `TactileHandedness.RIGHT` (1): Right hand
+
+#### TactileFrame
+
+Single-frame tactile data with the following properties:
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `hand` | `TactileHandedness` | Left or right hand |
+| `sequence` | `int` (uint16) | Frame counter, wraps at 65535 |
+| `timestamp_ms` | `int` (uint32) | Milliseconds since device boot |
+| `pressure` | `numpy.ndarray` (24, 32) float32 | Pressure matrix |
+
+**Pressure value semantics:**
+- Range: `[0.0, 1.0]`—`0.0` = no contact, `1.0` = maximum contact
+- `NaN` marks an invalid cell (not part of any finger or palm region); skip such cells with `numpy.isnan()`
+
+CRC validation happens inside the SDK before delivery, so callers never see a bad-CRC frame.
+
+#### TactileGlove
+
+Connection and data reading for the Tactile Sensing Glove.
+
+**Constructor:**
+```python
+TactileGlove(serial_number: str | None = None)
+```
+- `serial_number`: USB device serial number. `None` auto-discovers the only attached device; raises if more than one is present
+
+### 3.2 Device Connection
+
+#### Auto-discovery
+```python
+from wujihandpy import TactileGlove
+
+glove = TactileGlove()
+glove.connect()  # Returns True on success
+```
+
+#### Specific device
+```python
+glove = TactileGlove(serial_number="ABC123")
+glove.connect()
+```
+
+#### Context Manager
+```python
+with TactileGlove() as glove:
+    frame = glove.read_frame()
+```
+
+#### Connection management methods
+- `connect() -> bool`: Connect to device. Returns `True` on success
+- `disconnect() -> None`: Disconnect and stop streaming
+- `is_connected() -> bool`: Query connection status
+- `get_handedness() -> TactileHandedness`: Return device handedness
+
+### 3.3 Data Reading
+
+#### Blocking read
+
+```python
+import numpy as np
+
+frame = glove.read_frame(timeout_ms=100)
+print(f"Sequence: {frame.sequence}")
+print(f"Pressure shape: {frame.pressure.shape}")  # (24, 32)
+print(f"Max pressure: {np.nanmax(frame.pressure)}")
+```
+
+- Performs frame synchronization and CRC validation internally
+- Raises `RuntimeError` on timeout
+- Raises `RuntimeError` on disconnect
+
+#### Streaming callback
+
+```python
+import numpy as np
+
+def on_frame(frame):
+    print(f"Seq={frame.sequence}, Max={np.nanmax(frame.pressure)}")
+
+glove.start_streaming(on_frame)
+# ... application logic ...
+glove.stop_streaming()
+```
+
+- Callback invoked on the internal reader thread; must not block
+- Register a disconnect callback with `set_disconnect_callback(fn)` to react to USB drop; streaming stops automatically afterwards
+- `start_streaming` and `read_frame` are mutually exclusive
+- All blocking operations release the Python GIL
+
+### 3.4 Configuration and Diagnostics
+
+| Method | Description |
+|--------|-------------|
+| `set_sample_rate_hz(hz)` | Set sample rate, 1–120 Hz |
+| `get_sample_rate_hz() -> int` | Read current sample rate |
+| `set_streaming(enable)` | Toggle the device data-frame stream |
+| `get_streaming_enabled() -> bool` | Read the streaming-enabled flag |
+| `set_disconnect_callback(callback)` | Register a `Callable[[], None]` invoked once when the USB device drops off the bus |
+| `get_device_info() -> TactileDeviceInfo` | Read `serial`, `hw_revision`, `fw_version` |
+| `get_fw_build() -> TactileFwBuild` | Read firmware build (`git_short_sha`) |
+| `get_diagnostics() -> TactileDiagnostics` | Read counters: `uptime_ms`, `frame_count`, `crc_err_count`, `dropout_count`, `usb_reset_count` |
+| `reset_counters()` | Zero the diagnostic counters |
+| `get_device_time() -> TactileDeviceTime` | Read device monotonic clock (`device_monotonic_ns`) |
+| `sync_host_epoch(host_unix_ns) -> TactileSyncResult` | Exchange host UTC nanoseconds for the device clock at the same moment |
+| `reset_device()` | Soft reset; handle becomes invalid, caller must reconnect |
+| `enter_bootloader(magic)` | Jump to bootloader for OTA; pass `TACTILE_BOOTLOADER_MAGIC` |
+
+### 3.5 Exception Handling
+
+| Exception | Trigger |
+|-----------|---------|
+| `RuntimeError` | `read_frame` timeout, USB device disconnected during read, `read_frame` called when not connected, or `start_streaming` called while already streaming |
+| `TactileError` | Device-reported protocol error from a command (bad length, bad CRC, unknown command, bad payload) |
+
+### 3.6 Complete Example
+
+```python
+import time
+import numpy as np
+from wujihandpy import TactileGlove, TactileHandedness
+
+# Connect
+glove = TactileGlove()
+if not glove.connect():
+    print("Tactile Sensing Glove not found")
+    exit(1)
+
+hand = glove.get_handedness()
+print(f"Connected to {'left' if hand == TactileHandedness.LEFT else 'right'}-hand Tactile Sensing Glove")
+
+# Stream and collect
+frames = []
+
+def collect(frame):
+    frames.append(frame.pressure.copy())
+
+try:
+    glove.start_streaming(collect)
+    time.sleep(5)  # Collect for 5 seconds
+finally:
+    try:
+        glove.stop_streaming()
+    finally:
+        glove.disconnect()
+
+# Save data
+if frames:
+    data = np.stack(frames)  # shape: (N, 24, 32), dtype: float32
+    np.save("tactile_data.npy", data)
+    print(f"Collected {len(frames)} frames, saved to tactile_data.npy")
+else:
+    print("No frames collected")
+```
+
+### 3.7 Use with Wuji Hand
+
+`Hand` and `TactileGlove` use independent USB transports and threads, so the two APIs compose in the same process with no extra coordination. The frame callback fires on the glove's streaming consumer thread; joint commands run on the thread that calls them. This pattern enables closed-loop scenarios where tactile feedback drives motion—for example, scaling joint amplitude by the current pressure peak.
+
+See `example/joint_with_tactile.py` in the wujihandpy repository for a working example.
+
+### 3.8 Protocol Reference
+
+This section is for advanced developers who need to parse tactile data frames directly. The `TactileGlove` class handles all protocol details automatically.
+
+#### Data frame format
+
+The Tactile Sensing Glove streams fixed 3088-byte frames at up to 120 Hz over USB CDC (virtual serial port). The effective rate is set via `set_sample_rate_hz` (1–120 Hz):
+
+| Offset | Length | Field | Type | Description |
+|--------|--------|-------|------|-------------|
+| 0–1 | 2 | Header | u8[2] | Fixed `0xAA 0x55` |
+| 2–3 | 2 | Frame length | u16 LE | Fixed 3088 |
+| 4 | 1 | Hand | u8 | `0x00` = left, `0x01` = right |
+| 5–7 | 3 | Padding | u8[3] | Aligns tactile data to a 4-byte boundary |
+| 8–3079 | 3072 | Tactile data | f32[24][32] LE | Pressure matrix, row-major, `[0.0, 1.0]`; `NaN` = invalid cell |
+| 3080–3081 | 2 | Sequence | u16 LE | Frame counter, wraps at 65535 |
+| 3082–3085 | 4 | Timestamp | u32 LE | Milliseconds since device boot |
+| 3086–3087 | 2 | CRC16 | u16 LE | CRC16-CCITT checksum |
+
+#### CRC16-CCITT
+
+- Polynomial: `0x1021`, initial value: `0xFFFF`
+- Coverage: bytes `[2, 3086)` (frame length through timestamp, 3084 bytes)
+- Excludes header and CRC field
+
+#### Frame synchronization algorithm
+
+1. Scan byte-by-byte for header `0xAA 0x55`
+2. Read bytes 2–3, verify frame length == 3088
+3. Read remaining bytes to complete the frame
+4. Compute CRC16 and compare
+5. CRC failure: discard, resume scanning from header_position + 1
+6. CRC success: parse and deliver frame
+
+<Callout type="info">
+`0xAA 0x55` may appear within pressure data (false headers). CRC validation is the only reliable way to distinguish real headers from false ones.
+</Callout>
