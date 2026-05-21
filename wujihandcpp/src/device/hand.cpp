@@ -58,8 +58,8 @@ std::string Hand::probe_handedness(Side side, uint16_t vid, int32_t pid) {
     auto serials = transport::list_matching_serial_numbers(vid, pid);
     if (serials.empty())
         throw ConnectionError(
-            "No device found for VID=" + format_hex16(vid) + " PID="
-            + (pid < 0 ? std::string("any") : format_hex16(static_cast<uint32_t>(pid))));
+            "No device found for VID=" + format_hex16(vid)
+            + " PID=" + (pid < 0 ? std::string("any") : format_hex16(static_cast<uint32_t>(pid))));
 
     // Skip SNs already held by other Hand instances in this process — those
     // would always fail libusb_claim_interface with LIBUSB_ERROR_BUSY and
@@ -85,11 +85,10 @@ std::string Hand::probe_handedness(Side side, uint16_t vid, int32_t pid) {
     if (serials.empty() && !skipped.empty()) {
         const char* side_str = (side == Side::Left) ? "left" : "right";
         std::string msg = std::string("No available ") + side_str + " hand found; "
-            + std::to_string(skipped.size())
-            + " matching device(s) already opened by this program:";
+                        + std::to_string(skipped.size()) + " matching device(s)";
         for (const auto& sn : skipped)
             msg += " " + sn;
-        msg += "; release the existing Hand or use serial_number for the other device";
+        msg += "; use serial_number to specify the device";
         throw ConnectionError(msg);
     }
 

@@ -6,6 +6,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <string>
 #include <type_traits>
 #include <vector>
 
@@ -76,6 +77,10 @@ public:
         uint16_t usb_vid, int32_t usb_pid, const char* serial_number, size_t storage_unit_count);
 
     WUJIHANDCPP_API ~Handler();
+
+    /// USB iSerialNumber descriptor of the device this Handler is bound to.
+    /// Forwards to the underlying transport; see ITransport::selected_serial_number.
+    WUJIHANDCPP_API const std::string& selected_serial_number() const noexcept;
 
     WUJIHANDCPP_API void init_storage_info(int storage_id, StorageInfo info);
 

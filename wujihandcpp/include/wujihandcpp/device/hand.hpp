@@ -102,11 +102,18 @@ public:
                 throw TimeoutError("Failed to initialize hand: no response from device");
         }
 
-        // Register only after all init succeeded — any throw above unwinds
-        // without sn_guard_ ever holding a non-empty sn, so its dtor is a
-        // no-op for the partially-constructed case.
-        if (serial_number != nullptr && serial_number[0] != '\0') {
-            sn_guard_.sn = serial_number;
+        // Register the actually selected USB SN (queried from the handler,
+        // not the caller's argument). This way Hand() no-arg and
+        // Hand(serial_number=) both feed the registry the same way, so a
+        // subsequent Hand(side=...) probe correctly skips this device
+        // regardless of which ctor opened it.
+        //
+        // Done after all init succeeded — any throw above unwinds without
+        // sn_guard_ ever holding a non-empty sn, so its dtor is a no-op for
+        // the partially-constructed case.
+        const auto& actual_sn = handler_.selected_serial_number();
+        if (!actual_sn.empty()) {
+            sn_guard_.sn = actual_sn;
             detail::register_hand_sn(sn_guard_.sn);
         }
     };

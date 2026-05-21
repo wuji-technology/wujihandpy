@@ -123,6 +123,10 @@ public:
     Usb(Usb&&) = delete;
     Usb& operator=(Usb&&) = delete;
 
+    const std::string& selected_serial_number() const noexcept override {
+        return selected_serial_number_;
+    }
+
     ~Usb() override {
         {
             std::lock_guard guard{transmit_transfer_push_mutex_};
@@ -250,10 +254,31 @@ private:
             return false;
         }
 
+        // Capture the iSerialNumber of the selected device so callers (Hand)
+        // can register it in the SN registry regardless of whether a SN
+        // filter was supplied at the binding layer. One descriptor read of
+        // the *single* chosen device — not the per-VID/PID enumeration loop
+        // that select_device walks — so the no-arg path's main-equivalent
+        // performance profile is preserved.
+        capture_selected_serial_number();
+
         // Libusb successfully initialized
         close_device_handle.disable();
         exit_libusb.disable();
         return true;
+    }
+
+    void capture_selected_serial_number() {
+        libusb_device_descriptor desc;
+        if (libusb_get_device_descriptor(libusb_get_device(libusb_device_handle_), &desc) != 0)
+            return;
+        if (desc.iSerialNumber == 0)
+            return;
+        unsigned char buf[256];
+        int n = libusb_get_string_descriptor_ascii(
+            libusb_device_handle_, desc.iSerialNumber, buf, sizeof(buf) - 1);
+        if (n > 0)
+            selected_serial_number_.assign(reinterpret_cast<char*>(buf), static_cast<size_t>(n));
     }
 
     // Restored to match main's behavior verbatim. The side= path resolves the
@@ -546,6 +571,11 @@ private:
 
     libusb_context* libusb_context_;
     libusb_device_handle* libusb_device_handle_;
+
+    // iSerialNumber of the device select_device picked, read once in
+    // usb_init after claim_interface. Empty when the descriptor is
+    // unavailable. Exposed via selected_serial_number().
+    std::string selected_serial_number_;
 
     std::thread event_thread_;
 

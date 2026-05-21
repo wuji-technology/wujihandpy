@@ -5,6 +5,7 @@
 
 #include <functional>
 #include <memory>
+#include <string>
 
 namespace wujihandcpp::transport {
 
@@ -30,6 +31,13 @@ public:
     /// Register a callback invoked (from an internal thread) when an unrecoverable error occurs.
     /// Must be called before receive(). Not thread-safe.
     virtual void on_error(std::function<void(const std::string& message)> callback) = 0;
+
+    /// USB iSerialNumber descriptor of the device this transport is bound to.
+    /// Captured at open time. Empty string when the underlying transport has
+    /// no notion of a USB SN (e.g. a CDC stream identified by a path), or
+    /// when the descriptor was unreadable. Used by Hand to register itself in
+    /// the process-local SN registry regardless of which ctor was invoked.
+    virtual const std::string& selected_serial_number() const noexcept = 0;
 };
 
 std::unique_ptr<ITransport>
