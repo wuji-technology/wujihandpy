@@ -6,7 +6,6 @@
 #include <array>
 #include <atomic>
 #include <memory>
-#include <optional>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -686,8 +685,13 @@ namespace detail {
 
 struct ProbeResult {
     std::string sn;
-    std::optional<uint8_t> handedness; // std::nullopt when the probe failed
-    std::string failure_reason;        // populated only when probe failed
+    bool has_handedness;        // true when probe successfully read the SDO value
+    uint8_t handedness;         // valid only when has_handedness == true
+    std::string failure_reason; // short user-facing category when !has_handedness
+                                // (e.g. "no response", "connection failed");
+                                // detailed reason is logged separately in
+                                // probe_handedness, not duplicated here, so the
+                                // exception message stays compact.
 };
 
 // Build the (matches, diagnostic) pair from per-device probe results. Pure
@@ -696,9 +700,9 @@ inline std::pair<std::vector<std::string>, std::string>
     select_side_matched(Hand::Side side, const std::vector<ProbeResult>& results) {
     std::vector<std::string> matches;
     for (const auto& r : results) {
-        if (!r.handedness)
+        if (!r.has_handedness)
             continue;
-        if (static_cast<Hand::Side>(*r.handedness) == side)
+        if (static_cast<Hand::Side>(r.handedness) == side)
             matches.push_back(r.sn);
     }
     if (matches.size() == 1)
@@ -714,16 +718,16 @@ inline std::pair<std::vector<std::string>, std::string>
 
     std::vector<std::string> failures;
     for (const auto& r : results)
-        if (!r.handedness)
-            failures.push_back(r.sn + "(" + r.failure_reason + ")");
+        if (!r.has_handedness)
+            failures.push_back(r.sn + " (" + r.failure_reason + ")");
     if (!failures.empty()) {
-        msg += "; probe failures:";
+        msg += "; unresponsive:";
         for (const auto& f : failures)
             msg += " " + f;
     }
 
     if (matches.empty())
-        msg += "; if firmware does not expose handedness, use serial_number";
+        msg += "; use serial_number to select a specific device";
     else
         msg += "; use serial_number to disambiguate";
 
