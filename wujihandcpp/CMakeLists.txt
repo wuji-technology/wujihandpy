@@ -128,19 +128,20 @@ FetchContent_Declare(
     GIT_TAG v1.16.0
     GIT_SHALLOW TRUE
 )
-# Ship spdlog alongside wujihandcpp when we are installing. Downstream
-# consumers do `find_package(wujihandcpp CONFIG REQUIRED)` which transitively
-# `find_dependency(spdlog)` — that has to resolve, and the simplest place to
-# resolve it is the same prefix wujihandcpp installed into. When wheel /
-# embedding builds set WUJIHANDCPP_INSTALL=OFF, spdlog stays out of the
-# install set too.
-if(WUJIHANDCPP_INSTALL)
+# Ship spdlog only for static installs. Shared-library packages already link
+# the spdlog objects into libwujihandcpp.so, and no public header includes
+# spdlog, so installing it would unnecessarily conflict with system packages.
+if(WUJIHANDCPP_INSTALL AND BUILD_STATIC_WUJIHANDCPP)
     set(SPDLOG_INSTALL ON CACHE BOOL "" FORCE)
 else()
     set(SPDLOG_INSTALL OFF CACHE BOOL "" FORCE)
 endif()
 FetchContent_MakeAvailable(spdlog)
-target_link_libraries(${PROJECT_NAME} PUBLIC spdlog::spdlog)
+if(BUILD_STATIC_WUJIHANDCPP)
+    target_link_libraries(${PROJECT_NAME} PUBLIC spdlog::spdlog)
+else()
+    target_link_libraries(${PROJECT_NAME} PRIVATE spdlog::spdlog)
+endif()
 
 if(NOT MSVC)
     # GCC/Clang
