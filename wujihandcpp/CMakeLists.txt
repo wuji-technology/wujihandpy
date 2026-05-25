@@ -117,9 +117,32 @@ endif()
 # Install rules are gated so embedding builds (e.g. the wujihandpy Python
 # wheel, which embeds wujihandcpp into _core.so via add_subdirectory) can
 # skip them. Standalone builds (and the system .deb/.rpm packaging path)
-# leave it ON to produce a fully consumable install tree. Declared here —
-# before spdlog FetchContent — so SPDLOG_INSTALL can mirror it.
+# leave it ON to produce a fully consumable install tree.
 option(WUJIHANDCPP_INSTALL "Generate install rules for wujihandcpp" ON)
+
+# Refuse the (static archive + install Config package) combination. A STATIC
+# wujihandcpp.a links spdlog as PRIVATE (see below), so spdlog symbols are
+# not baked into the archive — the consumer's final link step needs them.
+# But we also cannot install our vendored spdlog (it would conflict with
+# libspdlog-dev), so the installed Config package has no way to satisfy that
+# consumer-side link requirement. Fail loud at configure time instead of
+# shipping a Config package that breaks at downstream link.
+#
+# Ordering: both BUILD_STATIC_WUJIHANDCPP (line ~76) and WUJIHANDCPP_INSTALL
+# (just above) must be declared before this check. Anyone refactoring the
+# option() blocks should keep this gate downstream of both.
+if(BUILD_STATIC_WUJIHANDCPP AND WUJIHANDCPP_INSTALL)
+    message(FATAL_ERROR
+        "BUILD_STATIC_WUJIHANDCPP=ON together with WUJIHANDCPP_INSTALL=ON is "
+        "not a supported combination. Pick one:\n"
+        "  (a) BUILD_STATIC_WUJIHANDCPP=ON with WUJIHANDCPP_INSTALL=OFF — for "
+        "      in-tree embedding via add_subdirectory() (the wujihandpy wheel "
+        "      uses this).\n"
+        "  (b) BUILD_STATIC_WUJIHANDCPP=OFF (default — shared library) with "
+        "      WUJIHANDCPP_INSTALL=ON — for the system install / .deb / "
+        "      find_package(wujihandcpp CONFIG) flow."
+    )
+endif()
 
 include(FetchContent)
 FetchContent_Declare(
@@ -128,19 +151,23 @@ FetchContent_Declare(
     GIT_TAG v1.16.0
     GIT_SHALLOW TRUE
 )
-# Ship spdlog alongside wujihandcpp when we are installing. Downstream
-# consumers do `find_package(wujihandcpp CONFIG REQUIRED)` which transitively
-# `find_dependency(spdlog)` — that has to resolve, and the simplest place to
-# resolve it is the same prefix wujihandcpp installed into. When wheel /
-# embedding builds set WUJIHANDCPP_INSTALL=OFF, spdlog stays out of the
-# install set too.
-if(WUJIHANDCPP_INSTALL)
-    set(SPDLOG_INSTALL ON CACHE BOOL "" FORCE)
-else()
-    set(SPDLOG_INSTALL OFF CACHE BOOL "" FORCE)
-endif()
+# spdlog is an implementation detail of wujihandcpp — no public header in
+# include/ references it. Keep its install rules off unconditionally so we
+# never ship spdlog headers under ${CMAKE_INSTALL_INCLUDEDIR}, which would
+# collide with the system libspdlog-dev package on Debian/Ubuntu.
+set(SPDLOG_INSTALL OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(spdlog)
-target_link_libraries(${PROJECT_NAME} PUBLIC spdlog::spdlog)
+
+# Link spdlog as PRIVATE. SHARED build (default, .deb / find_package path):
+# spdlog symbols are kept out of the .so's dynamic symbol table by the
+# platform's default-hidden visibility for non-exported symbols
+# (-fvisibility=hidden on GCC/Clang; default on MSVC), so downstream sees
+# zero spdlog symbols and zero spdlog headers — exactly what an
+# implementation detail should look like. STATIC build path is refused
+# above for install scenarios; in-tree STATIC embedding (e.g. the
+# wujihandpy wheel) resolves spdlog symbols through the in-tree
+# spdlog::spdlog target at final link.
+target_link_libraries(${PROJECT_NAME} PRIVATE spdlog::spdlog)
 
 if(NOT MSVC)
     # GCC/Clang

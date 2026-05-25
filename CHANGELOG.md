@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed wujihandcpp `.deb` package conflict with the system `libspdlog-dev` package (regression from 1.7.0). Installing the 1.7.0 `wujihandcpp-*.deb` on a host that already had `libspdlog-dev` failed with `trying to overwrite '/usr/include/spdlog/async.h', which is also in package libspdlog-dev`. Root cause: PR #63 added `SPDLOG_INSTALL=ON` (so that downstream `find_package(wujihandcpp CONFIG)` could transitively resolve `spdlog`) and linked `spdlog::spdlog` as `PUBLIC`, but spdlog is in fact a private implementation detail — no public header in `wujihandcpp/include/` references it. The vendored spdlog headers were therefore being shipped into `/usr/include/spdlog/`, colliding with `libspdlog-dev`. Fix: link `spdlog::spdlog` as `PRIVATE`, never install spdlog headers, drop `find_dependency(spdlog)` from `wujihandcppConfig.cmake`. For SHARED builds (the `.deb` path and the default `find_package` flow) spdlog symbols stay private to `libwujihandcpp.so` via the platform's default-hidden visibility for non-exported symbols. Resulting `.deb` is also ~54% smaller.
+- Fixed `bridge/cpp` source-build fallback: it forced `BUILD_STATIC_WUJIHANDCPP=ON` without also forcing `WUJIHANDCPP_INSTALL=OFF`, which triggered the new configure-time gate described under Changed below. The system-installed wujihandcpp path also no longer probes for `spdlog::spdlog` — the bridge itself never includes `<spdlog/*>`, and `libwujihandcpp.so` now links spdlog privately.
+
+### Changed
+
+- Removed transitive `spdlog` resolution from `find_package(wujihandcpp CONFIG)`. Consumers that relied on this (none should — spdlog never appeared in any public header) must `find_package(spdlog)` themselves. This restores the pre-1.7.0 contract.
+- Refused `BUILD_STATIC_WUJIHANDCPP=ON` combined with `WUJIHANDCPP_INSTALL=ON` at configure time with an explanatory message. That combination would silently produce an installed Config package that breaks at the consumer's final link step — the vendored spdlog cannot be installed (it would re-introduce the `libspdlog-dev` collision above), and a static archive does not bake spdlog symbols in via PRIVATE link. The two supported combinations are unchanged: `STATIC + INSTALL=OFF` for in-tree embedding (the wheel build and the `bridge/cpp` source-build fallback), and `SHARED + INSTALL=ON` for the system install / `.deb` / `find_package` flow.
+
 ## [1.7.0] - 2026-05-18
 
 ### Added

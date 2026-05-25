@@ -32,18 +32,19 @@ if(WUJIHANDCPP_LIB AND WUJIHANDCPP_INCLUDE)
         IMPORTED_LOCATION "${WUJIHANDCPP_LIB}"
         INTERFACE_INCLUDE_DIRECTORIES "${WUJIHANDCPP_INCLUDE}"
     )
-    # wujihandcpp depends on spdlog, libusb, threads
+    # libwujihandcpp.so links spdlog privately (symbols stripped at the .so
+    # boundary via -fvisibility=hidden), so consumers only see the two
+    # genuinely transitive deps. The bridge itself never includes <spdlog/*>.
     find_package(Threads REQUIRED)
-    find_package(spdlog QUIET)
-    if(spdlog_FOUND)
-        target_link_libraries(wujihandcpp INTERFACE spdlog::spdlog Threads::Threads usb-1.0)
-    else()
-        # spdlog bundled in system lib, just link transitive deps
-        target_link_libraries(wujihandcpp INTERFACE Threads::Threads usb-1.0)
-    endif()
+    target_link_libraries(wujihandcpp INTERFACE Threads::Threads usb-1.0)
 else()
     message(STATUS "System wujihandcpp not found, building from source")
+    # In-tree embedding: BUILD_STATIC=ON gives a single archive linked into
+    # the bridge binary; INSTALL=OFF satisfies wujihandcpp's configure-time
+    # gate (the SHARED+INSTALL=ON combination is the one supported for
+    # system packaging) and keeps its bundled spdlog out of any install set.
     set(BUILD_STATIC_WUJIHANDCPP ON CACHE BOOL "" FORCE)
+    set(WUJIHANDCPP_INSTALL OFF CACHE BOOL "" FORCE)
     set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
     add_subdirectory(../../wujihandcpp ${CMAKE_CURRENT_BINARY_DIR}/wujihandcpp)
 endif()

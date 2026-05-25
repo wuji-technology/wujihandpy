@@ -1,27 +1,15 @@
 @PACKAGE_INIT@
 
-# Transitive dependencies of the installed wujihandcpp library. The static
-# archive needs Threads + spdlog symbols at link time even though spdlog is
-# implementation-detail (not in any public header).
+# Transitive dependencies of the installed wujihandcpp library.
+# Only what the public ABI actually requires is declared here.
 include(CMakeFindDependencyMacro)
 find_dependency(Threads)
 
-# spdlog discovery: the install-tree path bundles spdlog into the same prefix
-# (SPDLOG_INSTALL=ON in wujihandcpp/CMakeLists.txt) so find_dependency finds
-# it through CMAKE_PREFIX_PATH. The build-tree path (consumers doing
-# `find_package(wujihandcpp PATHS .../build NO_DEFAULT_PATH)` for local dev)
-# does NOT install spdlog, but the FetchContent fetch leaves spdlog's build
-# tree under `_deps/spdlog-build` next to ours. Hint that location so the
-# build-tree consumption flow works on machines without a system spdlog
-# package — otherwise `find_dependency(spdlog)` fails opaquely on a fresh
-# checkout.
-get_filename_component(_WUJIHANDCPP_CONFIG_DIR "${CMAKE_CURRENT_LIST_FILE}" PATH)
-if(EXISTS "${_WUJIHANDCPP_CONFIG_DIR}/_deps/spdlog-build/spdlogConfig.cmake")
-    # Build-tree consumption — spdlog lives where FetchContent put it.
-    list(PREPEND CMAKE_PREFIX_PATH "${_WUJIHANDCPP_CONFIG_DIR}/_deps/spdlog-build")
-endif()
-unset(_WUJIHANDCPP_CONFIG_DIR)
-find_dependency(spdlog)
+# spdlog is intentionally NOT a transitive dependency. It is vendored inside
+# wujihandcpp via FetchContent and linked PRIVATE; its symbols are private
+# to libwujihandcpp.so via -fvisibility=hidden, and no public header in
+# include/ references it. Consumers do not need (and should not depend on)
+# spdlog through wujihandcpp::wujihandcpp.
 
 # usb-1.0 is linked as a bare library name (target_link_libraries(... PUBLIC
 # usb-1.0)) and propagated through the imported target as `-lusb-1.0`. No
