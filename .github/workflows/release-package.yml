@@ -5,8 +5,12 @@ on:
     tags: ["v*"]
 
 jobs:
-  build:
-    name: Build wheels on ${{ matrix.os }}
+  wujihandcpp-package:
+    name: Build wujihandcpp packages
+    uses: ./.github/workflows/wujihandcpp-package-build.yml
+
+  wujihandpy-wheel:
+    name: Build wujihandpy wheels on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -20,31 +24,9 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
-      - name: Set up Docker Buildx (Linux)
-        if: startsWith(matrix.os, 'ubuntu')
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build wujihandcpp (Linux)
-        if: startsWith(matrix.os, 'ubuntu')
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: Dockerfile.package-builder
-          outputs: type=local,dest=build/wujihandcpp/
-          cache-from: type=gha,scope=wujihandcpp-build-${{ matrix.os }}
-          cache-to: type=gha,mode=max,scope=wujihandcpp-build-${{ matrix.os }}
-
-      - uses: actions/upload-artifact@v4      
-        if: startsWith(matrix.os, 'ubuntu')
-        with:
-          name: build-wujihandcpp-${{ matrix.os }}
-          path: |
-            build/wujihandcpp/*.deb
-            build/wujihandcpp/*.rpm
-            build/wujihandcpp/*.zip
-
       - name: Install dependencies with vcpkg (Windows)
         if: startsWith(matrix.os, 'windows')
+        shell: pwsh
         run: |
           if ("${{ matrix.os }}" -eq "windows-latest") {
             $VCPKG_TRIPLET = "x64-windows"
@@ -68,6 +50,7 @@ jobs:
 
       - name: Build wujihandpy (Windows)
         if: startsWith(matrix.os, 'windows')
+        shell: pwsh
         run: |
           $VCPKG_ROOT = $env:VCPKG_INSTALLATION_ROOT -replace '\\','/'
           $env:CIBW_ENVIRONMENT_WINDOWS = "VCPKG_ROOT=$VCPKG_ROOT VCPKG_TRIPLET=$env:VCPKG_TRIPLET"
@@ -78,9 +61,54 @@ jobs:
           name: build-wujihandpy-${{ matrix.os }}
           path: build/wujihandpy/*.whl
 
+  deb-smoke-test:
+    name: Smoke test wujihandcpp deb (${{ matrix.runner }}, ${{ matrix.environment }}, spdlog=${{ matrix.install_system_spdlog }})
+    needs: wujihandcpp-package
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+        environment: [host, ubuntu-container]
+        install_system_spdlog: [false, true]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Download wujihandcpp build
+        uses: actions/download-artifact@v5
+        with:
+          path: build/wujihandcpp
+          name: build-wujihandcpp-${{ matrix.runner }}
+
+      - name: Resolve deb package
+        id: deb
+        run: |
+          mapfile -t debs < <(find build/wujihandcpp -maxdepth 1 -type f -name '*.deb' | sort)
+          if [[ "${#debs[@]}" -ne 1 ]]; then
+            printf 'Expected exactly one deb package, found %s:\n' "${#debs[@]}"
+            printf '  %s\n' "${debs[@]}"
+            exit 1
+          fi
+          echo "path=${debs[0]}" >> "${GITHUB_OUTPUT}"
+
+      - name: Smoke test on GitHub runner
+        if: matrix.environment == 'host'
+        run: .github/scripts/smoke_wujihandcpp_deb.sh "${{ steps.deb.outputs.path }}" "${{ matrix.install_system_spdlog }}"
+
+      - name: Smoke test in minimal Ubuntu container
+        if: matrix.environment == 'ubuntu-container'
+        run: |
+          docker run --rm \
+            -v "${GITHUB_WORKSPACE}:${GITHUB_WORKSPACE}" \
+            -w "${GITHUB_WORKSPACE}" \
+            ubuntu:24.04 \
+            .github/scripts/smoke_wujihandcpp_deb.sh "${{ steps.deb.outputs.path }}" "${{ matrix.install_system_spdlog }}"
+
   publish:
     name: Publish to PyPI
-    needs: build
+    needs: [wujihandpy-wheel, wujihandcpp-package, deb-smoke-test]
     runs-on: ubuntu-latest
     environment:
       name: pypi

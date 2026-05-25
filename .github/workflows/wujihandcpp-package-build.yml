@@ -1,0 +1,41 @@
+name: wujihandcpp package build
+
+on:
+  workflow_call:
+
+jobs:
+  build:
+    name: Build wujihandcpp package on ${{ matrix.runner }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build wujihandcpp
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.package-builder
+          outputs: type=local,dest=build/wujihandcpp/
+          cache-from: type=gha,scope=wujihandcpp-build-${{ matrix.runner }}
+          cache-to: type=gha,mode=max,scope=wujihandcpp-build-${{ matrix.runner }}
+
+      - name: Upload wujihandcpp build
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-wujihandcpp-${{ matrix.runner }}
+          path: |
+            build/wujihandcpp/*.deb
+            build/wujihandcpp/*.rpm
+            build/wujihandcpp/*.zip

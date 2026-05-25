@@ -7,6 +7,12 @@ def run(command):
     subprocess.run(command, check=True, text=True)
 
 
+def test_package_builder_uses_debian_discoverable_cmake_install_dir():
+    dockerfile = Path(__file__).resolve().parents[1] / "Dockerfile.package-builder"
+
+    assert "-DCMAKE_INSTALL_LIBDIR=lib" in dockerfile.read_text()
+
+
 def test_shared_standalone_install_does_not_vendor_spdlog(tmp_path):
     source_dir = Path(__file__).resolve().parents[1] / "wujihandcpp"
     build_dir = tmp_path / "build"
