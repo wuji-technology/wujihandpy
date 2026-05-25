@@ -7,6 +7,9 @@ on:
   push:
     tags: ["v*"]
 
+permissions:
+  contents: read
+
 jobs:
   create-tag:
     name: Create release tag
@@ -16,6 +19,8 @@ jobs:
       contains(github.event.pull_request.labels.*.name, 'auto-release') &&
       startsWith(github.event.pull_request.head.ref, 'release/v')
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Generate GitHub App token
@@ -205,6 +210,7 @@ jobs:
           packages-dir: build/wujihandpy
 
       - name: Upload Release Assets
-        run: gh release upload ${{ github.ref_name }} build/wujihandcpp/* build/wujihandpy/*.whl --clobber
+        run: gh release upload "${RELEASE_TAG}" build/wujihandcpp/* build/wujihandpy/*.whl --clobber
         env:
+          RELEASE_TAG: ${{ github.ref_name }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
