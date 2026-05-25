@@ -30,3 +30,5 @@ tests/.local_*.py
 # Claude-mem generated files (keep root CLAUDE.md)
 **/CLAUDE.md
 !/CLAUDE.md
+# Tool runtime lock files
+.claude/

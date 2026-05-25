@@ -856,7 +856,9 @@ CRC 校验在 SDK 内部完成，调用方拿到的帧均已通过校验。
 ```python
 TactileGlove(serial_number: str | None = None)
 ```
-- `serial_number`：USB 设备序列号。`None` 时自动发现唯一的设备；若总线上存在多台，会抛出异常
+<Callout type="info">
+`serial_number` 为 USB 设备序列号。传 `None` 时自动发现总线上唯一的设备，若存在多台会抛出异常。
+</Callout>
 
 ### 3.2 设备连接
 
@@ -936,7 +938,7 @@ glove.stop_streaming()
 | `reset_counters()` | 清零诊断计数器 |
 | `get_device_time() -> TactileDeviceTime` | 读取设备单调时钟（`device_monotonic_ns`） |
 | `sync_host_epoch(host_unix_ns) -> TactileSyncResult` | 用主机 UTC 纳秒交换同一时刻的设备时钟 |
-| `reset_device()` | 软复位；句柄失效，调用方需重新连接 |
+| `reset_device()` | 软复位；设备会从总线断开并重新枚举，调用后需重新 `connect()` |
 | `enter_bootloader(magic)` | 跳转至 bootloader 以执行 OTA；传入 `TACTILE_BOOTLOADER_MAGIC` |
 
 ### 3.5 异常处理
@@ -948,49 +950,133 @@ glove.stop_streaming()
 
 ### 3.6 完整示例
 
+覆盖 `TactileGlove` 的完整工作流：自动发现与设备信息查询、主机/设备时钟同步、采样率配置、阻塞读取与流式回调、数据保存以及诊断计数器读取。`reset_device` / `enter_bootloader` 会断开当前连接（设备复位或进入 bootloader），仅在末尾以注释形式给出。
+
 ```python
 import time
 import numpy as np
-from wujihandpy import TactileGlove, TactileHandedness
+from wujihandpy import (
+    TactileGlove,
+    TactileHandedness,
+    TactileError,
+    TACTILE_BOOTLOADER_MAGIC,
+)
 
-# 连接设备
-glove = TactileGlove()
-if not glove.connect():
-    print("未找到触觉感知手套")
-    exit(1)
 
-hand = glove.get_handedness()
-print(f"已连接 {'左' if hand == TactileHandedness.LEFT else '右'}手触觉感知手套")
+def on_disconnect():
+    print("[event] USB disconnect detected")
 
-# 流式采集
-frames = []
 
-def collect(frame):
-    frames.append(frame.pressure.copy())
+# 1. Connect — context manager calls disconnect() on exit.
+#    To target a specific device: TactileGlove(serial_number="ABC123").
+with TactileGlove() as glove:
+    if not glove.is_connected():
+        print("Not connected")
+        exit(1)
 
-try:
-    glove.start_streaming(collect)
-    time.sleep(5)  # 采集 5 秒
-finally:
+    glove.set_disconnect_callback(on_disconnect)
+
+    # 2. Device info
+    info = glove.get_device_info()
+    hw = ".".join(str(x) for x in info.hw_revision[:3])
+    fw = ".".join(str(x) for x in info.fw_version[:3])
+    build = glove.get_fw_build()
+    print(f"Serial: {info.serial}")
+    print(f"Hardware: v{hw}, Firmware: v{fw} ({build.git_short_sha})")
+
+    # 3. Handedness
+    hand = glove.get_handedness()
+    side = "left" if hand == TactileHandedness.LEFT else "right"
+    print(f"Handedness: {side}")
+
+    # 4. Clock sync and device time
+    sync = glove.sync_host_epoch(time.time_ns())
+    skew_ns = sync.device_ns_at_sync - sync.host_ns_echo
+    dev_time = glove.get_device_time()
+    print(f"Host/device clock skew: {skew_ns} ns")
+    print(f"Device monotonic time: {dev_time.device_monotonic_ns} ns")
+
+    # 5. Sample rate
+    print(f"Current sample rate: {glove.get_sample_rate_hz()} Hz")
+    glove.set_sample_rate_hz(60)
+    print(f"New sample rate: {glove.get_sample_rate_hz()} Hz")
+
+    # 6. Streaming toggle + single blocking read
+    glove.set_streaming(True)
+    print(f"Streaming enabled: {glove.get_streaming_enabled()}")
     try:
-        glove.stop_streaming()
-    finally:
-        glove.disconnect()
+        frame = glove.read_frame(timeout_ms=200)
+        side_str = "L" if frame.hand == TactileHandedness.LEFT else "R"
+        print(
+            f"Frame: seq={frame.sequence}, ts={frame.timestamp_ms} ms, "
+            f"hand={side_str}, max={np.nanmax(frame.pressure):.3f}"
+        )
+    except TactileError as e:
+        print(f"Device protocol error: {e}")
 
-# 保存数据
-if frames:
-    data = np.stack(frames)  # shape: (N, 24, 32)，dtype: float32
-    np.save("tactile_data.npy", data)
-    print(f"采集 {len(frames)} 帧，保存至 tactile_data.npy")
-else:
-    print("未采集到帧")
+    # 7. Reset counters, then stream and collect
+    glove.reset_counters()
+    frames = []
+
+    def collect(frame):
+        frames.append(frame.pressure.copy())
+
+    glove.start_streaming(collect)
+    time.sleep(5)  # Collect for 5 seconds
+    glove.stop_streaming()
+
+    # 8. Diagnostics
+    diag = glove.get_diagnostics()
+    print(
+        f"Collected {diag.frame_count} frames, CRC errors {diag.crc_err_count}, "
+        f"dropouts {diag.dropout_count}, USB resets {diag.usb_reset_count}, "
+        f"uptime {diag.uptime_ms} ms"
+    )
+
+    # 9. Save data
+    if frames:
+        data = np.stack(frames)  # shape: (N, 24, 32), dtype: float32
+        np.save("tactile_data.npy", data)
+        print(f"Saved {len(frames)} frames to tactile_data.npy")
+    else:
+        print("No frames collected")
+
+# Destructive operations (commented by default; both invalidate the handle):
+# glove.reset_device()
+# glove.enter_bootloader(TACTILE_BOOTLOADER_MAGIC)
+```
+
+#### 预期输出示例
+
+```
+[xxxx-xx-xx xx:xx:xx.xxx] [wuji] [info] SDK vx.x.x initialized
+[xxxx-xx-xx xx:xx:xx.xxx] [wuji] [info] Log files can be found at ~/.wuji/log/<timestamp>.log
+Serial: WTxxxxxxxxxxxxxx
+Hardware: vx.x.x, Firmware: vx.x.x (xxxxxxx)
+Handedness: left
+Host/device clock skew: -1779537846723254078 ns
+Device monotonic time: 142623339080000 ns
+Current sample rate: 60 Hz
+New sample rate: 60 Hz
+Streaming enabled: True
+Frame: seq=33917, ts=142623244 ms, hand=L, max=0.820
+Collected 325 frames, CRC errors 0, dropouts 0, USB resets 0, uptime 142628802 ms
+Saved 326 frames to tactile_data.npy
 ```
 
 ### 3.7 与 Wuji Hand 联合使用
 
 `Hand` 与 `TactileGlove` 使用独立的 USB 传输和线程，可在同一进程内并行使用，无需额外协调。帧回调在触觉手套的流式消费线程中触发，关节命令运行在调用它们的线程上。该模式适合用触觉反馈驱动运动控制的闭环场景，例如根据当前压力峰值动态缩放关节运动幅度。
 
-可参考 wujihandpy 仓库的 `example/joint_with_tactile.py` 示例。
+参考示例：[`example/joint_with_tactile.py`](https://github.com/wuji-technology/wujihandpy/blob/main/example/joint_with_tactile.py)。
+
+**运行效果：**
+
+- 启动后终端打印 `Squeeze the glove to dampen the motion. Ctrl-C to exit.`
+- 关节使能后，F2–F5 四指以 100 Hz 实时循环做周期性弯曲–伸展，F1（拇指）保持不动
+- 触觉手套压力峰值越大，关节运动幅度越小：松开手套时幅度最大（约 0.4 rad），用力按压时幅度趋近于 0
+- 松手后幅度自动恢复
+- Ctrl-C 退出时自动停止流式、关闭关节使能并断开手套
 
 ### 3.8 协议参考
 
@@ -1029,3 +1115,75 @@ else:
 <Callout type="info">
 `0xAA 0x55` 可能出现在压力数据中（伪帧头），CRC 校验是区分真伪帧头的唯一可靠手段。
 </Callout>
+
+#### 参考实现
+
+下面的 Python 片段不依赖 SDK，直接从原始字节流（例如通过 `pyserial` 打开 CDC 串口）解析单帧，可作为自定义解析器的起点：
+
+```python
+import struct
+import numpy as np
+
+FRAME_LEN = 3088
+HEADER = b"\xAA\x55"
+
+
+def crc16_ccitt(data: bytes, init: int = 0xFFFF) -> int:
+    crc = init
+    for b in data:
+        crc ^= b << 8
+        for _ in range(8):
+            if crc & 0x8000:
+                crc = ((crc << 1) ^ 0x1021) & 0xFFFF
+            else:
+                crc = (crc << 1) & 0xFFFF
+    return crc
+
+
+def parse_frame(buf: bytes) -> dict:
+    """Validate a 3088-byte candidate and decode its fields."""
+    if len(buf) != FRAME_LEN or buf[:2] != HEADER:
+        raise ValueError("bad header or length")
+    if struct.unpack_from("<H", buf, 2)[0] != FRAME_LEN:
+        raise ValueError("length field mismatch")
+    if crc16_ccitt(buf[2:3086]) != struct.unpack_from("<H", buf, 3086)[0]:
+        raise ValueError("CRC mismatch")
+    return {
+        "hand": "L" if buf[4] == 0 else "R",
+        "pressure": np.frombuffer(buf, dtype="<f4", count=24 * 32, offset=8).reshape(24, 32),
+        "sequence": struct.unpack_from("<H", buf, 3080)[0],
+        "timestamp_ms": struct.unpack_from("<I", buf, 3082)[0],
+    }
+
+
+def read_frame(port) -> dict:
+    """Resync on a raw byte stream and return the next valid frame."""
+    buf = bytearray()
+    while True:
+        chunk = port.read(FRAME_LEN)
+        if not chunk:
+            raise TimeoutError("stream exhausted")
+        buf.extend(chunk)
+        i = buf.find(HEADER)
+        while 0 <= i and i + FRAME_LEN <= len(buf):
+            try:
+                frame = parse_frame(bytes(buf[i:i + FRAME_LEN]))
+                del buf[: i + FRAME_LEN]
+                return frame
+            except ValueError:
+                i = buf.find(HEADER, i + 1)
+        # Keep tail so a header spanning chunk boundaries survives.
+        if len(buf) > FRAME_LEN - 1:
+            del buf[: len(buf) - (FRAME_LEN - 1)]
+```
+
+调用示例：
+
+```python
+import serial  # pip install pyserial
+
+with serial.Serial("/dev/ttyACM0", timeout=1.0) as port:
+    frame = read_frame(port)
+    print(f"seq={frame['sequence']}, ts={frame['timestamp_ms']} ms, "
+          f"hand={frame['hand']}, max={np.nanmax(frame['pressure']):.3f}")
+```
