@@ -16,7 +16,7 @@ The gate is designed to catch packaging regressions such as:
 
 The shared package build job lives in `.github/workflows/wujihandcpp-package-build.yml`. The PR gate in `.github/workflows/wujihandcpp-deb-package.yml` and the release workflow in `.github/workflows/release-package.yml` both call that reusable workflow so pull requests and releases build the `.deb` through the same job definition.
 
-It runs on pull requests and pushes to `main` when package-related files change:
+It runs on pull requests to `main` when package-related files change, and it can also be started manually with `workflow_dispatch`:
 
 - `.github/scripts/smoke_wujihandcpp_deb.sh`
 - `.github/workflows/wujihandcpp-deb-package.yml`
@@ -26,6 +26,10 @@ It runs on pull requests and pushes to `main` when package-related files change:
 - `wujihandcpp/**`
 
 A release cannot publish if the deb smoke gate fails.
+
+The standalone PR gate intentionally does not run again on `push` to `main`.
+The upstream repository protects `main`, so pull requests are the merge gate.
+Avoiding the post-merge `push` trigger prevents the same heavy package matrix from running twice for one merged PR.
 
 ## Test matrix
 

@@ -10,15 +10,6 @@ on:
       - ".github/workflows/release-package.yml"
       - "Dockerfile.package-builder"
       - "wujihandcpp/**"
-  push:
-    branches: [main]
-    paths:
-      - ".github/scripts/smoke_wujihandcpp_deb.sh"
-      - ".github/workflows/wujihandcpp-deb-package.yml"
-      - ".github/workflows/wujihandcpp-package-build.yml"
-      - ".github/workflows/release-package.yml"
-      - "Dockerfile.package-builder"
-      - "wujihandcpp/**"
   workflow_dispatch:
 
 jobs:
