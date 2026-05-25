@@ -23,14 +23,20 @@ def test_ros2_downstream_workflow_targets_lts_matrix():
 
     assert "ros:humble-ros-base" in text
     assert 'ubuntu: "22.04"' in text
-    assert "experimental: false" in text
     assert "ros:jazzy-ros-base" in text
     assert 'ubuntu: "24.04"' in text
-    assert "ros:lyrical-ros-base" in text
-    assert 'ubuntu: "26.04"' in text
-    assert "experimental: true" in text
-    assert "continue-on-error: ${{ matrix.experimental }}" in text
+    assert "ros:lyrical-ros-base" not in text
+    assert 'ubuntu: "26.04"' not in text
+    assert "continue-on-error" not in text
     assert "kilted" not in text
+
+
+def test_ros2_downstream_workflow_notes_future_2604_support():
+    text = WORKFLOW.read_text()
+
+    assert "ROS 2 Lyrical / Ubuntu 26.04" in text
+    assert "once the official" in text
+    assert "wujihandros2 downstream dependencies are supported" in text
 
 
 def test_ros2_downstream_workflow_uses_shared_script_and_deb_artifact():
@@ -63,4 +69,8 @@ def test_ros2_downstream_script_sources_ros_setup_without_nounset():
     text = SCRIPT.read_text()
 
     source = '. "/opt/ros/${ROS_DISTRO}/setup.bash"'
-    assert "set +u\n" + source + "\nset -u" in text
+    pre = text.find("set +u")
+    src = text.find(source, pre + 1)
+    post = text.find("set -u", src + 1)
+    assert pre != -1 and src != -1 and post != -1
+    assert pre < src < post
