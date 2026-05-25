@@ -1011,6 +1011,8 @@ with TactileGlove() as glove:
             f"Frame: seq={frame.sequence}, ts={frame.timestamp_ms} ms, "
             f"hand={side_str}, max={np.nanmax(frame.pressure):.3f}"
         )
+    except RuntimeError as e:
+        print(f"Read failed (timeout or disconnect): {e}")
     except TactileError as e:
         print(f"Device protocol error: {e}")
 
