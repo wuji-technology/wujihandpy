@@ -1,0 +1,94 @@
+name: Deb Downstream ROS 2
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-deb:
+    name: Build wujihandcpp deb
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build wujihandcpp package
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.package-builder
+          outputs: type=local,dest=build/wujihandcpp/
+          cache-from: type=gha,scope=wujihandcpp-deb-downstream
+          cache-to: type=gha,mode=max,scope=wujihandcpp-deb-downstream
+
+      - name: Upload deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wujihandcpp-deb-amd64
+          path: build/wujihandcpp/*.deb
+          if-no-files-found: error
+          retention-days: 7
+
+  downstream-ros2-lts:
+    name: wujihandros2 (${{ matrix.ros_distro }} / Ubuntu ${{ matrix.ubuntu }})
+    runs-on: ubuntu-latest
+    needs: build-deb
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - ros_distro: humble
+            ubuntu: "22.04"
+            image: ros:humble-ros-base
+          - ros_distro: jazzy
+            ubuntu: "24.04"
+            image: ros:jazzy-ros-base
+          - ros_distro: lyrical
+            ubuntu: "26.04"
+            image: ros:lyrical-ros-base
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Download deb artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: wujihandcpp-deb-amd64
+          path: build/wujihandcpp
+
+      - name: Install deb and build wujihandros2
+        run: |
+          mapfile -t debs < <(find build/wujihandcpp -maxdepth 1 -type f -name '*.deb' | sort)
+          if [[ "${#debs[@]}" -ne 1 ]]; then
+            printf 'Expected exactly one deb package, found %s:\n' "${#debs[@]}"
+            printf '  %s\n' "${debs[@]}"
+            exit 1
+          fi
+
+          docker run --rm \
+            -v "${PWD}:/work" \
+            -w /work \
+            -e ROS_DISTRO="${{ matrix.ros_distro }}" \
+            "${{ matrix.image }}" \
+            bash -euxo pipefail -c './ci/check_wujihandros2_downstream.sh "$1"' \
+            -- "/work/${debs[0]}"
