@@ -938,7 +938,7 @@ glove.stop_streaming()
 | `reset_counters()` | Zero the diagnostic counters |
 | `get_device_time() -> TactileDeviceTime` | Read device monotonic clock (`device_monotonic_ns`) |
 | `sync_host_epoch(host_unix_ns) -> TactileSyncResult` | Exchange host UTC nanoseconds for the device clock at the same moment |
-| `reset_device()` | Soft reset; the device drops off the bus and re-enumerates—call `connect()` again afterwards |
+| `reset_device()` | Soft reset; the device drops off the bus and re-enumerates—call `connect()` again afterward |
 | `enter_bootloader(magic)` | Jump to bootloader for OTA; pass `TACTILE_BOOTLOADER_MAGIC` |
 
 ### 3.5 Exception Handling
@@ -1060,7 +1060,7 @@ Current sample rate: 60 Hz
 New sample rate: 60 Hz
 Streaming enabled: True
 Frame: seq=33917, ts=142623244 ms, hand=L, max=0.820
-Collected 325 frames, CRC errors 0, dropouts 0, USB resets 0, uptime 142628802 ms
+Collected 326 frames, CRC errors 0, dropouts 0, USB resets 0, uptime 142628802 ms
 Saved 326 frames to tactile_data.npy
 ```
 
