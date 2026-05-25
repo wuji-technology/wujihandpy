@@ -23,10 +23,13 @@ def test_ros2_downstream_workflow_targets_lts_matrix():
 
     assert "ros:humble-ros-base" in text
     assert 'ubuntu: "22.04"' in text
+    assert "experimental: false" in text
     assert "ros:jazzy-ros-base" in text
     assert 'ubuntu: "24.04"' in text
     assert "ros:lyrical-ros-base" in text
     assert 'ubuntu: "26.04"' in text
+    assert "experimental: true" in text
+    assert "continue-on-error: ${{ matrix.experimental }}" in text
     assert "kilted" not in text
 
 
