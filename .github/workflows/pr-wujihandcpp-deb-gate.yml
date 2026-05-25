@@ -1,24 +1,24 @@
-name: wujihandcpp deb package
+name: "Quality Gates: wujihandcpp Deb Package"
 
 on:
   pull_request:
     branches: [main]
     paths:
       - ".github/scripts/smoke_wujihandcpp_deb.sh"
-      - ".github/workflows/wujihandcpp-deb-package.yml"
+      - ".github/workflows/pr-wujihandcpp-deb-gate.yml"
       - ".github/workflows/wujihandcpp-package-build.yml"
-      - ".github/workflows/release-package.yml"
+      - ".github/workflows/release.yml"
       - "Dockerfile.package-builder"
       - "wujihandcpp/**"
   workflow_dispatch:
 
 jobs:
   build:
-    name: Build wujihandcpp packages
+    name: Build deb artifacts
     uses: ./.github/workflows/wujihandcpp-package-build.yml
 
   smoke-test:
-    name: Smoke test deb (${{ matrix.runner }}, ${{ matrix.environment }}, spdlog=${{ matrix.install_system_spdlog }})
+    name: Install and consume deb (${{ matrix.runner }}, ${{ matrix.environment }}, spdlog=${{ matrix.install_system_spdlog }})
     needs: build
     runs-on: ${{ matrix.runner }}
     strategy:

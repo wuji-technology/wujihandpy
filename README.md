@@ -84,6 +84,7 @@ For scenarios that require smooth joint position control, be sure to use `realti
 
 - **Documentation**: [Quick Start](https://docs.wuji.tech/docs/en/wuji-hand/latest/sdk-user-guide/introduction/)
 - **API Reference**: [API Reference](https://docs.wuji.tech/docs/en/wuji-hand/latest/sdk-user-guide/api-reference/)
+- **CI Workflows**: [workflow overview](docs/ci-workflows.md)
 - **Package CI**: [wujihandcpp deb smoke gate](docs/wujihandcpp-deb-smoke-gate.md)
 - **URDF Files**: [wuji-hand-description](https://github.com/wuji-technology/wuji-hand-description)
 

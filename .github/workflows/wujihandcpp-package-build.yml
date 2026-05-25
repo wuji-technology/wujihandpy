@@ -1,11 +1,11 @@
-name: wujihandcpp package build
+name: "Reusable: wujihandcpp Package Build"
 
 on:
   workflow_call:
 
 jobs:
   build:
-    name: Build wujihandcpp package on ${{ matrix.runner }}
+    name: Build package on ${{ matrix.runner }}
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false

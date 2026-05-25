@@ -14,14 +14,14 @@ The gate is designed to catch packaging regressions such as:
 
 ## CI coverage
 
-The shared package build job lives in `.github/workflows/wujihandcpp-package-build.yml`. The PR gate in `.github/workflows/wujihandcpp-deb-package.yml` and the release workflow in `.github/workflows/release-package.yml` both call that reusable workflow so pull requests and releases build the `.deb` through the same job definition.
+The shared package build job lives in `.github/workflows/wujihandcpp-package-build.yml`. The PR gate in `.github/workflows/pr-wujihandcpp-deb-gate.yml` and the release workflow in `.github/workflows/release.yml` both call that reusable workflow so pull requests and releases build the `.deb` through the same job definition.
 
 It runs on pull requests to `main` when package-related files change, and it can also be started manually with `workflow_dispatch`:
 
 - `.github/scripts/smoke_wujihandcpp_deb.sh`
-- `.github/workflows/wujihandcpp-deb-package.yml`
+- `.github/workflows/pr-wujihandcpp-deb-gate.yml`
 - `.github/workflows/wujihandcpp-package-build.yml`
-- `.github/workflows/release-package.yml`
+- `.github/workflows/release.yml`
 - `Dockerfile.package-builder`
 - `wujihandcpp/**`
 
