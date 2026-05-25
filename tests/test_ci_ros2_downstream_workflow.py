@@ -48,7 +48,9 @@ def test_ros2_downstream_script_documents_downstream_build_steps():
     assert "apt-get install -y" in text
     assert "dpkg -s wujihandcpp" in text
     assert "find_package(wujihandcpp CONFIG REQUIRED)" in text
-    assert "git clone --recurse-submodules --depth 1" in text
+    assert "git clone --depth 1" in text
+    assert "--recurse-submodules" not in text
+    assert "submodule update --init --remote --depth 1" in text
     assert "wujihandros2" in text
     assert "rosdep install" in text
     assert "colcon build" in text

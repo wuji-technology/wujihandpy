@@ -94,9 +94,12 @@ rosdep update --rosdistro "${ROS_DISTRO}"
 
 workspace="$(mktemp -d)"
 mkdir -p "${workspace}/src"
-git clone --recurse-submodules --depth 1 \
+git clone --depth 1 \
   "${WUJIHANDROS2_REPO:-https://github.com/wuji-technology/wujihandros2.git}" \
   "${workspace}/src/wujihandros2"
+# Follow downstream .gitmodules branches instead of fixed gitlinks; shallow
+# downstream refs can point at submodule commits that are no longer fetchable.
+git -C "${workspace}/src/wujihandros2" submodule update --init --remote --depth 1
 
 cd "${workspace}"
 rosdep install \
