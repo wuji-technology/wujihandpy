@@ -110,5 +110,7 @@ rosdep install \
   -r -y
 
 # shellcheck disable=SC1090
+set +u
 . "/opt/ros/${ROS_DISTRO}/setup.bash"
+set -u
 colcon build --event-handlers console_direct+

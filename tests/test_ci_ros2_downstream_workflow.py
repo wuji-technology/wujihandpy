@@ -54,3 +54,10 @@ def test_ros2_downstream_script_documents_downstream_build_steps():
     assert "wujihandros2" in text
     assert "rosdep install" in text
     assert "colcon build" in text
+
+
+def test_ros2_downstream_script_sources_ros_setup_without_nounset():
+    text = SCRIPT.read_text()
+
+    source = '. "/opt/ros/${ROS_DISTRO}/setup.bash"'
+    assert "set +u\n" + source + "\nset -u" in text
