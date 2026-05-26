@@ -1,4 +1,4 @@
-name: C++11 Compatibility Check
+name: "Quality Gates: C++11 Header Compatibility"
 
 on:
   push:
@@ -12,7 +12,7 @@ on:
 
 jobs:
   cpp11-compat:
-    name: Verify public headers are C++11 compatible
+    name: Verify public headers with C++11
     runs-on: ubuntu-22.04
 
     steps:

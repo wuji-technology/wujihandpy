@@ -1,0 +1,216 @@
+name: Release
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  create-tag:
+    name: Create release tag
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.merged == true &&
+      contains(github.event.pull_request.labels.*.name, 'auto-release') &&
+      startsWith(github.event.pull_request.head.ref, 'release/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.AUTOMATION_APP_ID }}
+          private-key: ${{ secrets.AUTOMATION_APP_PRIVATE_KEY }}
+
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          fetch-tags: true
+
+      - name: Extract version and create tag
+        env:
+          BRANCH_NAME: ${{ github.event.pull_request.head.ref }}
+        run: |
+          VERSION="${BRANCH_NAME#release/}"
+
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+            echo "::error::Invalid version format: $VERSION"
+            exit 1
+          fi
+
+          if git rev-parse "refs/tags/$VERSION" >/dev/null 2>&1; then
+            echo "::error::Tag $VERSION already exists"
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git tag -a "${VERSION}" -m "Release ${VERSION}"
+          git push origin "${VERSION}"
+
+          echo "Tag ${VERSION} created"
+
+  wujihandcpp-package:
+    name: Build wujihandcpp packages
+    if: github.event_name == 'push'
+    uses: ./.github/workflows/wujihandcpp-package-build.yml
+
+  wujihandpy-wheel:
+    name: Build wujihandpy wheels on ${{ matrix.os }}
+    if: github.event_name == 'push'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, windows-latest, windows-11-arm]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Install dependencies with vcpkg (Windows)
+        if: startsWith(matrix.os, 'windows')
+        shell: pwsh
+        run: |
+          if ("${{ matrix.os }}" -eq "windows-latest") {
+            $VCPKG_TRIPLET = "x64-windows"
+          } elseif ("${{ matrix.os }}" -eq "windows-11-arm") {
+            $VCPKG_TRIPLET = "arm64-windows"
+          }
+          echo "VCPKG_TRIPLET=$VCPKG_TRIPLET" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          vcpkg install libusb:$VCPKG_TRIPLET
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install cibuildwheel
+        run: python -m pip install cibuildwheel
+
+      - name: Build wujihandpy (Linux)
+        if: startsWith(matrix.os, 'ubuntu')
+        run: python -m cibuildwheel --output-dir build/wujihandpy
+
+      - name: Build wujihandpy (Windows)
+        if: startsWith(matrix.os, 'windows')
+        shell: pwsh
+        run: |
+          $VCPKG_ROOT = $env:VCPKG_INSTALLATION_ROOT -replace '\\','/'
+          $env:CIBW_ENVIRONMENT_WINDOWS = "VCPKG_ROOT=$VCPKG_ROOT VCPKG_TRIPLET=$env:VCPKG_TRIPLET"
+          python -m cibuildwheel --output-dir build/wujihandpy
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build-wujihandpy-${{ matrix.os }}
+          path: build/wujihandpy/*.whl
+
+  deb-smoke-test:
+    name: Smoke test wujihandcpp deb (${{ matrix.runner }}, ${{ matrix.environment }}, spdlog=${{ matrix.install_system_spdlog }})
+    needs: wujihandcpp-package
+    if: github.event_name == 'push'
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+        environment: [host, ubuntu-container]
+        install_system_spdlog: [false, true]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Download wujihandcpp build
+        uses: actions/download-artifact@v5
+        with:
+          path: build/wujihandcpp
+          name: build-wujihandcpp-${{ matrix.runner }}
+
+      - name: Resolve deb package
+        id: deb
+        run: |
+          mapfile -t debs < <(find build/wujihandcpp -maxdepth 1 -type f -name '*.deb' | sort)
+          if [[ "${#debs[@]}" -ne 1 ]]; then
+            printf 'Expected exactly one deb package, found %s:\n' "${#debs[@]}"
+            printf '  %s\n' "${debs[@]}"
+            exit 1
+          fi
+          echo "path=${debs[0]}" >> "${GITHUB_OUTPUT}"
+
+      - name: Smoke test on GitHub runner
+        if: matrix.environment == 'host'
+        run: .github/scripts/smoke_wujihandcpp_deb.sh "${{ steps.deb.outputs.path }}" "${{ matrix.install_system_spdlog }}"
+
+      - name: Smoke test in minimal Ubuntu container
+        if: matrix.environment == 'ubuntu-container'
+        run: |
+          docker run --rm \
+            -v "${GITHUB_WORKSPACE}:${GITHUB_WORKSPACE}" \
+            -w "${GITHUB_WORKSPACE}" \
+            ubuntu:24.04 \
+            .github/scripts/smoke_wujihandcpp_deb.sh "${{ steps.deb.outputs.path }}" "${{ matrix.install_system_spdlog }}"
+
+  publish:
+    name: Publish to PyPI
+    needs: [wujihandpy-wheel, wujihandcpp-package, deb-smoke-test]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/wujihandpy
+    permissions:
+      id-token: write
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Auto Release
+        id: changelog
+        uses: wuji-technology/.github/actions/auto-release@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download wujihandcpp builds
+        uses: actions/download-artifact@v5
+        with:
+          path: build/wujihandcpp
+          pattern: build-wujihandcpp-*
+          merge-multiple: true
+
+      - name: Download wujihandpy builds
+        uses: actions/download-artifact@v5
+        with:
+          path: build/wujihandpy
+          pattern: build-wujihandpy-*
+          merge-multiple: true
+
+      - name: Publish distribution to PyPI
+        if: github.ref_type == 'tag'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: build/wujihandpy
+
+      - name: Upload Release Assets
+        run: gh release upload "${RELEASE_TAG}" build/wujihandcpp/* build/wujihandpy/*.whl --clobber
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

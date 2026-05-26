@@ -1,4 +1,4 @@
-name: pytest
+name: "Quality Gates: Python Tests"
 
 # Run host-side pytest on PRs; hardware-in-the-loop tests stay local-only.
 
@@ -10,7 +10,7 @@ on:
 
 jobs:
   pytest:
-    name: Host-side pytest (Ubuntu)
+    name: Run pytest on Ubuntu
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout
@@ -45,7 +45,7 @@ jobs:
           # cmake build path mirrors CLAUDE.md's "fast dev iteration".
           # Editable install is what tests import.
           cmake --preset linux -DCMAKE_C_COMPILER=gcc-13 -DCMAKE_CXX_COMPILER=g++-13
-          cmake --build build -j$(nproc)
+          cmake --build build -j"$(nproc)"
           cp build/_core.cpython-*-linux-gnu.so src/wujihandpy/
           pip install -e . --config-settings=cmake.args="-DCMAKE_C_COMPILER=gcc-13;-DCMAKE_CXX_COMPILER=g++-13"
 

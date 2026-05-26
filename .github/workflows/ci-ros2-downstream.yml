@@ -1,0 +1,69 @@
+name: "Quality Gates: ROS 2 Downstream"
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/ci-ros2-downstream.yml"
+      - ".github/workflows/wujihandcpp-package-build.yml"
+      - "ci/check_wujihandros2_downstream.sh"
+      - "Dockerfile.package-builder"
+      - "wujihandcpp/**"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build deb artifacts
+    uses: ./.github/workflows/wujihandcpp-package-build.yml
+
+  downstream-ros2-lts:
+    name: wujihandros2 (${{ matrix.ros_distro }} / Ubuntu ${{ matrix.ubuntu }})
+    runs-on: ubuntu-latest
+    needs: build
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - ros_distro: humble
+            ubuntu: "22.04"
+            image: ros:humble-ros-base
+          - ros_distro: jazzy
+            ubuntu: "24.04"
+            image: ros:jazzy-ros-base
+          # Note: add ROS 2 Lyrical / Ubuntu 26.04 here once the official
+          # image and wujihandros2 downstream dependencies are supported.
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Download deb artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: build-wujihandcpp-ubuntu-latest
+          path: build/wujihandcpp
+
+      - name: Install deb and build wujihandros2
+        run: |
+          mapfile -t debs < <(find build/wujihandcpp -maxdepth 1 -type f -name '*.deb' | sort)
+          if [[ "${#debs[@]}" -ne 1 ]]; then
+            printf 'Expected exactly one deb package, found %s:\n' "${#debs[@]}"
+            printf '  %s\n' "${debs[@]}"
+            exit 1
+          fi
+
+          docker run --rm \
+            -v "${PWD}:/work" \
+            -w /work \
+            -e ROS_DISTRO="${{ matrix.ros_distro }}" \
+            "${{ matrix.image }}" \
+            bash -euxo pipefail -c './ci/check_wujihandros2_downstream.sh "$1"' \
+            -- "/work/${debs[0]}"
