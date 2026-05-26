@@ -8,6 +8,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "wujihandcpp/data/hand.hpp"
@@ -19,6 +20,7 @@
 #include "wujihandcpp/device/finger.hpp"
 #include "wujihandcpp/filter/low_pass.hpp"
 #include "wujihandcpp/protocol/handler.hpp"
+#include "wujihandcpp/transport/usb_enumerate.hpp"
 #include "wujihandcpp/utility/logging.hpp"
 
 namespace wujihandcpp {
@@ -28,58 +30,30 @@ class Hand : public DataOperator<Hand> {
     friend class DataOperator;
 
 public:
-    explicit Hand(
-        const char* serial_number = nullptr, int32_t usb_pid = 0x2000, uint16_t usb_vid = 0x0483,
-        uint32_t mask = 0)
-        : handler_(usb_vid, usb_pid, serial_number, data_count()) {
+    // Firmware convention: 0 = Right, 1 = Left. Source:
+    // docs/external/en/api-reference.mdx:228 (`read_handedness ... (0=right, 1=left)`).
+    // Note: data/tactile.hpp uses the OPPOSITE convention for tactile gloves; the
+    // dexterous-hand side enum below is the authoritative one for `Hand`.
+    enum class Side : uint8_t { Right = 0, Left = 1 };
 
-        init_storage_info(mask);
-        handler_.start_transmit_receive();
+    // Open a wujihand by USB serial number (or the unique device on the bus
+    // when serial_number is nullptr). Body is out-of-line in
+    // src/device/hand.cpp so that probe_handedness, the SN registry, and the
+    // selected-SN bookkeeping stay implementation details and don't leak into
+    // the ABI surface.
+    WUJIHANDCPP_API explicit Hand(
+        const char* serial_number = nullptr, int32_t usb_pid = 0x2000,
+        uint16_t usb_vid = 0x0483, uint32_t mask = 0);
 
-        try {
-            check_firmware_version();
+    // Open a wujihand by handedness. Internally probes every VID/PID match,
+    // reads SDO 0x5090 from each candidate, and delegates to the serial-number
+    // ctor once a unique match is found. Throws ConnectionError on no/multiple
+    // matches. Body is in src/device/hand.cpp; see comments there for the
+    // probe protocol and the temporary-string lifetime caveat.
+    WUJIHANDCPP_API explicit Hand(
+        Side side, int32_t usb_pid = 0x2000, uint16_t usb_vid = 0x0483, uint32_t mask = 0);
 
-            write<data::joint::Enabled>(false);
-
-            Latch latch;
-            write_async<data::joint::ControlMode>(latch, feature_firmware_filter_ ? 9 : 6);
-
-            if (feature_firmware_filter_) {
-                write_async<data::hand::RPdoId>(latch, 0x01);
-                uint16_t tpdo_id = feature_exception_detect_ ? 0x02 : 0x01;
-                write_async<data::hand::TPdoId>(latch, tpdo_id);
-                write_async<data::hand::PdoInterval>(
-                    latch, feature_rpdo_directly_distribute_ ? 1000 : 2000);
-                write_async<data::hand::PdoEnabled>(latch, 1);
-            } else
-                write_async<data::joint::CurrentLimit>(latch, 1000);
-
-            if (feature_rpdo_directly_distribute_)
-                write_async<data::hand::RPdoDirectlyDistribute>(latch, 1);
-            if (feature_tpdo_proactively_report_)
-                write_async<data::hand::TPdoProactivelyReport>(latch, 1);
-
-            latch.wait();
-
-        } catch (const TimeoutError&) {
-            int disconnected_count = 0;
-            std::string disconnected;
-            for (int i = 0; i < sub_count_; i++)
-                for (int j = 0; j < Finger::sub_count_; j++)
-                    if (finger(i).joint(j).get<data::joint::FirmwareVersion>() == 0) {
-                        disconnected_count++;
-                        disconnected += " finger(" + std::to_string(i) + ").joint(" + std::to_string(j) + ")";
-                    }
-
-            if (disconnected_count == 0)
-                throw TimeoutError("Failed to initialize hand: configuration timed out");
-            else if (disconnected_count < sub_count_ * Finger::sub_count_)
-                throw TimeoutError(
-                    "Failed to initialize hand: joint(s) not responding:" + disconnected);
-            else
-                throw TimeoutError("Failed to initialize hand: no response from device");
-        }
-    };
+    WUJIHANDCPP_API ~Hand() noexcept;
 
     void check_firmware_version() {
         Latch latch;
@@ -387,8 +361,7 @@ private:
                 return;
             try {
                 detach();
-            } catch (...) {
-            }
+            } catch (...) {}
         }
 
         void detach() override {
@@ -438,8 +411,7 @@ private:
                 return;
             try {
                 detach();
-            } catch (...) {
-            }
+            } catch (...) {}
         }
 
         void detach() override {
@@ -601,6 +573,32 @@ private:
         data::hand::TPdoId, data::hand::PdoInterval, data::hand::RPdoTriggerOffset,
         data::hand::TPdoTriggerOffset>;
 
+    // RAII guard for the process-local SN registry. Holds the SN this Hand
+    // is registered under (empty for the Hand() no-arg path that doesn't know
+    // its SN). The dtor unregisters.
+    //
+    // Declaration order matters: sn_guard_ MUST be declared before handler_
+    // so it destructs LAST (members destruct in reverse declaration order).
+    // That sequence — handler_ first releases libusb_claim_interface, then
+    // sn_guard_ removes the SN from the registry — keeps the registry's
+    // "skip held devices" invariant honest: while another Hand instance
+    // could conceivably observe the SN missing from the registry just
+    // before the USB claim drops, the inverse race (SN missing while claim
+    // still held) is the noisy one we want to avoid. With this ordering the
+    // claim is gone first; a concurrent probe of the same SN will succeed
+    // cleanly instead of hitting LIBUSB_ERROR_BUSY.
+    struct SnRegistration {
+        std::string sn;
+        SnRegistration() = default;
+        SnRegistration(const SnRegistration&) = delete;
+        SnRegistration& operator=(const SnRegistration&) = delete;
+        // Out-of-line in hand.cpp so that the unregister-from-registry call
+        // stays inside the library (the registry helpers themselves are not
+        // exported from the public header).
+        ~SnRegistration() noexcept;
+    };
+
+    SnRegistration sn_guard_;
     protocol::Handler handler_;
 
     bool feature_firmware_filter_ = false;
@@ -620,6 +618,64 @@ private:
             int(Datas::count + index * Sub::data_count())};
     }
 };
+
+namespace detail {
+
+// Process-local set of SNs currently held by live Hand instances.
+// probe_handedness consults this set so it can skip devices that would
+// otherwise return LIBUSB_ERROR_BUSY when re-opened for the handedness
+// SDO read. Declared near the top of this header (above class Hand) and
+// implemented in src/device/hand.cpp.
+
+struct ProbeResult {
+    std::string sn;
+    bool has_handedness;        // true when probe successfully read the SDO value
+    uint8_t handedness;         // valid only when has_handedness == true
+    std::string failure_reason; // short user-facing category when !has_handedness
+                                // (e.g. "no response", "connection failed");
+                                // detailed reason is logged separately in
+                                // probe_handedness, not duplicated here, so the
+                                // exception message stays compact.
+};
+
+// Build the (matches, diagnostic) pair from per-device probe results. Pure
+// logic so it can be unit-tested without hardware.
+inline std::pair<std::vector<std::string>, std::string>
+    select_side_matched(Hand::Side side, const std::vector<ProbeResult>& results) {
+    std::vector<std::string> matches;
+    for (const auto& r : results) {
+        if (!r.has_handedness)
+            continue;
+        if (static_cast<Hand::Side>(r.handedness) == side)
+            matches.push_back(r.sn);
+    }
+    if (matches.size() == 1)
+        return {matches, std::string{}};
+
+    const char* side_str = (side == Hand::Side::Left) ? "left" : "right";
+    std::string msg = matches.empty() ? std::string("No ") + side_str + " hand found"
+                                      : std::string("Multiple ") + side_str + " hands found";
+
+    msg += "; saw " + std::to_string(results.size()) + " device(s):";
+    for (const auto& r : results)
+        msg += " " + r.sn;
+
+    std::vector<std::string> failures;
+    for (const auto& r : results)
+        if (!r.has_handedness)
+            failures.push_back(r.sn + " (" + r.failure_reason + ")");
+    if (!failures.empty()) {
+        msg += "; unresponsive:";
+        for (const auto& f : failures)
+            msg += " " + f;
+    }
+
+    msg += "; use serial_number to specify the device";
+
+    return {matches, msg};
+}
+
+} // namespace detail
 
 } // namespace device
 } // namespace wujihandcpp

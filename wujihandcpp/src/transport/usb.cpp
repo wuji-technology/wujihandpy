@@ -6,6 +6,7 @@
 #include <memory>
 #include <mutex>
 #include <stdexcept>
+#include <string>
 #include <thread>
 #include <tuple>
 #include <vector>
@@ -13,6 +14,7 @@
 #include <libusb.h>
 
 #include "wujihandcpp/device/latch.hpp"
+#include "wujihandcpp/transport/usb_enumerate.hpp"
 
 #include "logging/logging.hpp"
 #include "transport/transport.hpp"
@@ -21,6 +23,87 @@
 #include "utility/ring_buffer.hpp"
 
 namespace wujihandcpp::transport {
+
+namespace {
+
+constexpr const char* libusb_errname(int number) {
+    switch (number) {
+    case LIBUSB_ERROR_IO: return "ERROR_IO";
+    case LIBUSB_ERROR_INVALID_PARAM: return "ERROR_INVALID_PARAM";
+    case LIBUSB_ERROR_ACCESS: return "ERROR_ACCESS";
+    case LIBUSB_ERROR_NO_DEVICE: return "ERROR_NO_DEVICE";
+    case LIBUSB_ERROR_NOT_FOUND: return "ERROR_NOT_FOUND";
+    case LIBUSB_ERROR_BUSY: return "ERROR_BUSY";
+    case LIBUSB_ERROR_TIMEOUT: return "ERROR_TIMEOUT";
+    case LIBUSB_ERROR_OVERFLOW: return "ERROR_OVERFLOW";
+    case LIBUSB_ERROR_PIPE: return "ERROR_PIPE";
+    case LIBUSB_ERROR_INTERRUPTED: return "ERROR_INTERRUPTED";
+    case LIBUSB_ERROR_NO_MEM: return "ERROR_NO_MEM";
+    case LIBUSB_ERROR_NOT_SUPPORTED: return "ERROR_NOT_SUPPORTED";
+    case LIBUSB_ERROR_OTHER: return "ERROR_OTHER";
+    default: return "UNKNOWN";
+    }
+}
+
+struct EnumeratedDevice {
+    libusb_device_handle* handle; // already opened; caller must libusb_close
+    std::string serial_number;
+};
+
+// Enumerate VID/PID-matching devices, open each, and read its iSerialNumber
+// descriptor. product_id < 0 disables the PID filter. Devices that fail to open
+// or whose descriptor cannot be read are silently skipped (matches the original
+// Usb::select_device behavior). Throws device::ConnectionError if
+// libusb_get_device_list itself fails.
+std::vector<EnumeratedDevice> enumerate_matching_devices(
+    libusb_context* context, uint16_t vendor_id, int32_t product_id) {
+    libusb_device** device_list = nullptr;
+    const ssize_t device_count = libusb_get_device_list(context, &device_list);
+    if (device_count < 0)
+        throw device::ConnectionError(std::format(
+            "Failed to get device list: {} ({})", device_count,
+            libusb_errname(static_cast<int>(device_count))));
+
+    utility::FinalAction free_list{[&device_list]() { libusb_free_device_list(device_list, 1); }};
+
+    std::vector<EnumeratedDevice> matched;
+    matched.reserve(static_cast<size_t>(device_count));
+
+    for (ssize_t i = 0; i < device_count; i++) {
+        libusb_device_descriptor desc;
+        int ret = libusb_get_device_descriptor(device_list[i], &desc);
+        if (ret != 0 || desc.bLength == 0)
+            continue;
+        if (desc.idVendor != vendor_id)
+            continue;
+        if (desc.iSerialNumber == 0)
+            continue;
+        if (product_id >= 0 && desc.idProduct != product_id)
+            continue;
+
+        libusb_device_handle* handle = nullptr;
+        ret = libusb_open(device_list[i], &handle);
+        if (ret != 0)
+            continue;
+
+        unsigned char buf[256];
+        int n = libusb_get_string_descriptor_ascii(
+            handle, desc.iSerialNumber, buf, sizeof(buf) - 1);
+        // n == 0 means the descriptor returned an empty string, which is not a
+        // useful identifier — treat it the same as a read failure and skip.
+        if (n <= 0) {
+            libusb_close(handle);
+            continue;
+        }
+        // Construct the std::string with explicit length rather than relying on
+        // a trailing '\0' — defensive against descriptors that embed NUL bytes.
+        matched.push_back(
+            {handle, std::string(reinterpret_cast<char*>(buf), static_cast<size_t>(n))});
+    }
+    return matched;
+}
+
+} // namespace
 
 class Usb : public ITransport {
 public:
@@ -39,6 +122,10 @@ public:
     Usb& operator=(const Usb&) = delete;
     Usb(Usb&&) = delete;
     Usb& operator=(Usb&&) = delete;
+
+    const std::string& selected_serial_number() const noexcept override {
+        return selected_serial_number_;
+    }
 
     ~Usb() override {
         {
@@ -167,12 +254,39 @@ private:
             return false;
         }
 
+        // Capture the iSerialNumber of the selected device so callers (Hand)
+        // can register it in the SN registry regardless of whether a SN
+        // filter was supplied at the binding layer. One descriptor read of
+        // the *single* chosen device — not the per-VID/PID enumeration loop
+        // that select_device walks — so the no-arg path's main-equivalent
+        // performance profile is preserved.
+        capture_selected_serial_number();
+
         // Libusb successfully initialized
         close_device_handle.disable();
         exit_libusb.disable();
         return true;
     }
 
+    void capture_selected_serial_number() {
+        libusb_device_descriptor desc;
+        if (libusb_get_device_descriptor(libusb_get_device(libusb_device_handle_), &desc) != 0)
+            return;
+        if (desc.iSerialNumber == 0)
+            return;
+        unsigned char buf[256];
+        int n = libusb_get_string_descriptor_ascii(
+            libusb_device_handle_, desc.iSerialNumber, buf, sizeof(buf) - 1);
+        if (n > 0)
+            selected_serial_number_.assign(reinterpret_cast<char*>(buf), static_cast<size_t>(n));
+    }
+
+    // Restored to match main's behavior verbatim. The side= path resolves the
+    // SN via probe_handedness in hand.cpp and then delegates back through the
+    // standard Hand(serial_number=...) ctor, so select_device only ever sees
+    // either an explicit SN or nullptr (true no-arg). Reading the iSerialNumber
+    // descriptor lazily — only when a SN filter is supplied — keeps the
+    // no-arg path identical to pre-PR behavior.
     bool select_device(uint16_t vendor_id, int32_t product_id, const char* serial_number) {
         libusb_device** device_list = nullptr;
         const ssize_t device_count = libusb_get_device_list(libusb_context_, &device_list);
@@ -222,7 +336,7 @@ private:
                     continue;
                 serial_buf[n] = '\0';
 
-                if (strcmp(reinterpret_cast<char*>(serial_buf), serial_number) != 0)
+                if (std::strcmp(reinterpret_cast<char*>(serial_buf), serial_number) != 0)
                     continue;
             }
 
@@ -443,25 +557,6 @@ private:
             throw device::ConnectionError("Device disconnected");
     }
 
-    static constexpr const char* libusb_errname(int number) {
-        switch (number) {
-        case LIBUSB_ERROR_IO: return "ERROR_IO";
-        case LIBUSB_ERROR_INVALID_PARAM: return "ERROR_INVALID_PARAM";
-        case LIBUSB_ERROR_ACCESS: return "ERROR_ACCESS";
-        case LIBUSB_ERROR_NO_DEVICE: return "ERROR_NO_DEVICE";
-        case LIBUSB_ERROR_NOT_FOUND: return "ERROR_NOT_FOUND";
-        case LIBUSB_ERROR_BUSY: return "ERROR_BUSY";
-        case LIBUSB_ERROR_TIMEOUT: return "ERROR_TIMEOUT";
-        case LIBUSB_ERROR_OVERFLOW: return "ERROR_OVERFLOW";
-        case LIBUSB_ERROR_PIPE: return "ERROR_PIPE";
-        case LIBUSB_ERROR_INTERRUPTED: return "ERROR_INTERRUPTED";
-        case LIBUSB_ERROR_NO_MEM: return "ERROR_NO_MEM";
-        case LIBUSB_ERROR_NOT_SUPPORTED: return "ERROR_NOT_SUPPORTED";
-        case LIBUSB_ERROR_OTHER: return "ERROR_OTHER";
-        default: return "UNKNOWN";
-        }
-    }
-
     static constexpr int target_interface_ = 0x01;
 
     static constexpr unsigned char out_endpoint_ = 0x01;
@@ -476,6 +571,11 @@ private:
 
     libusb_context* libusb_context_;
     libusb_device_handle* libusb_device_handle_;
+
+    // iSerialNumber of the device select_device picked, read once in
+    // usb_init after claim_interface. Empty when the descriptor is
+    // unavailable. Exposed via selected_serial_number().
+    std::string selected_serial_number_;
 
     std::thread event_thread_;
 
@@ -494,6 +594,28 @@ private:
 std::unique_ptr<ITransport>
     create_usb_transport(uint16_t usb_vid, int32_t usb_pid, const char* serial_number) {
     return std::make_unique<Usb>(usb_vid, usb_pid, serial_number);
+}
+
+std::vector<std::string>
+    list_matching_serial_numbers(uint16_t vendor_id, int32_t product_id) {
+    libusb_context* context = nullptr;
+    int ret = libusb_init(&context);
+    if (ret != 0)
+        throw device::ConnectionError(
+            std::format("Failed to init libusb: {} ({})", ret, libusb_errname(ret)));
+    utility::FinalAction exit_libusb{[context]() { libusb_exit(context); }};
+
+    auto devices = enumerate_matching_devices(context, vendor_id, product_id);
+    utility::FinalAction close_all{[&devices]() {
+        for (auto& dev : devices)
+            libusb_close(dev.handle);
+    }};
+
+    std::vector<std::string> sns;
+    sns.reserve(devices.size());
+    for (auto& dev : devices)
+        sns.push_back(std::move(dev.serial_number));
+    return sns;
 }
 
 } // namespace wujihandcpp::transport

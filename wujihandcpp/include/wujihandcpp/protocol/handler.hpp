@@ -6,6 +6,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <string>
 #include <type_traits>
 #include <vector>
 
@@ -13,6 +14,9 @@
 #include "wujihandcpp/utility/api.hpp"
 
 namespace wujihandcpp {
+namespace device {
+class Hand; // forward decl for friend access from Hand to Handler internals
+}
 namespace protocol {
 
 class Handler final {
@@ -129,8 +133,16 @@ public:
         std::chrono::steady_clock::duration timeout);
 
 private:
+    // Library-internal accessor; not WUJIHANDCPP_API-exported. Available to
+    // device::Hand (friend) for SN-registry bookkeeping. External consumers
+    // can't call this even via friend trickery because the symbol is hidden
+    // from the shared library.
+    const std::string& selected_serial_number() const noexcept;
+
     class Impl;
     Impl* impl_;
+
+    friend class wujihandcpp::device::Hand;
 };
 
 } // namespace protocol

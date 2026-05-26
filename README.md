@@ -16,13 +16,15 @@ Wuji Hand SDK: C++ core with Python bindings, for controlling and communicating 
 │   ├── main.cpp
 │   └── *.hpp
 ├── example/                      # Usage examples
-│   ├── joint/                    # read / write / realtime / async / multithread / disconnect
+│   ├── joint/                    # read / write / realtime / async / multithread / disconnect / glove donning / handedness-based connect
 │   │   ├── 1.read.py
 │   │   ├── 2.write.py
 │   │   ├── 3.realtime.py
 │   │   ├── 4.async.py
 │   │   ├── 5.multithread.py
-│   │   └── 6.disconnect.py
+│   │   ├── 6.disconnect.py
+│   │   ├── 7.glove_donning.py
+│   │   └── 8.connect_by_side.py
 │   ├── tactile/                  # Tactile sensing glove
 │   │   └── basic.py
 │   └── joint_with_tactile.py     # Drive both subsystems together
@@ -82,6 +84,8 @@ For scenarios that require smooth joint position control, be sure to use `realti
 
 - **Documentation**: [Quick Start](https://docs.wuji.tech/docs/en/wuji-hand/latest/sdk-user-guide/introduction/)
 - **API Reference**: [API Reference](https://docs.wuji.tech/docs/en/wuji-hand/latest/sdk-user-guide/api-reference/)
+- **CI Workflows**: [workflow overview](docs/ci-workflows.md)
+- **Package CI**: [wujihandcpp deb smoke gate](docs/wujihandcpp-deb-smoke-gate.md)
 - **URDF Files**: [wuji-hand-description](https://github.com/wuji-technology/wuji-hand-description)
 
 ## Contact

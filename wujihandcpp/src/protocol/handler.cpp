@@ -349,6 +349,10 @@ public:
         }
     }
 
+    const std::string& selected_serial_number() const noexcept {
+        return transport_->selected_serial_number();
+    }
+
 private:
     struct Operation {
         enum class Mode : uint16_t {
@@ -1093,6 +1097,10 @@ WUJIHANDCPP_API Handler::Handler(
 }
 
 WUJIHANDCPP_API Handler::~Handler() { delete impl_; }
+
+const std::string& Handler::selected_serial_number() const noexcept {
+    return impl_->selected_serial_number();
+}
 
 WUJIHANDCPP_API void Handler::init_storage_info(int storage_id, StorageInfo info) {
     impl_->init_storage_info(storage_id, info);

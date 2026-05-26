@@ -1,0 +1,68 @@
+name: "Quality Gates: wujihandcpp Deb Package"
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/scripts/smoke_wujihandcpp_deb.sh"
+      - ".github/workflows/pr-wujihandcpp-deb-gate.yml"
+      - ".github/workflows/wujihandcpp-package-build.yml"
+      - ".github/workflows/release.yml"
+      - "Dockerfile.package-builder"
+      - "wujihandcpp/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build deb artifacts
+    uses: ./.github/workflows/wujihandcpp-package-build.yml
+
+  smoke-test:
+    name: Install and consume deb (${{ matrix.runner }}, ${{ matrix.environment }}, spdlog=${{ matrix.install_system_spdlog }})
+    needs: build
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+        environment: [host, ubuntu-container]
+        install_system_spdlog: [false, true]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Download package artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: build-wujihandcpp-${{ matrix.runner }}
+          path: build/wujihandcpp
+
+      - name: Resolve deb package
+        id: deb
+        run: |
+          mapfile -t debs < <(find build/wujihandcpp -maxdepth 1 -type f -name '*.deb' | sort)
+          if [[ "${#debs[@]}" -ne 1 ]]; then
+            printf 'Expected exactly one deb package, found %s:\n' "${#debs[@]}"
+            printf '  %s\n' "${debs[@]}"
+            exit 1
+          fi
+          echo "path=${debs[0]}" >> "${GITHUB_OUTPUT}"
+
+      - name: Smoke test on GitHub runner
+        if: matrix.environment == 'host'
+        run: .github/scripts/smoke_wujihandcpp_deb.sh "${{ steps.deb.outputs.path }}" "${{ matrix.install_system_spdlog }}"
+
+      - name: Smoke test in minimal Ubuntu container
+        if: matrix.environment == 'ubuntu-container'
+        run: |
+          docker run --rm \
+            -v "${GITHUB_WORKSPACE}:${GITHUB_WORKSPACE}" \
+            -w "${GITHUB_WORKSPACE}" \
+            ubuntu:24.04 \
+            .github/scripts/smoke_wujihandcpp_deb.sh "${{ steps.deb.outputs.path }}" "${{ matrix.install_system_spdlog }}"

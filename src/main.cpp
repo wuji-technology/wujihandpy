@@ -81,10 +81,27 @@ PYBIND11_MODULE(_core, m) {
 
     using Hand = Wrapper<wujihandcpp::device::Hand>;
     auto hand = py::class_<Hand>(m, "Hand");
+    // Hand ctor holds the GIL throughout (no py::call_guard). The ctor is a
+    // one-shot startup event (~500-1000 ms of USB IO); hot-path methods
+    // (read_*/write_*/raw_sdo_*) already release the GIL inside Wrapper, so
+    // steady-state runtime is not gated by this. Releasing during ctor would
+    // require Wrapper::parse_array_mask to re-acquire the GIL to safely touch
+    // numpy, which adds RAII nesting without meaningful payoff for a single
+    // init-time event.
     hand.def(
         py::init<std::optional<std::string>, int32_t, uint16_t, std::optional<py::array_t<bool>>>(),
         py::arg("serial_number") = py::none(), py::arg("usb_pid") = 0x2000,
         py::arg("usb_vid") = 0x0483, py::arg("mask") = py::none());
+
+    py::enum_<wujihandcpp::device::Hand::Side>(hand, "Side")
+        .value("Right", wujihandcpp::device::Hand::Side::Right)
+        .value("Left", wujihandcpp::device::Hand::Side::Left);
+
+    hand.def(
+        py::init<
+            wujihandcpp::device::Hand::Side, int32_t, uint16_t, std::optional<py::array_t<bool>>>(),
+        py::arg("side"), py::arg("usb_pid") = 0x2000, py::arg("usb_vid") = 0x0483,
+        py::arg("mask") = py::none());
     // No __enter__/__exit__: Hand opens USB in its C++ ctor and there is
     // no idempotent close() path on the underlying device::Hand today, so
     // a `with` block could not deterministically release the device at
