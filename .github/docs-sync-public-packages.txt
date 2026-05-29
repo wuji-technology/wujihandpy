@@ -1,0 +1,16 @@
+# Public path prefixes — consumed by the docs-followup reusable workflow.
+# Each non-comment, non-blank line is an anchored path prefix (matched against
+# `git diff --name-only` of the merged PR). A change touching any of these is
+# treated as user-visible and triggers docs follow-up analysis.
+
+# Python / C++ 公开 SDK 源与绑定
+src/
+wujihandcpp/
+bridge/
+
+# 打包元数据与示例
+pyproject.toml
+example/
+
+# 对外文档源
+docs/external/
