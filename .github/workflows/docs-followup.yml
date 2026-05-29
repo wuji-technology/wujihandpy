@@ -1,0 +1,20 @@
+name: Post-Merge Docs Follow-up
+
+# Thin caller for the centralized docs-followup pipeline in wuji-docs-center.
+# All logic lives in the reusable workflow; this repo only provides the trigger,
+# the public-surface list (.github/docs-sync-public-packages.txt), and org
+# secrets via `secrets: inherit`.
+#
+# Prerequisites (one-time, org-wide, already in place): wuji-docs-center exposes
+# its Actions to the org (Settings -> Actions -> Access); the reusable workflow
+# checks out wuji-docs-center via an App token internally.
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+jobs:
+  docs-followup:
+    uses: wuji-technology/wuji-docs-center/.github/workflows/post-merge-docs-followup.yml@main
+    secrets: inherit

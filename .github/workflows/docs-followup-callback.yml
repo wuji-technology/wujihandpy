@@ -1,0 +1,14 @@
+name: Docs Follow-up Callback
+
+# Thin caller for the centralized docs-followup callback in wuji-docs-center.
+# Closes the loop when the maintainer comments /docs-done or /docs-skip on a PR
+# tagged `docs:followup`. All logic lives in the reusable workflow.
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  docs-followup-callback:
+    uses: wuji-technology/wuji-docs-center/.github/workflows/docs-followup-callback.yml@main
+    secrets: inherit
