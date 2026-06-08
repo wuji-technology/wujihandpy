@@ -185,7 +185,7 @@ SDK runtime logs are stored in `~/.wuji/log/` by default. File names follow `{ti
 
 #### 5.3.1 Custom Path and Level
 
-**Configure through environment variables (recommended, zero code).** The SDK reads them once when the first `Hand` is constructed and won't pick up later changes:
+**Configure through environment variables (recommended, zero code).** The SDK reads them once at logger initialization (in the common `Hand` flow that means when the first `Hand` is constructed) and won't pick up later changes:
 
 ```bash
 export WUJI_LOG_PATH=~/logs/wujihand
@@ -225,7 +225,7 @@ For full API reference, see [API Reference - logging Module](../api-reference#4-
 
 #### 5.3.2 Collect Detailed Logs
 
-The default `info` level captures only key events. When you need detailed command flow analysis (for example, a command was sent but the actual state didn't follow), switch to `debug` for SDO/PDO traffic, or `trace` for the raw RX bytes as well:
+The default `info` level captures only key events. When you need detailed command flow analysis (for example, a command was sent but the actual state didn't follow), switch to `debug` for SDO/PDO traffic, or `trace` for the raw TX/RX bytes as well:
 
 ```bash
 export WUJI_LOG_LEVEL=debug
