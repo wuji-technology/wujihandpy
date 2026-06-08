@@ -844,7 +844,7 @@ Single-frame tactile data with the following properties:
 
 **Pressure value semantics:**
 - Range: `[0.0, 1.0]`—`0.0` = no contact, `1.0` = maximum contact
-- `NaN` marks an invalid cell (not part of any finger or palm region); skip such cells with `numpy.isnan()`
+- `NaN` marks an invalid cell (not part of any finger or palm region). Skip such cells with `numpy.isnan()`
 
 CRC validation happens inside the SDK before delivery, so callers never see a bad-CRC frame.
 
@@ -918,8 +918,8 @@ glove.start_streaming(on_frame)
 glove.stop_streaming()
 ```
 
-- Callback invoked on the internal reader thread; must not block
-- Register a disconnect callback with `set_disconnect_callback(fn)` to react to USB drop; streaming stops automatically afterwards
+- Callback invoked on the internal reader thread. Must not block
+- Register a disconnect callback with `set_disconnect_callback(fn)` to react to USB drop. Streaming stops automatically afterwards
 - `start_streaming` and `read_frame` are mutually exclusive
 - All blocking operations release the Python GIL
 
@@ -938,8 +938,8 @@ glove.stop_streaming()
 | `reset_counters()` | Zero the diagnostic counters |
 | `get_device_time() -> TactileDeviceTime` | Read device monotonic clock (`device_monotonic_ns`) |
 | `sync_host_epoch(host_unix_ns) -> TactileSyncResult` | Exchange host UTC nanoseconds for the device clock at the same moment |
-| `reset_device()` | Soft reset; the device drops off the bus and re-enumerates—call `connect()` again afterward |
-| `enter_bootloader(magic)` | Jump to bootloader for OTA; pass `TACTILE_BOOTLOADER_MAGIC` |
+| `reset_device()` | Soft reset. The device drops off the bus and re-enumerates—call `connect()` again afterward |
+| `enter_bootloader(magic)` | Jump to bootloader for OTA. Pass `TACTILE_BOOTLOADER_MAGIC` |
 
 ### 3.5 Exception Handling
 
@@ -1052,7 +1052,7 @@ with TactileGlove() as glove:
 
 ```
 [xxxx-xx-xx xx:xx:xx.xxx] [wuji] [info] SDK vx.x.x initialized
-[xxxx-xx-xx xx:xx:xx.xxx] [wuji] [info] Log files can be found at ~/.wuji/log/<timestamp>.log
+[xxxx-xx-xx xx:xx:xx.xxx] [wuji] [info] Log files can be found at ~/.wuji/log/<timestamp>_<pid>.log
 Serial: WTxxxxxxxxxxxxxx
 Hardware: vx.x.x, Firmware: vx.x.x (xxxxxxx)
 Handedness: left
@@ -1068,14 +1068,14 @@ Saved 326 frames to tactile_data.npy
 
 ### 3.7 Use with Wuji Hand
 
-`Hand` and `TactileGlove` use independent USB transports and threads, so the two APIs compose in the same process with no extra coordination. The frame callback fires on the glove's streaming consumer thread; joint commands run on the thread that calls them. This pattern enables closed-loop scenarios where tactile feedback drives motion—for example, scaling joint amplitude by the current pressure peak.
+`Hand` and `TactileGlove` use independent USB transports and threads, so the two APIs compose in the same process with no extra coordination. The frame callback fires on the glove's streaming consumer thread, while joint commands run on the thread that calls them. This pattern enables closed-loop scenarios where tactile feedback drives motion—for example, scaling joint amplitude by the current pressure peak.
 
 Reference example: [`example/joint_with_tactile.py`](https://github.com/wuji-technology/wujihandpy/blob/main/example/joint_with_tactile.py).
 
 **Runtime behavior:**
 
 - Prints `Squeeze the glove to dampen the motion. Ctrl-C to exit.` on startup
-- After joints are enabled, fingers F2–F5 perform periodic flexion–extension in a 100 Hz realtime loop; F1 (thumb) stays still
+- After joints are enabled, fingers F2–F5 perform periodic flexion–extension in a 100 Hz realtime loop. F1 (thumb) stays still
 - Higher tactile pressure peaks shrink the motion amplitude: a relaxed glove yields the full sweep (about 0.4 rad), while a firm squeeze drives amplitude toward 0
 - Releasing the glove restores the full amplitude
 - Ctrl-C stops streaming, disables joints, and disconnects the glove cleanly
@@ -1094,7 +1094,7 @@ The Tactile Sensing Glove streams fixed 3088-byte frames at up to 120 Hz over US
 | 2–3 | 2 | Frame length | u16 LE | Fixed 3088 |
 | 4 | 1 | Hand | u8 | `0x00` = left, `0x01` = right |
 | 5–7 | 3 | Padding | u8[3] | Aligns tactile data to a 4-byte boundary |
-| 8–3079 | 3072 | Tactile data | f32[24][32] LE | Pressure matrix, row-major, `[0.0, 1.0]`; `NaN` = invalid cell |
+| 8–3079 | 3072 | Tactile data | f32[24][32] LE | Pressure matrix, row-major, `[0.0, 1.0]`. `NaN` = invalid cell |
 | 3080–3081 | 2 | Sequence | u16 LE | Frame counter, wraps at 65535 |
 | 3082–3085 | 4 | Timestamp | u32 LE | Milliseconds since device boot |
 | 3086–3087 | 2 | CRC16 | u16 LE | CRC16-CCITT checksum |
@@ -1182,10 +1182,70 @@ def read_frame(port) -> dict:
 Usage:
 
 ```python
-import serial  # pip install pyserial
+import serial  # python3 -m pip install pyserial
 
 with serial.Serial("/dev/ttyACM0", timeout=1.0) as port:
     frame = read_frame(port)
     print(f"seq={frame['sequence']}, ts={frame['timestamp_ms']} ms, "
           f"hand={frame['hand']}, max={np.nanmax(frame['pressure']):.3f}")
+```
+
+---
+
+## 4. logging Module
+
+The `wujihandpy.logging` submodule configures SDK logging at runtime. For default behavior, environment variables, and troubleshooting tips, see [Getting Started - Get Logs](../introduction#53-get-logs).
+
+### 4.1 Level Enum
+
+| Member | Value | Meaning |
+| :--- | :--- | :--- |
+| `Level.Trace` | 0 | Most verbose, includes raw RX bytes |
+| `Level.Debug` | 1 | Debug details |
+| `Level.Info` | 2 | Key events (default) |
+| `Level.Warn` | 3 | Warnings |
+| `Level.Error` | 4 | Errors |
+| `Level.Critical` | 5 | Critical errors |
+| `Level.Off` | 6 | Disable logging |
+
+### 4.2 Functions
+
+#### set_log_path
+
+Set the log file directory. **Must be called before the logger initializes** (in the common `Hand` flow that means before creating the first `Hand`. `flush()` or any other logging API also triggers logger initialization), otherwise it raises `RuntimeError`.
+
+```python
+def set_log_path(value: str) -> None
+```
+
+#### set_log_level
+
+Set the log level. Safe to call at any time and takes effect immediately.
+
+```python
+def set_log_level(value: Level) -> None
+```
+
+#### set_log_to_file
+
+Toggle file output. The file sink is created only if `WUJI_LOG_TO_FILE` is `true` at logger initialization, and after init this function can temporarily disable or restore file output. If file output was disabled at init, calling `set_log_to_file(True)` later won't re-enable it.
+
+```python
+def set_log_to_file(value: bool) -> None
+```
+
+#### set_log_to_console
+
+Toggle console output. Safe to call at any time and takes effect immediately.
+
+```python
+def set_log_to_console(value: bool) -> None
+```
+
+#### flush
+
+Force pending log entries to file and console. The SDK calls this automatically on process exit, so manual calls are rarely needed.
+
+```python
+def flush() -> None
 ```
