@@ -14,7 +14,7 @@ description: 了解 Wuji Hand SDK (wujihandpy) 的安装配置、快速上手示
 ### 2.1 安装
 wujihandpy 支持 `pip` 一键安装：
 ```bash
-pip install wujihandpy
+python3 -m pip install wujihandpy
 ```
 <Callout type="warning">
   说明：除非对 wujihandpy 进行二次开发，否则勿将其 Git 仓库克隆至本地，可能导致 IDE 误判 .pyi 文件的位置，造成代码补全异常。
@@ -182,4 +182,53 @@ RuntimeError: Failed to init.
 
 ### 5.3 获取日志
 
-SDK 运行日志位于 `~/.wuji/log/`，遇到问题时可将最近的日志发送给售后支持以协助定位。
+SDK 运行日志默认位于 `~/.wuji/log/`，文件名 `{timestamp}_{pid}.log`，单文件 10 MB 滚动，最多保留 5 个历史文件。遇到问题时将最近的日志发送给售后支持即可协助定位。
+
+#### 5.3.1 自定义路径与级别
+
+**通过环境变量配置（推荐，零代码）**
+
+SDK 在 logger 初始化时一次性读取（常见 `Hand` 流程下即首个 `Hand` 构造时），之后不再生效：
+
+```bash
+export WUJI_LOG_PATH=~/logs/wujihand
+export WUJI_LOG_LEVEL=debug
+python3 your_script.py
+```
+
+| 变量 | 取值 | 默认 | 说明 |
+| :--- | :--- | :--- | :--- |
+| `WUJI_LOG_PATH` | 任意目录路径 | `~/.wuji/log/` | 日志文件存放目录 |
+| `WUJI_LOG_LEVEL` | `trace` / `debug` / `info` / `warn` / `err` / `critical` / `off` | `info` | 日志级别 |
+| `WUJI_LOG_TO_FILE` | `true` / `false` | `true` | 是否写入文件 |
+| `WUJI_LOG_TO_CONSOLE` | `true` / `false` | `true` | 是否输出到终端（标准输出 / 标准错误）|
+
+取值匹配大小写不敏感。`WUJI_LOG_LEVEL` 还接受常见别名 `error`（=`err`）、`warning`（=`warn`）、`information`（=`info`）、`crit`（=`critical`）。两个布尔变量也接受 `1`/`0`、`on`/`off`、`yes`/`no`。
+
+**通过代码配置**
+
+在创建 `Hand` 之前调用 `wujihandpy.logging` 子模块的接口：
+
+```python
+import os
+import wujihandpy
+from wujihandpy import logging as wuji_logging
+
+wuji_logging.set_log_path(os.path.expanduser("~/logs/wujihand"))
+wuji_logging.set_log_level(wuji_logging.Level.Debug)
+
+hand = wujihandpy.Hand()
+```
+
+完整 API 参考与调用时机约束见 [API 参考 - logging 模块](../api-reference#4-logging-模块)。
+
+#### 5.3.2 采集详细日志
+
+默认 `info` 级别只记录关键事件。当需要分析指令收发细节（如指令下发后实际状态未跟上），将级别调至 `debug` 获取 SDO/PDO 通信记录，或调至 `trace` 额外获取原始收发字节：
+
+```bash
+export WUJI_LOG_LEVEL=debug
+python3 your_script.py
+```
+
+将复现问题时段的日志文件提供给售后支持，可显著加快定位速度。

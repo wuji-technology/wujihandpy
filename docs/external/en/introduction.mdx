@@ -14,7 +14,7 @@ This section covers the installation of wujihandpy, system requirements, and com
 ### 2.1 Installation
 wujihandpy supports one-step installation via `pip`:
 ```bash
-pip install wujihandpy
+python3 -m pip install wujihandpy
 ```
 <Callout type="warning">
   Note: Unless you're developing wujihandpy itself, don't clone its Git repository locally—this may cause your IDE to misidentify .pyi file locations, resulting in abnormal code completion.
@@ -181,4 +181,53 @@ Please check the Linux udev configuration section in [Installation](#21-installa
 
 ### 5.3 Get Logs
 
-SDK runtime logs are stored in `~/.wuji/log/`. Send the latest log to technical support when reporting an issue.
+SDK runtime logs are stored in `~/.wuji/log/` by default. File names follow `{timestamp}_{pid}.log`, with each file rolling at 10 MB and up to 5 historical files retained. Send the latest log to technical support when reporting an issue.
+
+#### 5.3.1 Custom Path and Level
+
+**Configure through environment variables (recommended, zero code)**
+
+The SDK reads them once at logger initialization (in the common `Hand` flow that means when the first `Hand` is constructed) and won't pick up later changes:
+
+```bash
+export WUJI_LOG_PATH=~/logs/wujihand
+export WUJI_LOG_LEVEL=debug
+python3 your_script.py
+```
+
+| Variable | Values | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `WUJI_LOG_PATH` | Any directory path | `~/.wuji/log/` | Log file directory |
+| `WUJI_LOG_LEVEL` | `trace` / `debug` / `info` / `warn` / `err` / `critical` / `off` | `info` | Log level |
+| `WUJI_LOG_TO_FILE` | `true` / `false` | `true` | Write to file |
+| `WUJI_LOG_TO_CONSOLE` | `true` / `false` | `true` | Write to terminal (stdout / stderr) |
+
+Value matching is case-insensitive. `WUJI_LOG_LEVEL` also accepts the aliases `error` (=`err`), `warning` (=`warn`), `information` (=`info`), and `crit` (=`critical`). Both boolean variables also accept `1`/`0`, `on`/`off`, and `yes`/`no`.
+
+**Configure from code**
+
+Call the `wujihandpy.logging` submodule before creating `Hand`:
+
+```python
+import os
+import wujihandpy
+from wujihandpy import logging as wuji_logging
+
+wuji_logging.set_log_path(os.path.expanduser("~/logs/wujihand"))
+wuji_logging.set_log_level(wuji_logging.Level.Debug)
+
+hand = wujihandpy.Hand()
+```
+
+For the full API reference and call-timing constraints, see [API Reference - logging Module](../api-reference#4-logging-module).
+
+#### 5.3.2 Collect Detailed Logs
+
+The default `info` level captures only key events. When you need detailed command flow analysis (for example, a command was sent but the actual state didn't follow), switch to `debug` for SDO/PDO traffic, or `trace` for the raw TX/RX bytes as well:
+
+```bash
+export WUJI_LOG_LEVEL=debug
+python3 your_script.py
+```
+
+Send the log file covering the problem time window to technical support to speed up diagnosis.
