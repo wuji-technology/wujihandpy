@@ -1228,7 +1228,7 @@ def set_log_level(value: Level) -> None
 
 #### set_log_to_file
 
-Toggle file output. The file sink is created only if `WUJI_LOG_TO_FILE` is `true` at logger initialization, and after init this function can temporarily disable or restore file output. If file output was disabled at init, calling `set_log_to_file(True)` later won't re-enable it.
+Toggle file output. The log file is opened only if `WUJI_LOG_TO_FILE` is `true` at logger initialization, and after init this function can temporarily disable or restore file output. If file output was disabled at init, calling `set_log_to_file(True)` later won't re-enable it.
 
 ```python
 def set_log_to_file(value: bool) -> None

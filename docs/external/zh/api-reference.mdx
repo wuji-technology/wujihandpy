@@ -1228,7 +1228,7 @@ def set_log_level(value: Level) -> None
 
 #### set_log_to_file
 
-控制是否写入文件。仅在 logger 初始化时 `WUJI_LOG_TO_FILE` 为 `true` 才创建文件 sink，初始化后调用此函数可临时关闭或恢复文件输出。若初始化时已被禁用，运行期调用 `set_log_to_file(True)` 不会重新启用文件输出。
+控制是否写入文件。仅在 logger 初始化时 `WUJI_LOG_TO_FILE` 为 `true` 才会打开日志文件，初始化后调用此函数可临时关闭或恢复文件输出。若初始化时已被禁用，运行期调用 `set_log_to_file(True)` 不会重新启用文件输出。
 
 ```python
 def set_log_to_file(value: bool) -> None

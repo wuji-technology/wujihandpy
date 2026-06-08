@@ -219,7 +219,7 @@ For full API reference, see [API Reference - logging Module](../api-reference#4-
 
 <Callout type="warning">
   - Call `set_log_path` before the logger initializes, otherwise it raises `RuntimeError`. In the common `Hand` flow that means before creating the first `Hand`. Calling `flush()` or any other logging API also triggers logger initialization.
-  - `set_log_to_file` creates the file sink only if `WUJI_LOG_TO_FILE` is `true` at logger initialization. If file output is disabled at init, calling `set_log_to_file(True)` later won't re-enable it (enable via the environment variable, or via `set_log_to_file(True)` before logger initialization).
+  - `set_log_to_file` opens the log file only if `WUJI_LOG_TO_FILE` is `true` at logger initialization. If file output is disabled at init, calling `set_log_to_file(True)` later won't re-enable it (enable via the environment variable, or via `set_log_to_file(True)` before logger initialization).
   - `set_log_level` and `set_log_to_console` can be called at any time and take effect immediately.
 </Callout>
 
