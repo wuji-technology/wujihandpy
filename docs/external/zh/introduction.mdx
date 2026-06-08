@@ -220,13 +220,7 @@ wuji_logging.set_log_level(wuji_logging.Level.Debug)
 hand = wujihandpy.Hand()
 ```
 
-完整 API 参考见 [API 参考 - logging 模块](../api-reference#4-logging-模块)。
-
-<Callout type="warning">
-  - `set_log_path` 必须在 logger 初始化之前调用，否则抛出 `RuntimeError`。常见 `Hand` 流程下即创建第一个 `Hand` 之前，任何走 `flush()` 或其他日志接口的调用也会触发 logger 初始化。
-  - `set_log_to_file` 仅在 logger 初始化时 `WUJI_LOG_TO_FILE` 为 `true` 才会打开日志文件。若初始化时被禁用，运行期再调用 `set_log_to_file(True)` 不会重新启用文件输出（需通过环境变量或 logger 初始化前的 `set_log_to_file(True)` 开启）。
-  - `set_log_level`、`set_log_to_console` 可在任意时刻调用，立即生效。
-</Callout>
+完整 API 参考与调用时机约束见 [API 参考 - logging 模块](../api-reference#4-logging-模块)。
 
 #### 5.3.2 采集详细日志
 

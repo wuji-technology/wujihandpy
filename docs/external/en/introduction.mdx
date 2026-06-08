@@ -219,13 +219,7 @@ wuji_logging.set_log_level(wuji_logging.Level.Debug)
 hand = wujihandpy.Hand()
 ```
 
-For full API reference, see [API Reference - logging Module](../api-reference#4-logging-module).
-
-<Callout type="warning">
-  - Call `set_log_path` before the logger initializes, otherwise it raises `RuntimeError`. In the common `Hand` flow that means before creating the first `Hand`. Calling `flush()` or any other logging API also triggers logger initialization.
-  - `set_log_to_file` opens the log file only if `WUJI_LOG_TO_FILE` is `true` at logger initialization. If file output is disabled at init, calling `set_log_to_file(True)` later won't re-enable it (enable via the environment variable, or via `set_log_to_file(True)` before logger initialization).
-  - `set_log_level` and `set_log_to_console` can be called at any time and take effect immediately.
-</Callout>
+For the full API reference and call-timing constraints, see [API Reference - logging Module](../api-reference#4-logging-module).
 
 #### 5.3.2 Collect Detailed Logs
 
