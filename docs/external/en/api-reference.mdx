@@ -1236,7 +1236,7 @@ def set_log_to_file(value: bool) -> None
 
 #### set_log_to_console
 
-Toggle console output. Safe to call at any time and takes effect immediately.
+Toggle terminal output (stdout / stderr). Safe to call at any time and takes effect immediately.
 
 ```python
 def set_log_to_console(value: bool) -> None
@@ -1244,7 +1244,7 @@ def set_log_to_console(value: bool) -> None
 
 #### flush
 
-Force pending log entries to file and console. The SDK calls this automatically on process exit, so manual calls are rarely needed.
+Force pending log entries to file and terminal. The SDK calls this automatically on process exit, so manual calls are rarely needed.
 
 ```python
 def flush() -> None

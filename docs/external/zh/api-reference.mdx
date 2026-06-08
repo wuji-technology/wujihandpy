@@ -1236,7 +1236,7 @@ def set_log_to_file(value: bool) -> None
 
 #### set_log_to_console
 
-控制是否输出到控制台。可在任意时刻调用，立即生效。
+控制是否将日志输出到终端（标准输出 / 标准错误）。可在任意时刻调用，立即生效。
 
 ```python
 def set_log_to_console(value: bool) -> None
@@ -1244,7 +1244,7 @@ def set_log_to_console(value: bool) -> None
 
 #### flush
 
-强制将缓冲区中的日志刷入文件和控制台。进程退出时 SDK 已自动调用，正常使用无需手动触发。
+强制将缓冲区中的日志刷入文件和终端。进程退出时 SDK 已自动调用，正常使用无需手动触发。
 
 ```python
 def flush() -> None
