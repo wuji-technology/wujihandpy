@@ -919,7 +919,7 @@ glove.stop_streaming()
 ```
 
 - Callback invoked on the internal reader thread. Must not block
-- Register a disconnect callback with `set_disconnect_callback(fn)` to react to USB drop. Streaming stops automatically afterwards
+- Register a disconnect callback with `set_disconnect_callback(fn)` to react to USB drop. Streaming stops automatically afterward
 - `start_streaming` and `read_frame` are mutually exclusive
 - All blocking operations release the Python GIL
 
