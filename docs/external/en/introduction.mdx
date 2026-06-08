@@ -185,7 +185,9 @@ SDK runtime logs are stored in `~/.wuji/log/` by default. File names follow `{ti
 
 #### 5.3.1 Custom Path and Level
 
-**Configure through environment variables (recommended, zero code).** The SDK reads them once at logger initialization (in the common `Hand` flow that means when the first `Hand` is constructed) and won't pick up later changes:
+**Configure through environment variables (recommended, zero code)**
+
+The SDK reads them once at logger initialization (in the common `Hand` flow that means when the first `Hand` is constructed) and won't pick up later changes:
 
 ```bash
 export WUJI_LOG_PATH=~/logs/wujihand
@@ -202,7 +204,9 @@ python3 your_script.py
 
 Value matching is case-insensitive. `WUJI_LOG_LEVEL` also accepts the aliases `error` (=`err`), `warning` (=`warn`), `information` (=`info`), and `crit` (=`critical`). Both boolean variables also accept `1`/`0`, `on`/`off`, and `yes`/`no`.
 
-**Configure from code.** Call the `wujihandpy.logging` submodule before creating `Hand`:
+**Configure from code**
+
+Call the `wujihandpy.logging` submodule before creating `Hand`:
 
 ```python
 import os
