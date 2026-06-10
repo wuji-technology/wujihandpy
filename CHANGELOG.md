@@ -7,13 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-06-10
+
 ### Added
 
-- `Hand(side='left' | 'right')` constructor selects a wujihand by handedness without recording serial numbers. The SDK enumerates VID/PID matches, reads SDO `0x5090` (handedness) from each candidate, and connects to the unique match. `side` is keyword-only and mutually exclusive with `serial_number`. Failure cases (no device, side reversed, multiple same-side hands, candidate held by another Hand instance in this process) raise `ConnectionError` with an actionable message; per-device probe details are logged. See `example/joint/8.connect_by_side.py`.
+- Added `Hand(side='left' | 'right')` constructor that selects a Wuji Hand by handedness without recording serial numbers. The SDK enumerates VID/PID matches, reads SDO `0x5090` (handedness) from each candidate, and connects to the unique match. `side` is keyword-only and mutually exclusive with `serial_number`. Failure cases (no device, side reversed, multiple same-side hands, candidate held by another Hand instance in this process) raise `ConnectionError` with an actionable message. Per-device probe details are logged. See `example/joint/8.connect_by_side.py`.
 
 ### Fixed
 
-- **Python 3.8**: `import wujihandpy` no longer raises `ImportError: cannot import name 'Annotated' from 'typing'` on the cp38 wheel (regression in 1.6.0).
+- Fixed `import wujihandpy` raising `ImportError: cannot import name 'Annotated' from 'typing'` on the cp38 wheel under Python 3.8 (regression in 1.6.0).
 
 ## [1.7.0] - 2026-05-18
 
@@ -150,7 +152,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Requires firmware v3.0.0+
 
-[Unreleased]: https://github.com/wuji-technology/wujihandpy/compare/v1.7.0...HEAD
+[Unreleased]: https://github.com/wuji-technology/wujihandpy/compare/v1.8.0...HEAD
+[1.8.0]: https://github.com/wuji-technology/wujihandpy/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/wuji-technology/wujihandpy/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/wuji-technology/wujihandpy/compare/v1.5.1...v1.6.0
 [1.5.1]: https://github.com/wuji-technology/wujihandpy/compare/v1.5.0...v1.5.1
