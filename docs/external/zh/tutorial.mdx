@@ -9,7 +9,13 @@ description: Wuji Hand SDK (wujihandpy) 教程，涵盖设备连接、同步/异
 ### 1.1 接口概述
 ```python
 class Hand:
-    def __init__(self, serial_number: str | None = None, ...) -> None:
+    def __init__(
+        self,
+        serial_number: str | None = None,
+        *,
+        side: str | None = None,
+        ...,
+    ) -> None:
         ...
 ```
 
@@ -33,11 +39,32 @@ Traceback (most recent call last):
            ^^^^^^^^^^^^^^^^^
 RuntimeError: Failed to init.
 ```
-为解决该问题，可通过 `serial_number` 参数明确指定要连接的设备：
+为解决该问题，有两种方式指定要连接的设备。
+
+#### 按序列号指定
+通过 `serial_number` 参数明确指定设备：
 ```python
 hand = wujihandpy.Hand(serial_number="337238793233")
 ```
 这样可确保程序始终连接到正确的设备实例。
+
+#### 按左右手指定
+当系统中恰好连接一只左手和一只右手时，可直接用 `side` 参数选择，无需记忆序列号：
+```python
+left = wujihandpy.Hand(side="left")
+right = wujihandpy.Hand(side="right")
+```
+SDK 会自动枚举所有匹配设备、读取每只手的手性标识，再连接对应一只。
+
+<Callout type="info">
+**`side` 与 `serial_number` 互斥**
+
+两者只能选一个传入。同时指定会抛 `ValueError`。`side` 仅接受字符串 `"left"` 或 `"right"`，其他取值会抛 `ValueError`。
+
+匹配失败的常见情形：
+- 没插对应侧的手 → 抛 `ConnectionError`，提示 `No <side> hand found`
+- 同侧插了两只 → 抛 `ConnectionError`，提示改用 `serial_number`
+</Callout>
 
 ### 1.4 查询序列号
 
