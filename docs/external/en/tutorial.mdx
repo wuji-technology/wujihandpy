@@ -376,7 +376,7 @@ When calling asynchronous interfaces, use `await`. The event loop is not blocked
 <Callout type="warning">
   **Latency Characteristics of Non-Real-Time Interfaces**
 
-  Asynchronous requests also require 5~10 ms to complete. They are not inherently faster; they simply do not block the event loop.
+  Asynchronous requests also require 5~10 ms to complete. They are not inherently faster. They simply do not block the event loop.
 
   Compared to synchronous interfaces, the only difference with asynchronous interfaces is that they allow other coroutine tasks to execute during the wait.
   Therefore, do not call these APIs in real-time control loops or high-frequency loops requiring high real-time performance.
@@ -589,7 +589,16 @@ Run the script, then unplug the USB cable while it reads. The loop is interrupte
 
 Real-time control loops rely on high-speed PDO data. On disconnect, these interfaces simply stop updating the cache instead of raising an exception. To detect a disconnect in real-time scenarios, periodically call a synchronous read (such as `read_input_voltage()`) as a probe in a low-speed bypass loop, and catch `ConnectionError`.
 
-When the real-time controller is used as a context manager, the end of the `with` block automatically calls `close()` to clean up. `close()` also returns safely on disconnect, so no extra handling is needed.
+When the real-time controller is used as a context manager, the end of the `with` block automatically calls `close()` to clean up. If a disconnect happens during the `with` block, `close()` raises `ConnectionError`. Wrap the `with` block in `try`/`except` to handle it:
+
+```python
+try:
+    with hand.realtime_controller(...) as ctrl:
+        # real-time control loop
+        ...
+except ConnectionError as e:
+    print(f"Disconnect detected: {e}")
+```
 
 ### 7.4 More Examples
 - [example/joint/6.disconnect.py](https://github.com/wuji-technology/wujihandpy/blob/main/example/joint/6.disconnect.py)

@@ -588,7 +588,16 @@ if __name__ == "__main__":
 
 实时控制环路依赖 PDO 高速数据，断连时这些接口仅停止更新缓存，不抛出异常。若需在实时控制场景中检测断连，请在旁路低速循环中周期性调用一次同步读取（如 `read_input_voltage()`）作为探测，并捕获 `ConnectionError`。
 
-实时控制器以上下文管理器使用时，`with` 块结束会自动调用 `close()` 完成清理。断连状态下 `close()` 也会安全返回，无需额外处理。
+实时控制器以上下文管理器使用时，`with` 块结束会自动调用 `close()` 完成清理。若 `with` 块运行期间发生断连，`close()` 会抛出 `ConnectionError`，建议在 `with` 外层加 `try`/`except` 捕获：
+
+```python
+try:
+    with hand.realtime_controller(...) as ctrl:
+        # 实时控制循环
+        ...
+except ConnectionError as e:
+    print(f"Disconnect detected: {e}")
+```
 
 ### 7.4 更多示例
 - [example/joint/6.disconnect.py](https://github.com/wuji-technology/wujihandpy/blob/main/example/joint/6.disconnect.py)
