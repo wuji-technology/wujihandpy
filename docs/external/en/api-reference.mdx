@@ -188,7 +188,7 @@ This field records the lower position limit of the joint.
 ### 2.1 Hand Class
 
 #### 2.1.1 Constructor
-- `__init__(serial_number=None, *, side=None, usb_pid=-1, usb_vid=1155, mask=None) -> None`
+- `__init__(serial_number=None, *, side=None, usb_pid=0x2000, usb_vid=0x0483, mask=None) -> None`
   *Initialize connection to the dexterous hand. Supports specifying the device by serial number, handedness, USB ID, or device mask.*
 
   - `serial_number`: USB serial number string to select one device exactly

@@ -188,7 +188,7 @@ URDF 文件中的关节范围是理论设计值，经过保守缩放以考虑加
 ### 2.1 Hand 类
 
 #### 2.1.1 构造函数
-- `__init__(serial_number=None, *, side=None, usb_pid=-1, usb_vid=1155, mask=None) -> None`
+- `__init__(serial_number=None, *, side=None, usb_pid=0x2000, usb_vid=0x0483, mask=None) -> None`
   *初始化灵巧手连接，支持通过序列号、左右手、USB ID 或设备掩码指定设备*
 
   - `serial_number`：USB 序列号字符串，精确指定一台设备
