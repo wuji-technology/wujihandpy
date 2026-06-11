@@ -9,7 +9,13 @@ This section describes how to connect to dexterous hand devices in wujihandpy an
 ### 1.1 Interface Overview
 ```python
 class Hand:
-    def __init__(self, serial_number: str | None = None, ...) -> None:
+    def __init__(
+        self,
+        serial_number: str | None = None,
+        *,
+        side: str | None = None,
+        ...,
+    ) -> None:
         ...
 ```
 
@@ -33,11 +39,32 @@ Traceback (most recent call last):
            ^^^^^^^^^^^^^^^^^
 RuntimeError: Failed to init.
 ```
-To resolve this issue, you can explicitly specify the device to connect to using the `serial_number` parameter:
+There are two ways to specify which device to connect to.
+
+#### Select by serial number
+Pass the `serial_number` parameter to identify the device explicitly:
 ```python
 hand = wujihandpy.Hand(serial_number="337238793233")
 ```
 This ensures that the program always connects to the correct device instance.
+
+#### Select by handedness
+When the system has exactly one left hand and one right hand connected, the `side` parameter selects the device directly, without needing to remember any serial number:
+```python
+left = wujihandpy.Hand(side="left")
+right = wujihandpy.Hand(side="right")
+```
+The SDK enumerates all matching devices, reads the handedness identifier from each, and connects to the matching one.
+
+<Callout type="info">
+**`side` and `serial_number` are mutually exclusive**
+
+Pass only one of them. Passing both raises `ValueError`. `side` accepts only the string `"left"` or `"right"`. Any other value raises `ValueError`.
+
+Common failure cases:
+- No hand of the requested side is connected → raises `ConnectionError` with `No <side> hand found`
+- Two hands of the same side are connected → raises `ConnectionError` suggesting `serial_number` instead
+</Callout>
 
 ### 1.4 Querying Serial Numbers
 
@@ -376,7 +403,7 @@ When calling asynchronous interfaces, use `await`. The event loop is not blocked
 <Callout type="warning">
   **Latency Characteristics of Non-Real-Time Interfaces**
 
-  Asynchronous requests also require 5~10 ms to complete. They are not inherently faster; they simply do not block the event loop.
+  Asynchronous requests also require 5~10 ms to complete. They are not inherently faster. They simply do not block the event loop.
 
   Compared to synchronous interfaces, the only difference with asynchronous interfaces is that they allow other coroutine tasks to execute during the wait.
   Therefore, do not call these APIs in real-time control loops or high-frequency loops requiring high real-time performance.
