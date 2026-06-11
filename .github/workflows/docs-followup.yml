@@ -52,7 +52,9 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
           PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_AUTHOR_TYPE: ${{ github.event.pull_request.user.type }}
           DOCS_MAINTAINER: ${{ vars.DOCS_MAINTAINER }}
         run: |
           set -euo pipefail
@@ -63,6 +65,16 @@ jobs:
             echo "skip: author=$PR_AUTHOR matches DOCS_MAINTAINER, silently skipping" >&2
             echo "should_run=false" >> "$GITHUB_OUTPUT"
             echo "reason=silent:author-is-docs-maintainer" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Bot-authored PRs: gray card with "版本发布通知". GitHub Apps
+          # (release automation, dependabot, renovate) carry user.type == 'Bot'
+          # and never produce user-facing API changes.
+          if [[ "$PR_AUTHOR_TYPE" == "Bot" ]]; then
+            echo "skip: author=$PR_AUTHOR is a Bot, sending gray card" >&2
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            echo "reason=author-is-bot" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -102,9 +114,58 @@ jobs:
             exit 0
           fi
 
-          if [[ "$PR_TITLE" =~ ^(chore|test|refactor|perf|docs|style|ci)(\(.*\))?: ]]; then
+          # Force-followup paths bypass the title-prefix skip below. Listed in
+          # `.github/docs-sync-force-followup.txt` (optional). Use for high-
+          # signal surfaces where prior `docs:` / `refactor:` PRs changed the
+          # user-visible API (docstrings, removed bindings).
+          CALLER_REPO_ROOT="$PWD" \
+            bash .github/scripts/docs-followup/force-followup-discover.sh \
+            > /tmp/force-paths.txt || true
+          FORCE_INTERSECT=""
+          if [[ -s /tmp/force-paths.txt ]]; then
+            FORCE_PATTERN="$(sed 's/[[:space:]]*$//; /^$/d; s/[][\\.^$*+?(){}|]/\\&/g; s|^|^|' /tmp/force-paths.txt | paste -sd'|' -)"
+            if [[ -n "$FORCE_PATTERN" ]]; then
+              set +e
+              FORCE_INTERSECT="$(grep -E "$FORCE_PATTERN" /tmp/changed.txt)"
+              rc=$?
+              set -e
+              if [[ $rc -gt 1 ]]; then
+                echo "grep failed (force list) with rc=$rc" >&2
+                exit $rc
+              fi
+            fi
+          fi
+
+          if [[ -n "$FORCE_INTERSECT" ]]; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            echo "reason=force-followup path touched (bypassed title-prefix rule)" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Author-declared-internal skip: PR description explicitly says the
+          # change is internal / not exposed / Rust-only / factory-only.
+          INTERNAL_BODY_PATTERN='is_internal:[[:space:]]*true|public:[[:space:]]*false|对内资源|内部资源|对内 (API|资源|绑定)|不进 \.pyi|不进 Python|不出 Python 绑定|hidden API|hidden from \.pyi|no Python bindings?|仅 Rust SDK|Rust-only|Rust SDK 暴露|only.*Rust SDK|factory mode|工厂操作'
+          # here-string `<<<` 比 `echo "$PR_BODY" |` 更安全：echo 在某些 bash
+          # 版本/shell 实现里会解释 backslash escapes，导致正则误判。
+          if grep -qiE "$INTERNAL_BODY_PATTERN" <<< "$PR_BODY"; then
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            echo "reason=author-declared-internal" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Title-prefix skip: accepts both bare `chore:` and compound
+          # `ci/docs(scope):` — only if BOTH halves are internal types.
+          if [[ "$PR_TITLE" =~ ^(chore|test|refactor|perf|docs|style|ci)(/(chore|test|refactor|perf|docs|style|ci))?(\(.*\))?: ]]; then
             echo "should_run=false" >> "$GITHUB_OUTPUT"
             echo "reason=internal-change prefix in PR title" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Internal-scope skip: title like `feat(ci):` / `fix(test):` —
+          # type is feat/fix but scope is a non-functional area.
+          if [[ "$PR_TITLE" =~ ^(feat|fix)\((ci|test|docs|style)\): ]]; then
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            echo "reason=internal-scope in PR title" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -122,19 +183,38 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Feishu DM (internal-change skip)
+      - name: Feishu DM (no docs follow-up needed)
         env:
           FEISHU_DOCS_DM_WEBHOOK: ${{ secrets.FEISHU_DOCS_DM_WEBHOOK }}
           FEISHU_DOCS_DM_SIGN_SECRET: ${{ secrets.FEISHU_DOCS_DM_SIGN_SECRET }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          REASON: ${{ needs.filter.outputs.reason }}
         run: |
+          # Map filter-step reason codes to Chinese display strings for the
+          # card's "结论" row.
+          case "$REASON" in
+            "no public path touched")
+              DETAIL="未触及公开面路径（见 .github/docs-sync-public-packages.txt）" ;;
+            "internal-change prefix in PR title")
+              DETAIL="标题以内部 type 前缀开头（chore/test/refactor/perf/docs/style/ci）" ;;
+            "internal-scope in PR title")
+              DETAIL="标题 scope 是非功能领域（ci/test/docs/style）" ;;
+            "author-declared-internal")
+              DETAIL="作者在 PR 描述里明示对内/不暴露/Rust-only" ;;
+            "author-is-bot")
+              DETAIL="版本发布通知" ;;
+            *)
+              DETAIL="$REASON" ;;
+          esac
+
           bash .github/scripts/docs-followup/feishu-dm.sh \
             --pr "$PR_NUMBER" \
             --status internal_change \
             --pr-title "$PR_TITLE" \
-            --pr-author "$PR_AUTHOR"
+            --pr-author "$PR_AUTHOR" \
+            --detail "$DETAIL"
 
   prepare:
     needs: filter
