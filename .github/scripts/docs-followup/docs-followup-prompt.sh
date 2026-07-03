@@ -44,6 +44,11 @@ cat <<EOF
 - 只关注用户可感知变更（${SURFACE_HINT}）
 - 忽略 ${NOISE_HINT}
 
+分支与合入目标（发布列车）：
+- 判定需要改文档时，从 \`docs-prerelease\` 拉跟进分支，PR base 也用 \`docs-prerelease\`。线上文档由每日 tag 从各仓 main 构建，直接合 main 会把未发布功能的文档提前带上线。列车分支在双周发布日统一合入 main，main 的日常变更由保鲜 workflow 自动同步进列车分支
+- 本仓是公开仓，受组织 ruleset 限制无法向上游推新分支：推到个人 fork，从 fork 向上游提 PR，base 仍是上游 \`docs-prerelease\`
+- 涉及 docs-center 侧配套变更（meta.json 导航注册、reading-guide.json）时，同样走 wuji-docs-center 的 \`docs-prerelease\`
+
 写作规范：
 - 遵守 Microsoft Writing Style Guide
 - 中文：删除"的/了/进行"等冗余词；用阿拉伯数字；主动语态、现在时
