@@ -47,7 +47,7 @@ def sanitize_sn(sn: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Joint naming (matches wuji-hand-description URDF)
+# Joint naming (matches wuji-description URDF)
 # ---------------------------------------------------------------------------
 
 # Resources that stream raw values without the {timestamp_us, data} envelope.
@@ -57,7 +57,7 @@ _ENVELOPE_EXEMPT_PATHS = frozenset({"joint_states"})
 
 
 def make_joint_names(side: str) -> list:
-    """Build 20 joint names matching `wuji-hand-description/urdf/{side}.urdf`.
+    """Build 20 joint names matching `wuji-description/hand/body/urdf/{side}.urdf`.
 
     Row-major flatten order of the 5x4 joint array:
         name[i * 4 + j] = f"{side}_finger{i+1}_joint{j+1}"

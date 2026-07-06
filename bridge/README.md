@@ -130,7 +130,7 @@ finally:
 
 | Path | Type / Schema title | Description |
 |------|---------------------|-------------|
-| `joint_states` | `sensor_msgs/JointState` — `{name: string[20], position: number[20]}` | Flat row-major projection of `joint/actual_position`. Joint names follow `{side}_finger{1..5}_joint{1..4}`, matching [`wuji-hand-description`](https://github.com/wuji-technology/wuji-hand-description) URDFs. **Published without the timestamp envelope** so downstream consumers (e.g. Wuji Studio's 3D panel) can identify it directly by schema title and drive a URDF visualization. |
+| `joint_states` | `sensor_msgs/JointState` — `{name: string[20], position: number[20]}` | Flat row-major projection of `joint/actual_position`. Joint names follow `{side}_finger{1..5}_joint{1..4}`, matching [`wuji-description`](https://github.com/wuji-technology/wuji-description) URDFs. **Published without the timestamp envelope** so downstream consumers (e.g. Wuji Studio's 3D panel) can identify it directly by schema title and drive a URDF visualization. |
 
 ### SET Resources
 
@@ -172,7 +172,7 @@ touching the control path:
    `/wuji/{sn}/joint_states` becomes subscribable (schema
    `sensor_msgs/JointState`).
 2. Open a **3D** panel → **Add URDF** → source **filePath** → point to
-   `wuji-hand-description/urdf/left.urdf` (or `right.urdf` — must match the
+   `wuji-description/hand/body/urdf/left.urdf` (or `right.urdf` — must match the
    `--side` you launched the bridge with).
 3. The 3D panel auto-subscribes `joint_states` and animates the URDF.
 
