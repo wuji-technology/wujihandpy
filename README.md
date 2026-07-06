@@ -4,7 +4,7 @@
 
 Wuji Hand SDK: C++ core with Python bindings, for controlling and communicating with Wuji Hand. WujihandPy is the Python binding of [WujihandCpp](wujihandcpp/README.md), providing an easy-to-use Python API for Wujihand dexterous-hand devices. Supports synchronous, asynchronous, unchecked operations and real-time control.
 
-**Get started with [Quick Start](#quick-start). For detailed documentation, please refer to [SDK Tutorial](https://docs.wuji.tech/docs/en/wuji-hand/latest/sdk-user-guide/introduction) on Wuji Docs Center.**
+**Get started with [Quick Start](#quick-start). For detailed documentation, please refer to [SDK Tutorial](https://docs.wuji.tech/docs/en/wujihandpy/latest/tutorial/) on Wuji Docs Center.**
 
 ## Repository Structure
 
@@ -82,8 +82,8 @@ For scenarios that require smooth joint position control, be sure to use `realti
 
 ### References
 
-- **Documentation**: [Quick Start](https://docs.wuji.tech/docs/en/wuji-hand/latest/sdk-user-guide/introduction/)
-- **API Reference**: [API Reference](https://docs.wuji.tech/docs/en/wuji-hand/latest/sdk-user-guide/api-reference/)
+- **Documentation**: [Introduction](https://docs.wuji.tech/docs/en/wujihandpy/latest/introduction/)
+- **API Reference**: [API Reference](https://docs.wuji.tech/docs/en/wujihandpy/latest/api-reference/)
 - **CI Workflows**: [workflow overview](docs/ci-workflows.md)
 - **Package CI**: [wujihandcpp deb smoke gate](docs/wujihandcpp-deb-smoke-gate.md)
 - **URDF Files**: [wuji-description](https://github.com/wuji-technology/wuji-description)
