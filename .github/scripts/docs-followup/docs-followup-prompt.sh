@@ -44,6 +44,11 @@ cat <<EOF
 - 只关注用户可感知变更（${SURFACE_HINT}）
 - 忽略 ${NOISE_HINT}
 
+对外性判定（判断"用户可感知"的依据，2026-07-09 强化）：
+- 依据是本仓对外 API 面（.pyi / 导出类型 / ROS 接口 / 头文件等）里的公开符号 + PR 的 Breaking / 新 API 标记，不是 CHANGELOG 是否已记。changelog 缺失是"应记未记"，不能反推"无需跟进"
+- Breaking 变更、或公开符号新增 / 签名变更：即使 changelog 未记、即使当前文档无对应章节，也要跟进（无章节就新建承载），不可判 skip
+- 确属对外但 CHANGELOG [Unreleased] 未记 → 在跟进结论里提醒源 PR 作者补记，这是发布记录的唯一取材源，漏记会导致发版漏条目，但缺失本身不作为 skip 理由
+
 版本发布记录（与正文承载独立判定，2026-07-09 起）：
 - 本仓 docs/external 不承载 release-notes 页面，版本发布记录由发版流程从本仓 CHANGELOG.md 聚合生成到文档中心对应产品页
 - 跟进时确认源 PR 的用户可感知变化已记入 CHANGELOG.md 的 [Unreleased] 段（以 origin/main 为准）：缺失 → 在跟进报告里点名提醒源 PR 作者补记，发布记录以 [Unreleased] 为唯一取材来源，漏记会导致发版漏条目
