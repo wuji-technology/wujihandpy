@@ -44,6 +44,11 @@ cat <<EOF
 - 只关注用户可感知变更（${SURFACE_HINT}）
 - 忽略 ${NOISE_HINT}
 
+版本发布记录（与正文承载独立判定，2026-07-09 起）：
+- 本仓 docs/external 不承载 release-notes 页面，版本发布记录由发版流程从本仓 CHANGELOG.md 聚合生成到文档中心对应产品页
+- 跟进时确认源 PR 的用户可感知变化已记入 CHANGELOG.md 的 [Unreleased] 段（以 origin/main 为准）：缺失 → 在跟进报告里点名提醒源 PR 作者补记，发布记录以 [Unreleased] 为唯一取材来源，漏记会导致发版漏条目
+- 已随既往版本发布的变化无需处理
+
 分支与合入目标（发布列车）：
 - 判定需要改文档时，从 \`docs-prerelease\` 拉跟进分支，PR base 也用 \`docs-prerelease\`。线上文档由每日 tag 从各仓 main 构建，直接合 main 会把未发布功能的文档提前带上线。列车分支在双周发布日统一合入 main，main 的日常变更由保鲜 workflow 自动同步进列车分支
 - 本仓是公开仓，受组织 ruleset 限制无法向上游推新分支：推到个人 fork，从 fork 向上游提 PR，base 仍是上游 \`docs-prerelease\`
