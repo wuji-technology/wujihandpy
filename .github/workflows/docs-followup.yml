@@ -59,12 +59,21 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Maintainer-authored PRs: silently skip. The `silent:` prefix on
-          # `reason` tells notify-skip to suppress its Feishu card too.
-          if [[ -n "$DOCS_MAINTAINER" && "$PR_AUTHOR" == "$DOCS_MAINTAINER" ]]; then
-            echo "skip: author=$PR_AUTHOR matches DOCS_MAINTAINER, silently skipping" >&2
+          # 文档维护者名单内作者提的 PR：静默跳过，不发任何卡片。名单里的人本身就是
+          # 收卡片的人，自己提的东西不需要再收一份通知。`silent:` 前缀让 notify-skip
+          # 连「不需要文档跟进」的灰卡也不发（见 notify-skip 的 if 守卫），否则维护者
+          # 每提一个 docs: 前缀的 PR 都会被自己的机器人打扰一次。
+          #
+          # 名单 = vars.DOCS_MAINTAINER（org 变量，同时是 /docs-done 的授权人）
+          #      + DOCS_SKIP_AUTHORS（下面这行维护的附加名单，逗号分隔）
+          # 判「作者」而不是「合入人」：两者常常不同（bot 提、维护者合），按合入人
+          # 判会把同事的功能 PR 一起静默掉，真通知就丢了。
+          DOCS_SKIP_AUTHORS="yuanyuanxin,xialiC"
+          SKIP_LIST=",${DOCS_MAINTAINER},${DOCS_SKIP_AUTHORS},"
+          if [[ -n "$PR_AUTHOR" && "$SKIP_LIST" == *",${PR_AUTHOR},"* ]]; then
+            echo "skip: author=$PR_AUTHOR is on the docs skip list, silently skipping" >&2
             echo "should_run=false" >> "$GITHUB_OUTPUT"
-            echo "reason=silent:author-is-docs-maintainer" >> "$GITHUB_OUTPUT"
+            echo "reason=silent:author-on-docs-skiplist" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
