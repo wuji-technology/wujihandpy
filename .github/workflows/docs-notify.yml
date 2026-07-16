@@ -37,7 +37,7 @@ jobs:
           app-id: ${{ env.AUTOMATION_APP_ID }}
           private-key: ${{ env.AUTOMATION_APP_PRIVATE_KEY }}
           owner: wuji-technology
-
+          repositories: wuji-docs-center
       - name: Notify docs preview
         if: steps.automation-config.outputs.configured == 'true' && github.event_name == 'pull_request'
         uses: peter-evans/repository-dispatch@v4
@@ -47,10 +47,10 @@ jobs:
           event-type: docs-preview
           client-payload: |
             {
-              "repo": "${{ github.event.repository.name }}",
-              "branch": "${{ github.head_ref }}",
-              "pr_number": "${{ github.event.pull_request.number }}",
-              "sha": "${{ github.event.pull_request.head.sha }}"
+              "repo": ${{ toJSON(github.event.repository.name) }},
+              "branch": ${{ toJSON(github.head_ref) }},
+              "pr_number": ${{ toJSON(github.event.pull_request.number) }},
+              "sha": ${{ toJSON(github.event.pull_request.head.sha) }}
             }
 
       - name: Notify docs publish
@@ -63,5 +63,5 @@ jobs:
           client-payload: |
             {
               "repo": "wujihandpy",
-              "sha": "${{ github.sha }}"
+              "sha": ${{ toJSON(github.sha) }}
             }
