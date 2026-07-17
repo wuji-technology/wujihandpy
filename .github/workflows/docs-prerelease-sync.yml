@@ -1,6 +1,4 @@
-# 源仓保鲜 workflow 模板：main 上 docs/external/ 有 push 时自动 merge 进 docs-prerelease。
-# 由 scripts/rollout-docs-prerelease.sh 铺开到各源仓的 .github/workflows/ 下。
-# 注意：默认分支为 master 的仓库（如 wh110-firmware），rollout 脚本会替换 branches 触发项。
+# 源仓保鲜 workflow：main 上 docs/external/ 有 push 时自动 merge 进 docs-prerelease。
 name: Sync default branch into docs-prerelease
 
 on:
