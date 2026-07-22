@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed `wujihand_zenoh_bridge` hanging after Ctrl+C. The USB event loop's `handle_events()` only checked `active_transfers_`, so during shutdown with in-flight libusb transfers the event thread never exited and `~Usb` blocked on `event_thread_.join()`, leaving the process stuck after logging "Bridge stopped". The loop now also checks `stop_handling_events_` so the destructor completes cleanly.
+
 ## [1.8.0] - 2026-06-10
 
 ### Added

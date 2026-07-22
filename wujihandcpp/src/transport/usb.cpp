@@ -437,7 +437,8 @@ private:
     }
 
     void handle_events() {
-        while (active_transfers_.load(std::memory_order::relaxed)) {
+        while (!stop_handling_events_.load(std::memory_order::relaxed) &&
+               active_transfers_.load(std::memory_order::relaxed)) {
             libusb_handle_events(libusb_context_);
         }
     }
